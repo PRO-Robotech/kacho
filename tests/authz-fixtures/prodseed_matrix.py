@@ -87,6 +87,7 @@ import time
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import mint_rs256 as m  # noqa: E402
 import verified_human as vh  # noqa: E402
+import seed_transport  # noqa: E402
 # Declared id↔token pairings + their check. Own module because THIS one mints the
 # bootstrap Bearer at import time — a checker that cannot be imported without a
 # cluster cannot be self-tested, and this is the part that must be provable offline.
@@ -164,19 +165,14 @@ def _internal_tls_args():
 
 
 def _curl(method, path, token, body=None, base=PUBLIC):
-    args = ["curl", "-sS", "-m", "20", "-X", method, "-H", "Content-Type: application/json"]
-    if base == INTERNAL:
-        args += _internal_tls_args()
-    if token:
-        args += ["-H", f"Authorization: Bearer {token}"]
-    if body is not None:
-        args += ["--data", json.dumps(body)]
-    args.append(base + path)
-    out = subprocess.run(args, capture_output=True, text=True).stdout
-    try:
-        return json.loads(out or "{}")
-    except json.JSONDecodeError:
-        return {"raw": out}
+    # Обрыв транспорта и пустое тело — `SeedTransportError` (kacho#3246): прежняя
+    # форма превращала пустой вывод curl в `{}`, и посев F8-S7-80 упал «no op id: {}»
+    # там, где запрос до края не дошёл.
+    internal = base == INTERNAL
+    return seed_transport.curl_json(
+        method, base + path, token, body,
+        tls_args=_internal_tls_args() if internal else (),
+        surface="внутренний слушатель края" if internal else "публичный край")
 
 
 def _poll(op_id, token, budget=40):
@@ -876,7 +872,7 @@ def seed() -> dict:
     h_cloud_admin = human(f"prodseed-acc-id-admin-{RID}@example.com")
     _await(_curl("POST", "/iam/v1/internal/cluster/admins", boot,
                  {"subjectType": "USER", "subjectId": h_cloud_admin.user_id}, base=INTERNAL),
-           boot, "userId")
+           boot, "clusterAdminGrantId")
     tok_cloud_admin_human = user_platform_token(h_cloud_admin.user_id, h_cloud_admin.user_id)
     _await_cloud_admin_visible(h_cloud_admin.user_id)
     # Человек без роли на кластере — сторона отказа права (AID-K2) и её близнец.

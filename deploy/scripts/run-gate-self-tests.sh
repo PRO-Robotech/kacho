@@ -146,11 +146,13 @@ deploy/scripts/classify-integration-outcome.sh
 deploy/scripts/classify-pg-outside-selection.sh
 deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
+deploy/scripts/newman-e2e.sh
 deploy/scripts/own-rest-front-address.py
 deploy/scripts/repo_tree.py
 deploy/scripts/run-injection-proofs.sh
 deploy/scripts/stand-mailbox-door.py
 deploy/scripts/stand-provenance.sh
+deploy/scripts/stand_owner.py
 deploy/tests/helm/ceremony-ingress-audit.py
 deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/console-serves-identity-flows-test.sh

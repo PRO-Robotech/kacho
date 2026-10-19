@@ -342,6 +342,12 @@ export interface Rule {
   verbs: string[];
   resource_names?: string[];
   match_labels?: Record<string, string>;
+  // Вложенные правила (kaname#874) — ТОЛЬКО ВЫВОД: их объявляет манифест модуля,
+  // на входе Create/Update непустое поле край отвергает (INVALID_ARGUMENT,
+  // `rules[<i>].children`). Названо здесь, чтобы черновик набора не умалчивал
+  // поле контракта; консоль его не показывает и не заполняет. Вложенность
+  // плоская: у вложенного правила своих `children` нет.
+  children?: Rule[];
 }
 
 export type RuleArm = "ARM_ANCHOR" | "ARM_NAMES" | "ARM_LABELS";

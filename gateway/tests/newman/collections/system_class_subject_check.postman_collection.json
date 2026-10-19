@@ -1033,6 +1033,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('уборка: снято (200) либо уже нет (404)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                  "// до захвата, и на 404 опрос пропускается.",
+                  "pm.environment.unset('sc10PrjDelOpId');",
                   "if (pm.response.code === 200) {",
                   "  pm.environment.set('sc10PrjDelOpId', '');",
                   "  try {",
@@ -1040,7 +1043,8 @@
                   "    const v = (j.id);",
                   "    if (v !== undefined && v !== null) pm.environment.set('sc10PrjDelOpId', String(v));",
                   "  } catch (e) {}",
-                  "}"
+                  "}",
+                  "pm.environment.set('_prjDelStep', pm.info.requestName);"
                 ]
               }
             }
@@ -1083,8 +1087,7 @@
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
-                  "// OPERATION guard (legal skip): the mutation under test was refused on",
-                  "// purpose, so there is no Operation to poll and nothing to assert.",
+                  "// OPERATION guard (legal skip): проект уже снят (404) — опрашивать нечего.",
                   "if (!pm.environment.get('sc10PrjDelOpId')) { pm.execution.skipRequest(); }"
                 ]
               }
@@ -1109,6 +1112,23 @@
                   "}",
                   "pm.environment.unset('_pollCount');",
                   "pm.environment.unset('_pollStarted');",
+                  "// Окно доставки снятия регистрации (шапка delete_project_until_released).",
+                  "if (pm.environment.get('_unregStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_unregWait', '0');",
+                  "  pm.environment.set('_unregStarted', pm.info.requestName);",
+                  "}",
+                  "const _uw = parseInt(pm.environment.get('_unregWait') || '0', 10);",
+                  "const _ustep = pm.environment.get('_prjDelStep');",
+                  "if (j.done && (j.error && j.error.code === 9 && (j.error.details || []).some(x => x && x.reason === 'REFERENCE_IN_USE') && String(j.error.message || '').startsWith('Project ' + pm.environment.get('sc10PrjId') + ' is not empty (')) && _ustep && _uw < 20) {",
+                  "  pm.environment.set('_unregWait', String(_uw + 1));",
+                  "  const _ud = Date.now(); while (Date.now() - _ud < 500) void 0;",
+                  "  pm.execution.setNextRequest(_ustep);",
+                  "  return;",
+                  "}",
+                  "console.log('[unreg-window] ' + pm.info.requestName + ': повторов удаления ' + _uw + ' из 20');",
+                  "pm.environment.unset('_unregWait');",
+                  "pm.environment.unset('_unregStarted');",
+                  "pm.environment.unset('_prjDelStep');",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('operation succeeded (no error)', () => {",
                   "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
@@ -2388,6 +2408,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('уборка: снято (200) либо уже нет (404)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                  "// до захвата, и на 404 опрос пропускается.",
+                  "pm.environment.unset('sc11PrjDelOpId');",
                   "if (pm.response.code === 200) {",
                   "  pm.environment.set('sc11PrjDelOpId', '');",
                   "  try {",
@@ -2395,7 +2418,8 @@
                   "    const v = (j.id);",
                   "    if (v !== undefined && v !== null) pm.environment.set('sc11PrjDelOpId', String(v));",
                   "  } catch (e) {}",
-                  "}"
+                  "}",
+                  "pm.environment.set('_prjDelStep', pm.info.requestName);"
                 ]
               }
             }
@@ -2438,8 +2462,7 @@
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
-                  "// OPERATION guard (legal skip): the mutation under test was refused on",
-                  "// purpose, so there is no Operation to poll and nothing to assert.",
+                  "// OPERATION guard (legal skip): проект уже снят (404) — опрашивать нечего.",
                   "if (!pm.environment.get('sc11PrjDelOpId')) { pm.execution.skipRequest(); }"
                 ]
               }
@@ -2464,6 +2487,23 @@
                   "}",
                   "pm.environment.unset('_pollCount');",
                   "pm.environment.unset('_pollStarted');",
+                  "// Окно доставки снятия регистрации (шапка delete_project_until_released).",
+                  "if (pm.environment.get('_unregStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_unregWait', '0');",
+                  "  pm.environment.set('_unregStarted', pm.info.requestName);",
+                  "}",
+                  "const _uw = parseInt(pm.environment.get('_unregWait') || '0', 10);",
+                  "const _ustep = pm.environment.get('_prjDelStep');",
+                  "if (j.done && (j.error && j.error.code === 9 && (j.error.details || []).some(x => x && x.reason === 'REFERENCE_IN_USE') && String(j.error.message || '').startsWith('Project ' + pm.environment.get('sc11PrjId') + ' is not empty (')) && _ustep && _uw < 20) {",
+                  "  pm.environment.set('_unregWait', String(_uw + 1));",
+                  "  const _ud = Date.now(); while (Date.now() - _ud < 500) void 0;",
+                  "  pm.execution.setNextRequest(_ustep);",
+                  "  return;",
+                  "}",
+                  "console.log('[unreg-window] ' + pm.info.requestName + ': повторов удаления ' + _uw + ' из 20');",
+                  "pm.environment.unset('_unregWait');",
+                  "pm.environment.unset('_unregStarted');",
+                  "pm.environment.unset('_prjDelStep');",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('operation succeeded (no error)', () => {",
                   "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
@@ -3859,6 +3899,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('уборка: снято (200) либо уже нет (404)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                  "// до захвата, и на 404 опрос пропускается.",
+                  "pm.environment.unset('sc16PrjDelOpId');",
                   "if (pm.response.code === 200) {",
                   "  pm.environment.set('sc16PrjDelOpId', '');",
                   "  try {",
@@ -3866,7 +3909,8 @@
                   "    const v = (j.id);",
                   "    if (v !== undefined && v !== null) pm.environment.set('sc16PrjDelOpId', String(v));",
                   "  } catch (e) {}",
-                  "}"
+                  "}",
+                  "pm.environment.set('_prjDelStep', pm.info.requestName);"
                 ]
               }
             }
@@ -3909,8 +3953,7 @@
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
-                  "// OPERATION guard (legal skip): the mutation under test was refused on",
-                  "// purpose, so there is no Operation to poll and nothing to assert.",
+                  "// OPERATION guard (legal skip): проект уже снят (404) — опрашивать нечего.",
                   "if (!pm.environment.get('sc16PrjDelOpId')) { pm.execution.skipRequest(); }"
                 ]
               }
@@ -3935,6 +3978,23 @@
                   "}",
                   "pm.environment.unset('_pollCount');",
                   "pm.environment.unset('_pollStarted');",
+                  "// Окно доставки снятия регистрации (шапка delete_project_until_released).",
+                  "if (pm.environment.get('_unregStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_unregWait', '0');",
+                  "  pm.environment.set('_unregStarted', pm.info.requestName);",
+                  "}",
+                  "const _uw = parseInt(pm.environment.get('_unregWait') || '0', 10);",
+                  "const _ustep = pm.environment.get('_prjDelStep');",
+                  "if (j.done && (j.error && j.error.code === 9 && (j.error.details || []).some(x => x && x.reason === 'REFERENCE_IN_USE') && String(j.error.message || '').startsWith('Project ' + pm.environment.get('sc16PrjId') + ' is not empty (')) && _ustep && _uw < 20) {",
+                  "  pm.environment.set('_unregWait', String(_uw + 1));",
+                  "  const _ud = Date.now(); while (Date.now() - _ud < 500) void 0;",
+                  "  pm.execution.setNextRequest(_ustep);",
+                  "  return;",
+                  "}",
+                  "console.log('[unreg-window] ' + pm.info.requestName + ': повторов удаления ' + _uw + ' из 20');",
+                  "pm.environment.unset('_unregWait');",
+                  "pm.environment.unset('_unregStarted');",
+                  "pm.environment.unset('_prjDelStep');",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('operation succeeded (no error)', () => {",
                   "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
@@ -5728,6 +5788,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('уборка: снято (200) либо уже нет (404)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                  "// до захвата, и на 404 опрос пропускается.",
+                  "pm.environment.unset('sc18qPrjDelOpId');",
                   "if (pm.response.code === 200) {",
                   "  pm.environment.set('sc18qPrjDelOpId', '');",
                   "  try {",
@@ -5735,7 +5798,8 @@
                   "    const v = (j.id);",
                   "    if (v !== undefined && v !== null) pm.environment.set('sc18qPrjDelOpId', String(v));",
                   "  } catch (e) {}",
-                  "}"
+                  "}",
+                  "pm.environment.set('_prjDelStep', pm.info.requestName);"
                 ]
               }
             }
@@ -5778,8 +5842,7 @@
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
-                  "// OPERATION guard (legal skip): the mutation under test was refused on",
-                  "// purpose, so there is no Operation to poll and nothing to assert.",
+                  "// OPERATION guard (legal skip): проект уже снят (404) — опрашивать нечего.",
                   "if (!pm.environment.get('sc18qPrjDelOpId')) { pm.execution.skipRequest(); }"
                 ]
               }
@@ -5804,6 +5867,23 @@
                   "}",
                   "pm.environment.unset('_pollCount');",
                   "pm.environment.unset('_pollStarted');",
+                  "// Окно доставки снятия регистрации (шапка delete_project_until_released).",
+                  "if (pm.environment.get('_unregStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_unregWait', '0');",
+                  "  pm.environment.set('_unregStarted', pm.info.requestName);",
+                  "}",
+                  "const _uw = parseInt(pm.environment.get('_unregWait') || '0', 10);",
+                  "const _ustep = pm.environment.get('_prjDelStep');",
+                  "if (j.done && (j.error && j.error.code === 9 && (j.error.details || []).some(x => x && x.reason === 'REFERENCE_IN_USE') && String(j.error.message || '').startsWith('Project ' + pm.environment.get('sc18qPrjId') + ' is not empty (')) && _ustep && _uw < 20) {",
+                  "  pm.environment.set('_unregWait', String(_uw + 1));",
+                  "  const _ud = Date.now(); while (Date.now() - _ud < 500) void 0;",
+                  "  pm.execution.setNextRequest(_ustep);",
+                  "  return;",
+                  "}",
+                  "console.log('[unreg-window] ' + pm.info.requestName + ': повторов удаления ' + _uw + ' из 20');",
+                  "pm.environment.unset('_unregWait');",
+                  "pm.environment.unset('_unregStarted');",
+                  "pm.environment.unset('_prjDelStep');",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('operation succeeded (no error)', () => {",
                   "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",

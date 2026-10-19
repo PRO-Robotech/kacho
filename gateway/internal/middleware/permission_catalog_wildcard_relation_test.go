@@ -25,6 +25,13 @@ package middleware_test
 // The set of wildcard-satisfiable relations is COMPUTED FROM THE MODEL, not
 // listed: the day someone adds `user:*` or `system_class` to another relation, every catalog row
 // resting on it appears here without anyone remembering to update a literal.
+//
+// Класс и подстановка при этом судятся по-разному (kacho#3251, REG-PUB-1):
+// кортеж класса рождается только выдачей и лежит на объекте выдачи, поэтому
+// строка, спрашивающая об объекте, названном запросом, сужает до объектов с
+// явной выдачей классу. Правило и его инъекции — у
+// TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues и в
+// permission_catalog_wildcard_relation_injection_test.go.
 
 import (
 	"os"
@@ -94,32 +101,85 @@ func referenceCatalogueRPCs() map[string]string {
 // typeRelation is one (object type, relation) pair of the authorization model.
 type typeRelation struct{ Type, Relation string }
 
+// catalogRow — строка каталога в том виде, в каком её судит гейт: отношение на
+// типе объекта и то, назван ли объект запросом (`concrete`, предикат края
+// [middleware.IsConcreteResourceScope]).
+type catalogRow struct {
+	FQN      string
+	TR       typeRelation
+	Concrete bool
+	Field    string
+}
+
+// catalogRows — все строки встроенного каталога.
+func catalogRows(t *testing.T, c *middleware.PermissionCatalog) []catalogRow {
+	t.Helper()
+	var rows []catalogRow
+	for _, fqn := range c.FQNs() {
+		e, ok := c.Lookup(fqn)
+		require.True(t, ok)
+		rows = append(rows, catalogRow{
+			FQN:      fqn,
+			TR:       typeRelation{e.ScopeExtractor.ObjectType, e.RequiredRelation},
+			Concrete: middleware.IsConcreteResourceScope(e),
+			Field:    strings.TrimSpace(e.ScopeExtractor.FromRequestField),
+		})
+	}
+	return rows
+}
+
+// fixedObjectTypes — типы, объект которых строка каталога берёт НЕ из запроса, а
+// единственным (`from_request_field: "*"`, синглтон `cluster`). Кортеж «каждому»
+// на таком объекте открывает всякий запрос, который до него доходит.
+func fixedObjectTypes(rows []catalogRow) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, r := range rows {
+		if r.Field == "*" && r.TR.Type != "" {
+			out[r.TR.Type] = struct{}{}
+		}
+	}
+	return out
+}
+
 // TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues is the gate.
+//
+// ЧТО СЧИТАЕТСЯ «НЕ СУЖАЕТ НИЧЕГО» (kacho#3251, REG-PUB-1). Субъектов «каждый» в
+// модели два вида, и модель их различает:
+//
+//   - подстановка `<тип>:*` — кортеж, рождённый НЕ выдачей: перечислением выдач
+//     он не виден и глаголом отзыва не снимается. Строка на таком отношении не
+//     сужает ничего, где бы объект ни лежал;
+//   - системный класс (`system_class`) — его выдают и отзывают ПОИМЁННО (шапка
+//     `type system_class` модели). Кортеж класса лежит на объекте выдачи. Строка,
+//     спрашивающая об объекте, НАЗВАННОМ запросом, сужает до объектов, на которых
+//     класс выдан явно (публичный реестр — выдача роли классу с целью на реестр).
+//     Не сужает ничего она тогда, когда объект строки один на всех
+//     (`from_request_field: "*"`), либо когда отношение доходит до класса через
+//     объект такого типа (каскад от синглтона: одна выдача на `cluster` — всем).
 func TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues(t *testing.T) {
-	wildcard := wildcardSatisfiableRelations(t)
+	m := loadEveryoneModel(t)
 
 	// Anti-vacuum. If the model parse silently produced nothing, every assertion
 	// below would pass while checking nothing at all — the exact failure mode this
 	// gate exists to catch elsewhere.
-	require.NotEmpty(t, wildcard, "no wildcard-satisfiable relation found — the model parse is broken, not the model")
-	require.Contains(t, wildcard, typeRelation{"cluster", "viewer"},
+	require.NotEmpty(t, m.sat, "no wildcard-satisfiable relation found — the model parse is broken, not the model")
+	require.Contains(t, m.sat, typeRelation{"cluster", "viewer"},
 		"cluster#viewer is granted to system_class:authenticated by the cluster bootstrap; a parse that misses it misses everything")
-	require.Contains(t, wildcard, typeRelation{"registry_repository", "v_get"},
+	require.Contains(t, m.sat, typeRelation{"registry_repository", "v_get"},
 		"registry_repository#v_get carries the anonymous public-read class (system_class:anonymous); a parse "+
 			"that misses it is mishandling the userset syntax (`group#member` is not a comment)")
 
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
+	rows := catalogRows(t, c)
+	fixed := fixedObjectTypes(rows)
+	require.Contains(t, fixed, "cluster",
+		"no catalog row addresses the cluster singleton as a fixed object — the fixed-object census is broken")
 
-	standing := map[string]typeRelation{}
-	for _, fqn := range c.FQNs() {
-		e, ok := c.Lookup(fqn)
-		require.True(t, ok)
-		tr := typeRelation{e.ScopeExtractor.ObjectType, e.RequiredRelation}
-		if _, isWildcard := wildcard[tr]; isWildcard {
-			standing[fqn] = tr
-		}
-	}
+	standing, targeted := judgeRows(m, rows, fixed)
+	t.Logf("перепись: строк каталога %d · на отношениях, выполнимых «каждым», %d · не сужают ничего %d · "+
+		"сужены явной выдачей классу %d · типов с единственным объектом %d",
+		len(rows), len(standing)+len(targeted), len(standing), len(targeted), len(fixed))
 
 	named := referenceCatalogueRPCs()
 
@@ -153,6 +213,23 @@ func TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues(t *tes
 		"the enumerated set and the named set must coincide exactly")
 }
 
+// judgeRows делит строки на отношениях, выполнимых «каждым», на две части:
+// не сужающие ничего (`standing`) и суженные явной выдачей классу (`targeted`).
+func judgeRows(m everyoneModel, rows []catalogRow, fixed map[string]struct{}) (standing, targeted map[string]typeRelation) {
+	standing, targeted = map[string]typeRelation{}, map[string]typeRelation{}
+	for _, r := range rows {
+		if _, ok := m.sat[r.TR]; !ok {
+			continue
+		}
+		if m.rowNarrowsNothing(r.TR, r.Concrete, fixed) {
+			standing[r.FQN] = r.TR
+		} else {
+			targeted[r.FQN] = r.TR
+		}
+	}
+	return standing, targeted
+}
+
 var (
 	// A DSL comment is a `#` at the start of a line or after whitespace. A `#`
 	// glued to a word is a userset (`group#member`) and is part of the expression.
@@ -168,24 +245,22 @@ var (
 // fgaSystemClassType — тип системного класса субъектов в модели службы доступа
 // (PRO-Robotech/kaname#829, приёмка anonymous-and-authenticated-are-subject-classes).
 // Отношение, принимающее класс прямо, выполнимо «каждым вошедшим» так же, как
-// прежде подстановкой: класс выдаётся системной выдачей `system_class:authenticated`
-// (либо `system_class:anonymous`) и пропускает всякого принципала. Класс заменил
-// подстановку `user:*` в модели, поэтому распознаватель знает ОБЕ законные формы:
-// подстановку DSL допускает по-прежнему, и форма, которую он забыл, — молчание.
+// прежде подстановкой — но на ТОМ объекте, где класс выдан. Распознаватель знает
+// ОБЕ законные формы субъекта «каждый»: подстановку DSL допускает по-прежнему, и
+// форма, которую он забыл, — молчание.
 const fgaSystemClassType = "system_class"
 
-// bracketAdmitsEveryone — допускает ли перечень назначаемых типов отношения
-// субъекта, за которым стоит каждый: подстановку `<тип>:*` либо системный класс.
-//
-// Знай гейт одну форму — на модели с другой он вывел бы «выполнимых ноль», и
-// строка каталога, ничего не сужающая, прошла бы незамеченной. Класс узнаётся
-// ЭЛЕМЕНТОМ списка, а не подстрокой: тип `system_class_reader` классом не
-// является. Обе формы и законные близнецы держит
-// TestBracketAdmitsEveryoneKnowsBothLawfulForms.
-func bracketAdmitsEveryone(list string) bool {
-	if fgaWildcardRe.MatchString(list) {
-		return true
-	}
+// Знай гейт одну форму субъекта «каждый» — на модели с другой он вывел бы
+// «выполнимых ноль», и строка каталога, ничего не сужающая, прошла бы
+// незамеченной. Класс узнаётся ЭЛЕМЕНТОМ списка, а не подстрокой: тип
+// `system_class_reader` классом не является. Обе формы и законные близнецы
+// держит TestBracketAdmitsEveryoneKnowsBothLawfulForms.
+
+// bracketHasWildcard — есть ли в перечне назначаемых типов подстановка `<тип>:*`.
+func bracketHasWildcard(list string) bool { return fgaWildcardRe.MatchString(list) }
+
+// bracketHasClass — назначаем ли системный класс.
+func bracketHasClass(list string) bool {
 	for _, tok := range strings.Split(list, ",") {
 		f := strings.Fields(strings.SplitN(strings.TrimSpace(tok), "#", 2)[0])
 		if len(f) > 0 && f[0] == fgaSystemClassType {
@@ -195,14 +270,47 @@ func bracketAdmitsEveryone(list string) bool {
 	return false
 }
 
-// wildcardSatisfiableRelations reads the canonical authorization model and returns
-// every (type, relation) a `<subject>:*` tuple or a system class tuple
-// (`system_class:<имя>`, см. fgaSystemClassType) can satisfy — directly, or through
-// a computed userset / tuple-to-userset that reaches one.
-//
-// Over-approximation is the safe direction here: a pair listed that turns out not
-// to be reachable only forces a catalog row to be named and justified; a pair
-// MISSED lets an unnarrowed row through unnoticed.
+// everyoneModel — что модель говорит о субъектах «каждый».
+type everyoneModel struct {
+	// sat — (тип, отношение), выполнимые подстановкой либо классом: объединение.
+	sat map[typeRelation]struct{}
+	// wildcard — выполнимые подстановкой `<тип>:*` (прямо либо через вычисление).
+	wildcard map[typeRelation]struct{}
+	// classAnchors — для выполнимых классом: типы объектов, на которых лежит
+	// кортеж класса, дающий это отношение.
+	classAnchors map[typeRelation]map[string]struct{}
+}
+
+// rowNarrowsNothing — не сужает ли строка на отношении tr ничего: подстановка —
+// всегда; класс — если объект строки не назван запросом либо кортеж класса лежит
+// на объекте типа, который один на всех.
+func (m everyoneModel) rowNarrowsNothing(tr typeRelation, concrete bool, fixed map[string]struct{}) bool {
+	if _, ok := m.wildcard[tr]; ok {
+		return true
+	}
+	anchors, ok := m.classAnchors[tr]
+	if !ok {
+		return false
+	}
+	if !concrete {
+		return true
+	}
+	for a := range anchors {
+		if _, isFixed := fixed[a]; isFixed {
+			return true
+		}
+	}
+	return false
+}
+
+// wildcardSatisfiableRelations — объединение выполнимых «каждым» (подстановкой
+// либо классом), как его спрашивают соседние пробы пакета.
+func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
+	t.Helper()
+	return loadEveryoneModel(t).sat
+}
+
+// loadEveryoneModel reads the canonical authorization model and parses it.
 //
 // ГДЕ ЛЕЖИТ МОДЕЛЬ. Не под `proto/` этого дерева: решением владельца (kacho#2616,
 // исход C, 2026-09-13) контракты службы доступа уехали в её репозиторий и
@@ -212,13 +320,32 @@ func bracketAdmitsEveryone(list string) bool {
 // для внешних, — а не собирается литералом: литерал после переезда не краснеет,
 // он ОТКАЗЫВАЕТ либо МОЛЧИТ, и здесь молчание было бы зелёным вердиктом по
 // непрочитанной модели.
-func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
+func loadEveryoneModel(t *testing.T) everyoneModel {
 	t.Helper()
+	m := parseEveryoneModel(t, readCanonicalModel(t))
+	require.NotEmpty(t, m.sat, "the model parsed to no everyone-satisfiable relation — the gate would be vacuous")
+	return m
+}
 
+func readCanonicalModel(t *testing.T) string {
+	t.Helper()
 	model, err := contractsource.Path(repoRootForWildcardGate(t), "kaname/cloud/iam/v1/fga_model.fga")
 	require.NoError(t, err, "the canonical authorization model must be resolvable — it is what defines the class")
 	raw, err := os.ReadFile(model)
 	require.NoError(t, err, "the canonical authorization model must be readable — it is what defines the class")
+	return string(raw)
+}
+
+// parseEveryoneModel returns every (type, relation) a `<subject>:*` tuple or a
+// system class tuple (`system_class:<имя>`) can satisfy — directly, or through a
+// computed userset / tuple-to-userset that reaches one — and, for the class, on
+// which object types the class tuple has to sit.
+//
+// Over-approximation is the safe direction here: a pair listed that turns out not
+// to be reachable only forces a catalog row to be named and justified; a pair
+// MISSED lets an unnarrowed row through unnoticed.
+func parseEveryoneModel(t *testing.T, raw string) everyoneModel {
+	t.Helper()
 
 	// type -> relation -> expression
 	types := map[string]map[string]string{}
@@ -226,7 +353,7 @@ func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 	assignable := map[string]map[string][]string{}
 
 	var cur string
-	for _, line := range strings.Split(string(raw), "\n") {
+	for _, line := range strings.Split(raw, "\n") {
 		s := strings.TrimSpace(fgaCommentRe.ReplaceAllString(line, ""))
 		if s == "" {
 			continue
@@ -260,65 +387,98 @@ func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 	}
 	require.NotEmpty(t, types, "the model parsed to zero types — the gate would be vacuous")
 
-	sat := map[typeRelation]struct{}{}
+	m := everyoneModel{
+		sat:          map[typeRelation]struct{}{},
+		wildcard:     map[typeRelation]struct{}{},
+		classAnchors: map[typeRelation]map[string]struct{}{},
+	}
+	addAnchor := func(tr typeRelation, anchor string) bool {
+		if m.classAnchors[tr] == nil {
+			m.classAnchors[tr] = map[string]struct{}{}
+		}
+		if _, had := m.classAnchors[tr][anchor]; had {
+			return false
+		}
+		m.classAnchors[tr][anchor] = struct{}{}
+		return true
+	}
 	for typ, rels := range types {
 		for rel, expr := range rels {
-			if br := fgaBracketRe.FindStringSubmatch(expr); br != nil && bracketAdmitsEveryone(br[1]) {
-				sat[typeRelation{typ, rel}] = struct{}{}
+			br := fgaBracketRe.FindStringSubmatch(expr)
+			if br == nil {
+				continue
+			}
+			tr := typeRelation{typ, rel}
+			if bracketHasWildcard(br[1]) {
+				m.wildcard[tr] = struct{}{}
+			}
+			if bracketHasClass(br[1]) {
+				addAnchor(tr, typ)
 			}
 		}
 	}
 
 	// Closure over `or <rel>` (same object) and `or <rel> from <pointer>` (the
-	// relation on whatever object the pointer holds).
+	// relation on whatever object the pointer holds). The class anchor travels
+	// with the relation: through `from` it is the PARENT's object that carries it.
 	for changed := true; changed; {
 		changed = false
 		for typ, rels := range types {
 			for rel, expr := range rels {
-				if _, done := sat[typeRelation{typ, rel}]; done {
-					continue
-				}
+				tr := typeRelation{typ, rel}
 				body := fgaBracketRe.ReplaceAllString(expr, "")
 				for _, part := range strings.Split(body, " or ") {
 					part = strings.TrimSpace(part)
-					if part == "" {
-						continue
-					}
+					var sources []typeRelation
 					if fm := fgaFromRe.FindStringSubmatch(part); fm != nil {
 						for _, parentType := range assignable[typ][fm[2]] {
-							if _, ok := sat[typeRelation{parentType, fm[1]}]; ok {
-								sat[typeRelation{typ, rel}] = struct{}{}
+							sources = append(sources, typeRelation{parentType, fm[1]})
+						}
+					} else if part != "" && fgaIdentRe.MatchString(part) {
+						sources = append(sources, typeRelation{typ, part})
+					}
+					for _, src := range sources {
+						if _, ok := m.wildcard[src]; ok {
+							if _, had := m.wildcard[tr]; !had {
+								m.wildcard[tr] = struct{}{}
 								changed = true
 							}
 						}
-						continue
-					}
-					if fgaIdentRe.MatchString(part) {
-						if _, ok := sat[typeRelation{typ, part}]; ok {
-							sat[typeRelation{typ, rel}] = struct{}{}
-							changed = true
+						for anchor := range m.classAnchors[src] {
+							if addAnchor(tr, anchor) {
+								changed = true
+							}
 						}
 					}
 				}
 			}
 		}
 	}
-	return sat
+	for tr := range m.wildcard {
+		m.sat[tr] = struct{}{}
+	}
+	for tr := range m.classAnchors {
+		m.sat[tr] = struct{}{}
+	}
+	return m
 }
 
 // TestBracketAdmitsEveryoneKnowsBothLawfulForms — распознаватель знает обе
-// формы «выполнимо за каждого» и молчит на законных близнецах; модель из пина
-// несёт одну форму, и забытая вторая на ней не видна.
+// формы «выполнимо за каждого», относит каждую к своей (подстановка либо класс)
+// и молчит на законных близнецах; модель из пина несёт одну форму, и забытая
+// вторая на ней не видна.
 func TestBracketAdmitsEveryoneKnowsBothLawfulForms(t *testing.T) {
-	for bracket, want := range map[string]bool{
-		"user, service_account, system_class":               true,
-		"system_class, user, service_account, group#member": true,
-		"user, user:*, service_account":                     true,
-		"user, service_account, group#member":               false,
-		"user, service_account, system_class_reader":        false,
-		"user with mfa_fresh, service_account":              false,
+	type forms struct{ wildcard, class bool }
+	for bracket, want := range map[string]forms{
+		"user, service_account, system_class":               {class: true},
+		"system_class, user, service_account, group#member": {class: true},
+		"user, user:*, service_account":                     {wildcard: true},
+		"user, service_account, group#member":               {},
+		"user, service_account, system_class_reader":        {},
+		"user with mfa_fresh, service_account":              {},
 	} {
-		assert.Equal(t, want, bracketAdmitsEveryone(bracket), "ограничение типов [%s]", bracket)
+		got := forms{wildcard: bracketHasWildcard(bracket), class: bracketHasClass(bracket)}
+		assert.Equal(t, want, got, "ограничение типов [%s]", bracket)
 	}
 }
 
