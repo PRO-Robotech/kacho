@@ -9,6 +9,8 @@ coverage.out
 # in-tree protoc plugin binary (built into a temp dir by
 # scripts/gen-permission-catalog.sh; a stray `go build ./cmd/...` lands here)
 /protoc-gen-kacho-permissions
+# собранный бинарь края: `go build ./cmd/api-gateway` из gateway/ кладёт его сюда
+/api-gateway
 
 # IDE
 .idea/

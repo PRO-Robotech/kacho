@@ -48,10 +48,10 @@ func statusText(err error) string {
 	return strings.Join(parts, " | ")
 }
 
-// requireFieldViolation asserts that the rejection names the offending field where
-// the contract carries field identity — the google.rpc.BadRequest detail — and not
-// in the prose. Asserting on the message instead would lock the wrong surface: the
-// top-level message stays the generic "invalid argument" by design.
+// requireFieldViolation утверждает, что отказ называет поле-нарушителя там, где
+// контракт несёт идентичность поля, — в детали google.rpc.BadRequest, а не в
+// тексте. Утверждение по сообщению закрепило бы не ту поверхность: сообщение
+// верхнего уровня по замыслу остаётся общим "invalid argument".
 func requireFieldViolation(t *testing.T, err error, field string) {
 	t.Helper()
 	var got []string
@@ -192,7 +192,7 @@ func TestRepository_RG1A22_PayloadBounds(t *testing.T) {
 }
 
 // RG-1-B12 — inherited PUBLIC на create (default_visibility=PUBLIC) → visibility=PUBLIC
-// + public-grant "user:* v_get" intent эмитирован (gate-at-default).
+// + public-grant "system_class:anonymous v_get" intent эмитирован (gate-at-default).
 func TestRepository_RG1B12_InheritPublicOnCreate(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPublic)
@@ -202,17 +202,17 @@ func TestRepository_RG1B12_InheritPublicOnCreate(t *testing.T) {
 	done := awaitOpDone(t, ops, op.ID)
 	require.Nil(t, done.Error)
 	require.Equal(t, registryv1.Visibility_PUBLIC, opResponseRepository(t, done.Response).GetVisibility())
-	require.True(t, hasPublicGrant(cfg, domain.FGAEventRegister), "user:* v_get register-intent эмитирован (B12)")
+	require.True(t, hasPublicGrant(cfg, domain.FGAEventRegister), "system_class:anonymous v_get register-intent эмитирован (B12)")
 }
 
-// hasPublicGrant — есть ли public-grant (user:* v_get) intent заданного event-type.
+// hasPublicGrant — есть ли public-grant (system_class:anonymous v_get) intent заданного event-type.
 func hasPublicGrant(cfg *mockRepoConfig, event string) bool {
 	for _, oi := range cfg.allIntents() {
 		if oi.Event != event {
 			continue
 		}
 		for _, tp := range oi.Intent.Tuples {
-			if tp.SubjectID == domain.FGASubjectPublicWildcard && tp.Relation == domain.FGARelationVGet {
+			if tp.SubjectID == domain.FGASubjectAnonymousClass && tp.Relation == domain.FGARelationVGet {
 				return true
 			}
 		}
@@ -220,8 +220,8 @@ func hasPublicGrant(cfg *mockRepoConfig, event string) bool {
 	return false
 }
 
-// RG-1-A07/A08 — GetRepository durable-empty → Repository; absent → NOT_FOUND
-// "repository not found" (existence-hiding).
+// RG-1-A07/A08 — GetRepository: пустой durable → Repository; отсутствующий → NOT_FOUND
+// "repository not found" (существование не раскрывается).
 func TestRepository_RG1A07A08_GetRepository(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
 	cfg.byName["backend/api"] = &domain.RepositoryConfig{RegistryID: regID, Name: "backend/api", Visibility: domain.VisibilityPrivate}
@@ -268,7 +268,7 @@ func TestRepository_RG1A12_UpdatePromoteEphemeral(t *testing.T) {
 	require.Equal(t, int32(2), opResponseRepository(t, done.Response).GetTagCount())
 }
 
-// RG-1-B01/B06 — visibility flip PUBLIC → public-grant register; PRIVATE → unregister.
+// RG-1-B01/B06 — смена visibility: PUBLIC → register публикации; PRIVATE → unregister.
 func TestRepository_RG1B01B06_VisibilityFlipGovernance(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
 	cfg.byName["public/img"] = &domain.RepositoryConfig{RegistryID: regID, Name: "public/img", Visibility: domain.VisibilityPrivate}
@@ -279,7 +279,7 @@ func TestRepository_RG1B01B06_VisibilityFlipGovernance(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops, op.ID).Error)
-	require.True(t, hasPublicGrant(cfg, domain.FGAEventRegister), "flip→PUBLIC эмитит user:* register (B01)")
+	require.True(t, hasPublicGrant(cfg, domain.FGAEventRegister), "flip→PUBLIC эмитит system_class:anonymous register (B01)")
 
 	cfg2 := newMockCfg()
 	cfg2.byName["public/img"] = &domain.RepositoryConfig{RegistryID: regID, Name: "public/img", Visibility: domain.VisibilityPublic}
@@ -290,11 +290,11 @@ func TestRepository_RG1B01B06_VisibilityFlipGovernance(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops2, op2.ID).Error)
-	require.True(t, hasPublicGrant(cfg2, domain.FGAEventUnregister), "flip→PRIVATE эмитит user:* unregister (B06)")
+	require.True(t, hasPublicGrant(cfg2, domain.FGAEventUnregister), "flip→PRIVATE эмитит system_class:anonymous unregister (B06)")
 }
 
 // RG-1-A13/A14 — DeleteRepository пустого → OK; непустого → FAILED_PRECONDITION
-// "repository is not empty"; engine-down → UNAVAILABLE (fail-closed).
+// "repository is not empty"; движок недоступен → UNAVAILABLE (отказ закрытым).
 func TestRepository_RG1A13A14_Delete(t *testing.T) {
 	// A13 пустой durable → OK.
 	cfg, ops := newMockCfg(), newMemOps()
@@ -420,7 +420,7 @@ func TestRepository_RG1C_ListReferrers(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, empty, "C03 нет referrer'ов → [] (не 404)")
 
-	// C04 malformed digest → InvalidArgument.
+	// C04 испорченный digest → InvalidArgument.
 	_, err = uc.ListReferrers(aliceCtx(), registry.ReferrersQuery{RegistryID: regID, Repository: "img/app", SubjectDigest: "not-a-digest"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "invalid subject digest 'not-a-digest'")

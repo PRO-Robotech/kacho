@@ -48,8 +48,10 @@ type InternalLoadBalancerAnnounceServiceClient interface {
 	// Viewer-gated, реальный per-RPC Check (НЕ exempt), mTLS. Не маршрутизируется
 	// на external endpoint — только internal mux api-gateway. READ
 	// инфра-чувствительной announce-state гейтим cluster read-tier `system_viewer`
-	// (НЕ object-scoped `v_get`): `system_viewer` не содержит wildcard `user:*`,
-	// поэтому tenant'ы read-доступа к инфра-данным не получают (инфра закрыта),
+	// (НЕ object-scoped `v_get`): `system_viewer` принимает только поимённых `user`
+	// и `service_account`, а не класс `system_class:authenticated`, которому системная
+	// выдача даёт `viewer` @ `cluster`, — поэтому tenant'ы read-доступа к инфра-данным
+	// не получают (инфра закрыта),
 	// а Internal.* RPC не несёт verb-bearing (v_*) relation. Precedent —
 	// vpc InternalNetworkService/GetNetwork.
 	GetAnnounceState(ctx context.Context, in *GetLoadBalancerAnnounceStateRequest, opts ...grpc.CallOption) (*LoadBalancerAnnounceState, error)
@@ -115,8 +117,10 @@ type InternalLoadBalancerAnnounceServiceServer interface {
 	// Viewer-gated, реальный per-RPC Check (НЕ exempt), mTLS. Не маршрутизируется
 	// на external endpoint — только internal mux api-gateway. READ
 	// инфра-чувствительной announce-state гейтим cluster read-tier `system_viewer`
-	// (НЕ object-scoped `v_get`): `system_viewer` не содержит wildcard `user:*`,
-	// поэтому tenant'ы read-доступа к инфра-данным не получают (инфра закрыта),
+	// (НЕ object-scoped `v_get`): `system_viewer` принимает только поимённых `user`
+	// и `service_account`, а не класс `system_class:authenticated`, которому системная
+	// выдача даёт `viewer` @ `cluster`, — поэтому tenant'ы read-доступа к инфра-данным
+	// не получают (инфра закрыта),
 	// а Internal.* RPC не несёт verb-bearing (v_*) relation. Precedent —
 	// vpc InternalNetworkService/GetNetwork.
 	GetAnnounceState(context.Context, *GetLoadBalancerAnnounceStateRequest) (*LoadBalancerAnnounceState, error)

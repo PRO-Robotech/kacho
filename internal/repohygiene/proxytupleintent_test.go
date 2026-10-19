@@ -28,7 +28,7 @@
 //
 // Приём — вердикт о «субъект, отношение, тип объекта» вместе. Гейт по одному
 // отношению неверен в ОБЕ стороны: он пропустил бы кортеж, отвергаемый по типу
-// объекта, и покраснел бы на законной паре публичного чтения (`user:* #v_get`),
+// объекта, и покраснел бы на законной паре публичного чтения (`system_class:anonymous #v_get`),
 // которой ни в одном наборе иерархических отношений нет и отдельного флага
 // публичности не существует — сам кортеж и есть видимость.
 //
@@ -646,6 +646,8 @@ func resolveProxyConst(sel *ast.SelectorExpr) (string, bool) {
 		return string(proxytuple.PublicReadRelation), true
 	case "PublicReadSubject":
 		return proxytuple.PublicReadSubject, true
+	case "PublicReadClassSubject":
+		return proxytuple.PublicReadClassSubject, true
 	}
 	return "", false
 }

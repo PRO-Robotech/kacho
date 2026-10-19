@@ -75,9 +75,10 @@ type InternalNetworkInterfaceServiceClient interface {
 	// never be wider than the read: it is the same question, asked per row.
 	//
 	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
-	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster
-	// bootstrap grants to `user:*` so any authenticated tenant can read it — so the
-	// check admitted everyone and returned the interfaces of any named instance,
+	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which a system
+	// grant gives to the subject class `system_class:authenticated` so any
+	// authenticated tenant can read it — so the check admitted everyone and returned
+	// the interfaces of any named instance,
 	// across projects and accounts. Interface attachments are not reference data.
 	ListByInstance(ctx context.Context, in *ListNetworkInterfacesByInstanceRequest, opts ...grpc.CallOption) (*ListNetworkInterfacesByInstanceResponse, error)
 }
@@ -168,9 +169,10 @@ type InternalNetworkInterfaceServiceServer interface {
 	// never be wider than the read: it is the same question, asked per row.
 	//
 	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
-	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster
-	// bootstrap grants to `user:*` so any authenticated tenant can read it — so the
-	// check admitted everyone and returned the interfaces of any named instance,
+	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which a system
+	// grant gives to the subject class `system_class:authenticated` so any
+	// authenticated tenant can read it — so the check admitted everyone and returned
+	// the interfaces of any named instance,
 	// across projects and accounts. Interface attachments are not reference data.
 	ListByInstance(context.Context, *ListNetworkInterfacesByInstanceRequest) (*ListNetworkInterfacesByInstanceResponse, error)
 	mustEmbedUnimplementedInternalNetworkInterfaceServiceServer()

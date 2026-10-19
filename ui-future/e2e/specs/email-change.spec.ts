@@ -241,6 +241,24 @@ async function signInSeed(seed: Seed, email: string, password: string, which: st
  */
 async function panelOutcome(page: Page): Promise<string> {
   await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+  return settledOutcome(page);
+}
+
+/**
+ * Куда консоль уводит контекст САМА после принятого входа: экран входа уходит
+ * документом на адрес возврата, и проба ждёт этого ухода, а не переходит
+ * своим `goto` — переход пробы прервался бы переходом консоли. Остаться на
+ * экране входа — исход «консоль не ушла», он называется отказом ожидания.
+ */
+async function departureOutcome(page: Page): Promise<string> {
+  await expect
+    .poll(() => pathOf(page), { message: "принятый вход: консоль не ушла с экрана входа", timeout: 30_000 })
+    .not.toBe("/login");
+  return settledOutcome(page);
+}
+
+/** Решение консоли на текущем документе: «панель», «экран входа» либо отказ ожидания. */
+async function settledOutcome(page: Page): Promise<string> {
   const account = page.getByRole("button", { name: "Учётная запись" });
   let outcome = "ждём";
   await expect
@@ -415,7 +433,7 @@ test("F8S6-01 · смена адреса целиком на /settings, вход
       expect(pathOf(pageB)).toBe("/login");
       const signed = await loginOnScreen(pageB, n, human.password);
       expect(signed.status(), `вход новым адресом не прошёл: ${await signed.text()}`).toBe(200);
-      expect(await panelOutcome(pageB), "вход новым адресом не открыл консоль").toBe("панель");
+      expect(await departureOutcome(pageB), "вход новым адресом не открыл консоль").toBe("панель");
     });
   } finally {
     await ctxB.close();

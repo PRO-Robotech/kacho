@@ -185,20 +185,19 @@ func (ArtifactType) EnumDescriptor() ([]byte, []int) {
 
 // Visibility — поштучная публикация репозитория (overlay-authoritative на Repository;
 // сид-дефолт на Registry.default_visibility). Дефолт PRIVATE (fail-safe).
-// PUBLIC ⟺ FGA-tuple `user:* v_get registry_repository:<reg>/<repo>` (anonymous
-// pull через data-plane; служба прав читает это слово как выдачу классу
-// `anonymous`). Путь, где принципал сам приводит repo к PUBLIC (per-repo flip,
-// create-with-PUBLIC, default_visibility→PUBLIC), требует registry admin (D-6).
-// У чтения без входа два пути, и это поле — лишь первый: второй — выдача роли
-// `registry.public.read` классу на реестр под гейтами выдачи iam (REG-PUB-1 Р3);
-// такая выдача значение этого поля не меняет. Аноним к закрытому либо
-// несуществующему repo → uniform 404 (публичность НЕ existence-oracle).
+// PUBLIC ⟺ FGA-кортеж `system_class:anonymous v_get registry_repository:<reg>/<repo>`
+// (анонимный pull через data-plane). ЛЮБОЙ путь, где принципал сам приводит ресурс к PUBLIC
+// (per-repo flip, create-with-PUBLIC, default_visibility→PUBLIC), требует registry
+// admin (D-6). У чтения без входа два пути, и это поле — лишь первый: второй — выдача
+// роли `registry.public.read` классу на реестр под гейтами выдачи iam (REG-PUB-1 Р3);
+// такая выдача значение этого поля не меняет. Аноним к PRIVATE|absent-repo → uniform
+// 404 (public-ность НЕ existence-oracle).
 type Visibility int32
 
 const (
 	Visibility_VISIBILITY_UNSPECIFIED Visibility = 0 // не задано → наследует Registry.default_visibility
 	Visibility_PRIVATE                Visibility = 1 // приватный (дефолт) — только авторизованный v_get
-	Visibility_PUBLIC                 Visibility = 2 // публичный — анонимный pull разрешён (user:* v_get tuple)
+	Visibility_PUBLIC                 Visibility = 2 // публичный — анонимный pull разрешён (кортеж system_class:anonymous v_get)
 )
 
 // Enum value maps for Visibility.

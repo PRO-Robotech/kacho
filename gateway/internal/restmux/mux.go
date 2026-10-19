@@ -99,7 +99,7 @@
 //     идет только через gRPC-direct до kaname:9091) + REST-маршрут UpsertFromIdentity
 //     (служебный глагол внутреннего слушателя; край его не вызывает).
 //     InternalIAMService: LookupSubject и Check ИМЕЮТ http-аннотации, поэтому
-//     RegisterInternalIAMServiceHandlerFromEndpoint (ниже, ветка internalMux) заводит им
+//     RegisterInternalIAMServiceHandlerClient (ниже, ветка internalMux) заводит им
 //     REST-маршруты `/iam/v1/internal/iam:lookupSubject` и `:check` — они есть в
 //     rest_route_table_gen.go и проходят через phaseInternalOriginExempt. Здесь стояло
 //     «НЕ регистрируется в REST», и это противоречило коду двумя экранами ниже: два места
@@ -461,6 +461,9 @@ func NewMux(
 	// is enabled, else insecure) plus the shared round-robin service-config. When
 	// dialOpts has no entry for the key the dial falls back to insecure — dev
 	// backward-compat.
+	//
+	// Ими мост заводит СВОЁ соединение — лишь для ключа, которого нет в карте
+	// соединений корня (bridgeConns.to); бюджет вызова ставит budgetedConn.
 	optsFor := func(backendKey string) []grpc.DialOption {
 		transport, ok := dialOpts[backendKey]
 		if !ok {
@@ -470,9 +473,6 @@ func NewMux(
 			transport,
 			// Client-side round-robin; pair with `dns:///<headless-svc>:<port>` dial target.
 			grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
-			// Каждый УНАРНЫЙ вызов моста ограничен бюджетом; потоковые — нет:
-			// поток живёт по своему сроку (приёмка KA1, KA1-24).
-			grpc.WithChainUnaryInterceptor(backendBudgetInterceptor(backendBudget)),
 		},
 			// Адрес источника к службе не уезжает (kacho#3028, круг 5): мост
 			// кладёт `x-forwarded-for` = заголовок клиента + адрес пира.
@@ -486,11 +486,9 @@ func NewMux(
 	// здесь больше нет: единственный маршрут, который его требовал, снят
 	// вместе со своим потоком (#814).
 	// registryAddr / registryInternalAddr обслуживают kacho-registry (registry.v1).
-	var vpcAddr, vpcInternalAddr, computeAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr string
+	var vpcInternalAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr string
 	if addrs != nil {
-		vpcAddr = addrs["vpc"]
 		vpcInternalAddr = addrs["vpcInternal"]
-		computeAddr = addrs["compute"]
 		computeInternalAddr = addrs["computeInternal"]
 		iamAddr = addrs["iam"]
 		iamInternalAddr = addrs["iamInternal"]
@@ -528,33 +526,40 @@ func NewMux(
 	// собран ЭТИМ ЖЕ циклом.
 	muxes := []*runtime.ServeMux{publicMux, internalMux, routeTable}
 
+	// Соединение моста — одно на ключ адреса, и при сборке корнем это соединение
+	// карты бэкендов, о котором спрашивает `/readyz` (bridge_conns.go, kacho#3284).
+	bridge, err := newBridgeConns(ctx, addrs, conns, optsFor, backendBudget)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, mux := range muxes {
 		// --- vpc: Network + Subnet + Address + RouteTable + SecurityGroup + Gateway ---
-		if err := vpcpb.RegisterNetworkServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterNetworkServiceHandlerClient(ctx, mux, vpcpb.NewNetworkServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register NetworkService: %w", err)
 		}
-		if err := vpcpb.RegisterSubnetServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterSubnetServiceHandlerClient(ctx, mux, vpcpb.NewSubnetServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register SubnetService: %w", err)
 		}
-		if err := vpcpb.RegisterAddressServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterAddressServiceHandlerClient(ctx, mux, vpcpb.NewAddressServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register AddressService: %w", err)
 		}
-		if err := vpcpb.RegisterRouteTableServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterRouteTableServiceHandlerClient(ctx, mux, vpcpb.NewRouteTableServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register RouteTableService: %w", err)
 		}
-		if err := vpcpb.RegisterSecurityGroupServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterSecurityGroupServiceHandlerClient(ctx, mux, vpcpb.NewSecurityGroupServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register SecurityGroupService: %w", err)
 		}
-		if err := vpcpb.RegisterGatewayServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterGatewayServiceHandlerClient(ctx, mux, vpcpb.NewGatewayServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register GatewayService: %w", err)
 		}
-		if err := vpcpb.RegisterNetworkInterfaceServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterNetworkInterfaceServiceHandlerClient(ctx, mux, vpcpb.NewNetworkInterfaceServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register NetworkInterfaceService: %w", err)
 		}
 		// CidrGroup — именованный набор префиксов, на который ссылается правило
 		// группы безопасности. Публичный ресурс арендатора: инфра-полей у него
 		// нет, поверхность — та же, что у сети.
-		if err := vpcpb.RegisterCidrGroupServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterCidrGroupServiceHandlerClient(ctx, mux, vpcpb.NewCidrGroupServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register CidrGroupService: %w", err)
 		}
 		// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
@@ -564,7 +569,7 @@ func NewMux(
 		// До этого сервиса вся поверхность квот была административной,
 		// и арендатор, встретив отказ на пределе, не мог узнать ни своего
 		// потолка, ни своего расхода — работающий предел был неотличим от сбоя.
-		if err := vpcpb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterQuotaServiceHandlerClient(ctx, mux, vpcpb.NewQuotaServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register QuotaService: %w", err)
 		}
 		// AddressPool — административная поверхность на ПУБЛИЧНОМ бэкенде (ADM-1
@@ -582,7 +587,7 @@ func NewMux(
 		// `publicMux`, поэтому виден публичный глагол; изнутри `runtime.ServeMux`
 		// предваряет список, а внутренние регистрации идут ниже — поэтому виден
 		// внутренний. Окно сосуществования закрывает стадия S3.
-		if err := vpcpb.RegisterAddressPoolServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+		if err := vpcpb.RegisterAddressPoolServiceHandlerClient(ctx, mux, vpcpb.NewAddressPoolServiceClient(bridge.to("vpc"))); err != nil {
 			return nil, fmt.Errorf("register AddressPoolService: %w", err)
 		}
 
@@ -590,13 +595,13 @@ func NewMux(
 		// Эти сервисы экспонируются через apiGW REST для UI/админ-tooling;
 		// путь /vpc/v1/addressPools.
 		if mux == internalMux && vpcInternalAddr != "" {
-			if err := vpcpb.RegisterInternalAddressPoolServiceHandlerFromEndpoint(ctx, mux, vpcInternalAddr, optsFor("vpcInternal")); err != nil {
+			if err := vpcpb.RegisterInternalAddressPoolServiceHandlerClient(ctx, mux, vpcpb.NewInternalAddressPoolServiceClient(bridge.to("vpcInternal"))); err != nil {
 				return nil, fmt.Errorf("register InternalAddressPoolService: %w", err)
 			}
 			// GetNetwork → GET /vpc/v1/networks/{network_id}/internal — internal
 			// projection of a Network (инфра-чувствительные поля); backs the
 			// admin-UI "jsonint" tab.
-			if err := vpcpb.RegisterInternalNetworkServiceHandlerFromEndpoint(ctx, mux, vpcInternalAddr, optsFor("vpcInternal")); err != nil {
+			if err := vpcpb.RegisterInternalNetworkServiceHandlerClient(ctx, mux, vpcpb.NewInternalNetworkServiceClient(bridge.to("vpcInternal"))); err != nil {
 				return nil, fmt.Errorf("register InternalNetworkService: %w", err)
 			}
 		}
@@ -606,7 +611,7 @@ func NewMux(
 		// under /storage/v1 — compute's duplicates are retired.
 		// Geography (Region/Zone) обслуживается отдельным leaf-сервисом kacho-geo
 		// (/geo/v1/regions, /geo/v1/zones; см. ниже), а не compute.v1.
-		if err := computepb.RegisterInstanceServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+		if err := computepb.RegisterInstanceServiceHandlerClient(ctx, mux, computepb.NewInstanceServiceClient(bridge.to("compute"))); err != nil {
 			return nil, fmt.Errorf("register compute InstanceService: %w", err)
 		}
 		// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
@@ -617,24 +622,24 @@ func NewMux(
 		// административной, и арендатор, встретив отказ на пределе, не мог узнать
 		// ни своего потолка, ни своего расхода — работающий предел был неотличим
 		// от сбоя.
-		if err := computepb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+		if err := computepb.RegisterQuotaServiceHandlerClient(ctx, mux, computepb.NewQuotaServiceClient(bridge.to("compute"))); err != nil {
 			return nil, fmt.Errorf("register compute QuotaService: %w", err)
 		}
 		// MachineTypeService — public read-only sizing catalog (GET /compute/v1/machineTypes[/{id}]);
 		// cluster-viewer, parity с geo Region/Zone. Admin CRUD — InternalMachineTypeService
 		// (internal-port block ниже; НЕ на external, ban #6).
-		if err := computepb.RegisterMachineTypeServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+		if err := computepb.RegisterMachineTypeServiceHandlerClient(ctx, mux, computepb.NewMachineTypeServiceClient(bridge.to("compute"))); err != nil {
 			return nil, fmt.Errorf("register compute MachineTypeService: %w", err)
 		}
 		// GuestAccessKeyService — публичные ключи входа в машину
 		// (/compute/v1/guestAccessKeys). Только публичная половина ключа; закрытая
 		// не покидает машину арендатора и в продукте не хранится.
-		if err := computepb.RegisterGuestAccessKeyServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+		if err := computepb.RegisterGuestAccessKeyServiceHandlerClient(ctx, mux, computepb.NewGuestAccessKeyServiceClient(bridge.to("compute"))); err != nil {
 			return nil, fmt.Errorf("register compute GuestAccessKeyService: %w", err)
 		}
 		// PlacementGroupService — правила взаимного размещения машин
 		// (/compute/v1/placementGroups).
-		if err := computepb.RegisterPlacementGroupServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+		if err := computepb.RegisterPlacementGroupServiceHandlerClient(ctx, mux, computepb.NewPlacementGroupServiceClient(bridge.to("compute"))); err != nil {
 			return nil, fmt.Errorf("register compute PlacementGroupService: %w", err)
 		}
 
@@ -651,7 +656,7 @@ func NewMux(
 			// system_admin). Путь несет сегмент `/internal/` → isInternalRoute 404-ит его
 			// на external TLS listener, а gRPC-роутер блокирует Internal* через
 			// HasInternalSuffix. Cluster-internal only (ban #6, parity с geo InternalRegion/Zone).
-			if err := computepb.RegisterInternalMachineTypeServiceHandlerFromEndpoint(ctx, mux, computeInternalAddr, optsFor("computeInternal")); err != nil {
+			if err := computepb.RegisterInternalMachineTypeServiceHandlerClient(ctx, mux, computepb.NewInternalMachineTypeServiceClient(bridge.to("computeInternal"))); err != nil {
 				return nil, fmt.Errorf("register compute InternalMachineTypeService: %w", err)
 			}
 		}
@@ -661,7 +666,7 @@ func NewMux(
 		// sop-prefix) + diskTypes read-only. Регистрируется условно по storageAddr —
 		// backend еще может быть не задеплоен (поведение симметрично registry/geo/nlb).
 		if storageAddr != "" {
-			if err := storagepb.RegisterVolumeServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
+			if err := storagepb.RegisterVolumeServiceHandlerClient(ctx, mux, storagepb.NewVolumeServiceClient(bridge.to("storage"))); err != nil {
 				return nil, fmt.Errorf("register storage VolumeService: %w", err)
 			}
 			// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
@@ -672,20 +677,20 @@ func NewMux(
 			// административной, и арендатор, встретив отказ на пределе, не мог узнать
 			// ни своего потолка, ни своего расхода — работающий предел был неотличим
 			// от сбоя.
-			if err := storagepb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
+			if err := storagepb.RegisterQuotaServiceHandlerClient(ctx, mux, storagepb.NewQuotaServiceClient(bridge.to("storage"))); err != nil {
 				return nil, fmt.Errorf("register storage QuotaService: %w", err)
 			}
-			if err := storagepb.RegisterSnapshotServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
+			if err := storagepb.RegisterSnapshotServiceHandlerClient(ctx, mux, storagepb.NewSnapshotServiceClient(bridge.to("storage"))); err != nil {
 				return nil, fmt.Errorf("register storage SnapshotService: %w", err)
 			}
-			if err := storagepb.RegisterDiskTypeServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
+			if err := storagepb.RegisterDiskTypeServiceHandlerClient(ctx, mux, storagepb.NewDiskTypeServiceClient(bridge.to("storage"))); err != nil {
 				return nil, fmt.Errorf("register storage DiskTypeService: %w", err)
 			}
 			// ImageService — public boot-image CRUD (POST/GET/PATCH/DELETE на
 			// /storage/v1/images + GET .../operations; async Operation). StorageImage
 			// `img`, выделен из compute Image. InternalImageService (infra-проекция) —
 			// internal-port block ниже.
-			if err := storagepb.RegisterImageServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
+			if err := storagepb.RegisterImageServiceHandlerClient(ctx, mux, storagepb.NewImageServiceClient(bridge.to("storage"))); err != nil {
 				return nil, fmt.Errorf("register storage ImageService: %w", err)
 			}
 		}
@@ -704,10 +709,10 @@ func NewMux(
 		// на /storage/v1/diskTypes (тот же collection-путь, что public read); гейтится
 		// authz-каталогом (required_relation system_admin), как compute InternalDiskType.
 		if mux == internalMux && storageInternalAddr != "" {
-			if err := storagepb.RegisterInternalVolumeServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+			if err := storagepb.RegisterInternalVolumeServiceHandlerClient(ctx, mux, storagepb.NewInternalVolumeServiceClient(bridge.to("storageInternal"))); err != nil {
 				return nil, fmt.Errorf("register storage InternalVolumeService: %w", err)
 			}
-			if err := storagepb.RegisterInternalDiskTypeServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+			if err := storagepb.RegisterInternalDiskTypeServiceHandlerClient(ctx, mux, storagepb.NewInternalDiskTypeServiceClient(bridge.to("storageInternal"))); err != nil {
 				return nil, fmt.Errorf("register storage InternalDiskTypeService: %w", err)
 			}
 			// InternalImageService.GetInternal — full (infra) projection of an Image.
@@ -716,7 +721,7 @@ func NewMux(
 			// InternalVolumeService). Несет инфра-чувствительные поля (security.md) →
 			// доступно ТОЛЬКО через cluster-internal REST listener: dispatcher
 			// (isInternalRoute → HasInternalSuffix) 404-ит его на external TLS listener.
-			if err := storagepb.RegisterInternalImageServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+			if err := storagepb.RegisterInternalImageServiceHandlerClient(ctx, mux, storagepb.NewInternalImageServiceClient(bridge.to("storageInternal"))); err != nil {
 				return nil, fmt.Errorf("register storage InternalImageService: %w", err)
 			}
 			// InternalStorageBackendService + InternalDiskTypeBindingService —
@@ -731,10 +736,10 @@ func NewMux(
 			//
 			// Ссылка на учётный материал (`credentials_ref`) — именно ссылка:
 			// сам материал не проходит ни через этот край, ни через БД.
-			if err := storagepb.RegisterInternalStorageBackendServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+			if err := storagepb.RegisterInternalStorageBackendServiceHandlerClient(ctx, mux, storagepb.NewInternalStorageBackendServiceClient(bridge.to("storageInternal"))); err != nil {
 				return nil, fmt.Errorf("register storage InternalStorageBackendService: %w", err)
 			}
-			if err := storagepb.RegisterInternalDiskTypeBindingServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+			if err := storagepb.RegisterInternalDiskTypeBindingServiceHandlerClient(ctx, mux, storagepb.NewInternalDiskTypeBindingServiceClient(bridge.to("storageInternal"))); err != nil {
 				return nil, fmt.Errorf("register storage InternalDiskTypeBindingService: %w", err)
 			}
 		}
@@ -750,10 +755,10 @@ func NewMux(
 		// (graceful: kacho-geo может быть еще не задеплоен — симметрично
 		// lbAddr/iamAddr выше). Geography обслуживается ИСКЛЮЧИТЕЛЬНО geo.v1.
 		if geoAddr != "" {
-			if err := geopb.RegisterRegionServiceHandlerFromEndpoint(ctx, mux, geoAddr, optsFor("geo")); err != nil {
+			if err := geopb.RegisterRegionServiceHandlerClient(ctx, mux, geopb.NewRegionServiceClient(bridge.to("geo"))); err != nil {
 				return nil, fmt.Errorf("register geo RegionService: %w", err)
 			}
-			if err := geopb.RegisterZoneServiceHandlerFromEndpoint(ctx, mux, geoAddr, optsFor("geo")); err != nil {
+			if err := geopb.RegisterZoneServiceHandlerClient(ctx, mux, geopb.NewZoneServiceClient(bridge.to("geo"))); err != nil {
 				return nil, fmt.Errorf("register geo ZoneService: %w", err)
 			}
 		}
@@ -768,10 +773,10 @@ func NewMux(
 		// их `system_admin` на cluster-singleton. Мутации отвечают синхронно
 		// завершённым Operation (done=true в самом ответе).
 		if mux == internalMux && geoInternalAddr != "" {
-			if err := geopb.RegisterInternalRegionServiceHandlerFromEndpoint(ctx, mux, geoInternalAddr, optsFor("geoInternal")); err != nil {
+			if err := geopb.RegisterInternalRegionServiceHandlerClient(ctx, mux, geopb.NewInternalRegionServiceClient(bridge.to("geoInternal"))); err != nil {
 				return nil, fmt.Errorf("register geo InternalRegionService: %w", err)
 			}
-			if err := geopb.RegisterInternalZoneServiceHandlerFromEndpoint(ctx, mux, geoInternalAddr, optsFor("geoInternal")); err != nil {
+			if err := geopb.RegisterInternalZoneServiceHandlerClient(ctx, mux, geopb.NewInternalZoneServiceClient(bridge.to("geoInternal"))); err != nil {
 				return nil, fmt.Errorf("register geo InternalZoneService: %w", err)
 			}
 		}
@@ -790,25 +795,25 @@ func NewMux(
 			// (PRO-Robotech/kacho#2117), производителя не осталось ни в одном
 			// дереве — владелец не назначен. Чтение обслуживает kaname, поэтому
 			// адрес тот же.
-			if err := iampb.RegisterIdentityQuotaServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterIdentityQuotaServiceHandlerClient(ctx, mux, iampb.NewIdentityQuotaServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam IdentityQuotaService: %w", err)
 			}
-			if err := iampb.RegisterAccountServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterAccountServiceHandlerClient(ctx, mux, iampb.NewAccountServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam AccountService: %w", err)
 			}
-			if err := iampb.RegisterProjectServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterProjectServiceHandlerClient(ctx, mux, iampb.NewProjectServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam ProjectService: %w", err)
 			}
-			if err := iampb.RegisterUserServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterUserServiceHandlerClient(ctx, mux, iampb.NewUserServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam UserService: %w", err)
 			}
-			if err := iampb.RegisterServiceAccountServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterServiceAccountServiceHandlerClient(ctx, mux, iampb.NewServiceAccountServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam ServiceAccountService: %w", err)
 			}
-			if err := iampb.RegisterGroupServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterGroupServiceHandlerClient(ctx, mux, iampb.NewGroupServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam GroupService: %w", err)
 			}
-			if err := iampb.RegisterRoleServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterRoleServiceHandlerClient(ctx, mux, iampb.NewRoleServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam RoleService: %w", err)
 			}
 			// MembershipService — чтение принадлежности человека аккаунту под
@@ -818,7 +823,7 @@ func NewMux(
 			// удобство: единственный гейт этих чтений — пообъектная проверка
 			// ЭТОГО края по `viewer` @ `account` из пути. На cluster-internal
 			// бэкенде края нет, поэтому туда служба не едет вовсе.
-			if err := iampb.RegisterMembershipServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterMembershipServiceHandlerClient(ctx, mux, iampb.NewMembershipServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam MembershipService: %w", err)
 			}
 			// PermissionCatalogService.ListPermissionCatalog — public read under
@@ -827,10 +832,10 @@ func NewMux(
 			// role/permission palette. PUBLIC (external) on purpose, NOT an Internal*
 			// service — registered here in the public iam block, not the iamInternalAddr
 			// block; the gRPC-router allowlists it for the external listener.
-			if err := iampb.RegisterPermissionCatalogServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterPermissionCatalogServiceHandlerClient(ctx, mux, iampb.NewPermissionCatalogServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam PermissionCatalogService: %w", err)
 			}
-			if err := iampb.RegisterAccessBindingServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterAccessBindingServiceHandlerClient(ctx, mux, iampb.NewAccessBindingServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam AccessBindingService: %w", err)
 			}
 			// ЗДЕСЬ РЕГИСТРИРОВАЛАСЬ административная поверхность величин на ПУБЛИЧНОМ
@@ -848,14 +853,14 @@ func NewMux(
 			// /iam/v1/serviceAccounts/{id}/keys. Без этой регистрации grpc-gateway
 			// не имеет REST-route → POST .../keys → 404, и SAKeyService.Issue/Revoke
 			// недоступны.
-			if err := iampb.RegisterSAKeyServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterSAKeyServiceHandlerClient(ctx, mux, iampb.NewSAKeyServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam SAKeyService: %w", err)
 			}
 			// UserTokenService (персональные API-токены пользователя). Public под
 			// /iam/v1/users/{user_id}/tokens. Зеркалит SAKeyService: Issue/Revoke —
 			// async Operation, List — sync. Без этой регистрации grpc-gateway не
 			// имеет REST-route → POST .../tokens → 404.
-			if err := iampb.RegisterUserTokenServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterUserTokenServiceHandlerClient(ctx, mux, iampb.NewUserTokenServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam UserTokenService: %w", err)
 			}
 			// AccessKeyService (ключи доступа человека, Ф7, kacho#2718). Public под
@@ -863,7 +868,7 @@ func NewMux(
 			// /iam/v1/accessKeys:beginAssertion|:finishAssertion (утверждение
 			// ключом вызывающего). Без этой регистрации все шесть REST-путей
 			// отвечают 404, неотличимым от скрытой admin-поверхности.
-			if err := iampb.RegisterAccessKeyServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterAccessKeyServiceHandlerClient(ctx, mux, iampb.NewAccessKeyServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam AccessKeyService: %w", err)
 			}
 			// ClusterService (kaname#661) — ПУБЛИЧНЫЙ близнец InternalClusterService:
@@ -871,11 +876,11 @@ func NewMux(
 			// Обе стороны исполняют одни и те же экземпляры сценариев службы, гейт —
 			// system_admin на cluster:cluster_root по каталогу прав. Внутренний
 			// близнец остаётся в блоке iamInternalAddr ниже (запрет #6).
-			if err := iampb.RegisterClusterServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterClusterServiceHandlerClient(ctx, mux, iampb.NewClusterServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam ClusterService: %w", err)
 			}
 			// AuthorizeService — tenant FGA check (POST /iam/v1/authorize:check).
-			if err := iampb.RegisterAuthorizeServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+			if err := iampb.RegisterAuthorizeServiceHandlerClient(ctx, mux, iampb.NewAuthorizeServiceClient(bridge.to("iam"))); err != nil {
 				return nil, fmt.Errorf("register iam AuthorizeService: %w", err)
 			}
 		}
@@ -893,10 +898,10 @@ func NewMux(
 		// paths — the gRPC router's HasInternalSuffix blocks Internal* services
 		// on the public listener.
 		if mux == internalMux && iamInternalAddr != "" {
-			if err := iampb.RegisterInternalUserServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+			if err := iampb.RegisterInternalUserServiceHandlerClient(ctx, mux, iampb.NewInternalUserServiceClient(bridge.to("iamInternal"))); err != nil {
 				return nil, fmt.Errorf("register iam InternalUserService: %w", err)
 			}
-			if err := iampb.RegisterInternalIAMServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+			if err := iampb.RegisterInternalIAMServiceHandlerClient(ctx, mux, iampb.NewInternalIAMServiceClient(bridge.to("iamInternal"))); err != nil {
 				return nil, fmt.Errorf("register iam InternalIAMService: %w", err)
 			}
 			// InternalClusterService — cluster-admin RBAC management
@@ -905,7 +910,7 @@ func NewMux(
 			// isInternalRoute sends these paths to the internal sub-mux. Catalog gate
 			// (`required_relation: admin`) enforces the FGA computed-alias
 			// `system_admin OR emergency_admin` on `cluster:cluster_root`.
-			if err := iampb.RegisterInternalClusterServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+			if err := iampb.RegisterInternalClusterServiceHandlerClient(ctx, mux, iampb.NewInternalClusterServiceClient(bridge.to("iamInternal"))); err != nil {
 				return nil, fmt.Errorf("register iam InternalClusterService: %w", err)
 			}
 			// InternalInteractiveClientService — lifecycle of the OAuth2 client
@@ -918,7 +923,7 @@ func NewMux(
 			// where an authorization code may be delivered, so the catalog gate
 			// requires `system_admin` on `cluster:cluster_root` and the
 			// three mutations additionally carry the step-up floor acr=2.
-			if err := iampb.RegisterInternalInteractiveClientServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+			if err := iampb.RegisterInternalInteractiveClientServiceHandlerClient(ctx, mux, iampb.NewInternalInteractiveClientServiceClient(bridge.to("iamInternal"))); err != nil {
 				return nil, fmt.Errorf("register iam InternalInteractiveClientService: %w", err)
 			}
 			// ЗДЕСЬ РЕГИСТРИРОВАЛСЯ внутренний авторитет величин — семь глаголов под
@@ -939,7 +944,7 @@ func NewMux(
 			// (required_relation: system_admin, scope cluster:cluster_root, acr 2),
 			// parity with InternalClusterService/*; the iam :9091 backend additionally
 			// runs its own per-RPC authz-Check.
-			if err := iampb.RegisterInternalOperationsServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+			if err := iampb.RegisterInternalOperationsServiceHandlerClient(ctx, mux, iampb.NewInternalOperationsServiceClient(bridge.to("iamInternal"))); err != nil {
 				return nil, fmt.Errorf("register iam InternalOperationsService: %w", err)
 			}
 			// InternalModuleService — Plan/Apply/Get/List над каталогом прав модуля
@@ -961,7 +966,7 @@ func NewMux(
 			// вычисляемыми гейтами (internal_binding_routability_test.go —
 			// маршрут есть здесь; external_isolation_test.go — его нет там),
 			// поэтому односторонним зелёным это закрыть нельзя.
-			if err := iampb.RegisterInternalModuleServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+			if err := iampb.RegisterInternalModuleServiceHandlerClient(ctx, mux, iampb.NewInternalModuleServiceClient(bridge.to("iamInternal"))); err != nil {
 				return nil, fmt.Errorf("register iam InternalModuleService: %w", err)
 			}
 			// InternalBootstrapTokenService.MintBootstrapToken (#58) is DELIBERATELY
@@ -998,7 +1003,7 @@ func NewMux(
 		// может быть не задеплоен в окружении (поведение симметрично vpcInternalAddr /
 		// computeInternalAddr / iamAddr выше).
 		if lbAddr != "" {
-			if err := lbpb.RegisterNetworkLoadBalancerServiceHandlerFromEndpoint(ctx, mux, lbAddr, optsFor("loadbalancer")); err != nil {
+			if err := lbpb.RegisterNetworkLoadBalancerServiceHandlerClient(ctx, mux, lbpb.NewNetworkLoadBalancerServiceClient(bridge.to("loadbalancer"))); err != nil {
 				return nil, fmt.Errorf("register loadbalancer NetworkLoadBalancerService: %w", err)
 			}
 			// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
@@ -1009,13 +1014,13 @@ func NewMux(
 			// административной, и арендатор, встретив отказ на пределе, не мог узнать
 			// ни своего потолка, ни своего расхода — работающий предел был неотличим
 			// от сбоя.
-			if err := lbpb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, lbAddr, optsFor("loadbalancer")); err != nil {
+			if err := lbpb.RegisterQuotaServiceHandlerClient(ctx, mux, lbpb.NewQuotaServiceClient(bridge.to("loadbalancer"))); err != nil {
 				return nil, fmt.Errorf("register loadbalancer QuotaService: %w", err)
 			}
-			if err := lbpb.RegisterListenerServiceHandlerFromEndpoint(ctx, mux, lbAddr, optsFor("loadbalancer")); err != nil {
+			if err := lbpb.RegisterListenerServiceHandlerClient(ctx, mux, lbpb.NewListenerServiceClient(bridge.to("loadbalancer"))); err != nil {
 				return nil, fmt.Errorf("register loadbalancer ListenerService: %w", err)
 			}
-			if err := lbpb.RegisterTargetGroupServiceHandlerFromEndpoint(ctx, mux, lbAddr, optsFor("loadbalancer")); err != nil {
+			if err := lbpb.RegisterTargetGroupServiceHandlerClient(ctx, mux, lbpb.NewTargetGroupServiceClient(bridge.to("loadbalancer"))); err != nil {
 				return nil, fmt.Errorf("register loadbalancer TargetGroupService: %w", err)
 			}
 		}
@@ -1047,10 +1052,10 @@ func NewMux(
 			// административной, и арендатор, встретив отказ на пределе, не мог узнать
 			// ни своего потолка, ни своего расхода — работающий предел был неотличим
 			// от сбоя.
-			if err := registrypb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, registryAddr, optsFor("registry")); err != nil {
+			if err := registrypb.RegisterQuotaServiceHandlerClient(ctx, mux, registrypb.NewQuotaServiceClient(bridge.to("registry"))); err != nil {
 				return nil, fmt.Errorf("register registry QuotaService: %w", err)
 			}
-			if err := registrypb.RegisterRegistryServiceHandlerFromEndpoint(ctx, mux, registryAddr, optsFor("registry")); err != nil {
+			if err := registrypb.RegisterRegistryServiceHandlerClient(ctx, mux, registrypb.NewRegistryServiceClient(bridge.to("registry"))); err != nil {
 				return nil, fmt.Errorf("register registry RegistryService: %w", err)
 			}
 		}
@@ -1065,7 +1070,7 @@ func NewMux(
 		// TLS listener, а gRPC-роутер блокирует Internal* через HasInternalSuffix.
 		// Admin-tooling может ходить и напрямую gRPC до kacho-registry:9091.
 		if mux == internalMux && registryInternalAddr != "" {
-			if err := registrypb.RegisterInternalRegistryServiceHandlerFromEndpoint(ctx, mux, registryInternalAddr, optsFor("registryInternal")); err != nil {
+			if err := registrypb.RegisterInternalRegistryServiceHandlerClient(ctx, mux, registrypb.NewInternalRegistryServiceClient(bridge.to("registryInternal"))); err != nil {
 				return nil, fmt.Errorf("register registry InternalRegistryService: %w", err)
 			}
 		}
@@ -1082,6 +1087,10 @@ func NewMux(
 		if err := operationpb.RegisterOperationServiceHandlerServer(ctx, mux, opsSrv); err != nil {
 			return nil, fmt.Errorf("register OperationService: %w", err)
 		}
+	}
+
+	if err := bridge.failed(); err != nil {
+		return nil, err
 	}
 
 	// Диспетчер по паре (HTTP-метод, путь). Решает, какому sub-mux'у скормить запрос. Сами
