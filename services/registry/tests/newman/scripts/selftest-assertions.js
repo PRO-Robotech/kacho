@@ -42,6 +42,7 @@
 // Запуск: node scripts/selftest-assertions.js   (из tests/newman)
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -114,28 +115,63 @@ function substitutePath(item, env) {
 // неё ронял такой шаг исключением `CryptoJS is not defined`, то есть объявлял находкой
 // шаг, который в прогоне работает.
 //
-// ПОДДЕЛКА НЕ ШИРЕ НАСТОЯЩЕГО И НЕ УЖЕ ИСПОЛЬЗУЕМОГО: реализованы ровно те две
-// операции, которые зовут кейсы (`grep -n CryptoJS cases/*.py` → одна форма,
-// `enc.Base64.stringify(enc.Utf8.parse(s))`). Обращение к любой другой части даёт
-// обычный отказ по имени — его гейт покажет как «скрипт падает», и это верно: подделка
-// честно говорит, чего не умеет, вместо того чтобы молча вернуть `undefined` и разойтись
-// с newman незаметно (`testing.md`: дублёр обязан выполнять контракт настоящего).
+// ПОДДЕЛКА НЕ ШИРЕ НАСТОЯЩЕГО И НЕ УЖЕ ИСПОЛЬЗУЕМОГО: реализованы ровно те операции,
+// которые зовут кейсы (`grep -n CryptoJS cases/*.py` → две формы:
+// `enc.Base64.stringify(enc.Utf8.parse(s))` для заголовка Basic и
+// `SHA256(s).toString(enc.Hex)` для дайджеста OCI-содержимого). Обращение к любой
+// другой части даёт обычный отказ по имени — его гейт покажет как «скрипт падает», и
+// это верно: подделка честно говорит, чего не умеет, вместо того чтобы молча вернуть
+// `undefined` и разойтись с newman незаметно (`testing.md`: дублёр обязан выполнять
+// контракт настоящего). Вторая форма пришла с набором registry-public-by-class: дублёр
+// без неё ронял 12 шагов заливки исключением `CryptoJS.SHA256 is not a function`, и
+// набор целиком не исполнялся в прогоне сборки волны 13 (kacho#3307).
+//
+// Слово CryptoJS — непрозрачный носитель байтов. Как у настоящего WordArray, строка
+// получается через `toString(кодировщик)`, без кодировщика — шестнадцатеричная; хэш от
+// строки считается по её байтам UTF-8 (так делает настоящий хэшер).
+function sandboxWord(bytes) {
+  return {
+    __bytes: bytes,
+    toString(encoder) { return (encoder || SANDBOX_CRYPTOJS.enc.Hex).stringify(this); },
+  };
+}
+function sandboxBytes(word, who) {
+  if (!word || !word.__bytes) {
+    throw new Error(`CryptoJS.${who}: дублёр умеет только слово из CryptoJS.enc.Utf8.parse ` +
+      'или CryptoJS.SHA256 — иная форма в дереве не встречается и не подделывается');
+  }
+  return word.__bytes;
+}
 const SANDBOX_CRYPTOJS = {
   enc: {
-    // Слово CryptoJS — непрозрачный носитель байтов; наружу отдаётся только через
-    // stringify, поэтому внутреннее представление здесь произвольно.
-    Utf8: { parse: (str) => ({ __bytes: Buffer.from(String(str), 'utf8') }) },
-    Base64: {
-      stringify: (word) => {
-        if (!word || !word.__bytes) {
-          throw new Error('CryptoJS.enc.Base64.stringify: дублёр умеет только слово из ' +
-            'CryptoJS.enc.Utf8.parse — иная форма в дереве не встречается и не подделывается');
-        }
-        return word.__bytes.toString('base64');
-      },
-    },
+    Utf8: { parse: (str) => sandboxWord(Buffer.from(String(str), 'utf8')) },
+    Base64: { stringify: (word) => sandboxBytes(word, 'enc.Base64.stringify').toString('base64') },
+    Hex: { stringify: (word) => sandboxBytes(word, 'enc.Hex.stringify').toString('hex') },
+  },
+  SHA256: (message) => {
+    const bytes = typeof message === 'string'
+      ? Buffer.from(message, 'utf8')
+      : sandboxBytes(message, 'SHA256');
+    return sandboxWord(crypto.createHash('sha256').update(bytes).digest());
   },
 };
+
+// ПРАВКА ЗАПРОСА ИЗ ПРЕД-СКРИПТА — часть контракта newman: `pm.request.update` у
+// настоящего Request применяет переданное к запросу перед отправкой. Кейсы зовут его
+// ровно одной формой — тело `{mode: 'raw', raw: <строка>}` (заливка блоба и манифеста
+// OCI). Дублёр применяет её к своему запросу, чтобы следующий читатель увидел то же,
+// что под newman; любой другой ключ — отказ по имени, а не тихое согласие.
+function sandboxRequestUpdate(request) {
+  return (options) => {
+    const keys = Object.keys(options || {});
+    const foreign = keys.filter((k) => k !== 'body');
+    if (foreign.length > 0 || !options.body || options.body.mode !== 'raw') {
+      throw new Error(`pm.request.update: дублёр умеет только {body: {mode: 'raw', raw}} — ` +
+        `получено ${JSON.stringify(options)}; иная форма в дереве не встречается и не подделывается`);
+    }
+    request.body = { mode: 'raw', raw: String(options.body.raw) };
+  };
+}
 
 function runStep(item, response, env, onRetry) {
   const executed = [];
@@ -149,6 +185,13 @@ function runStep(item, response, env, onRetry) {
       code: response.code,
       json: () => JSON.parse(JSON.stringify(response.body)),
       text: () => JSON.stringify(response.body),
+      // Заголовки ответа у newman есть ВСЕГДА; отсутствующий даёт `undefined`, как у
+      // настоящего списка. Подставляемые ответы заголовков не несут — шаг, читающий
+      // `Location` или `Docker-Content-Digest`, видит отсутствие и обязан на нём отказать.
+      headers: {
+        get: (k) => (response.headers || {})[String(k).toLowerCase()],
+        has: (k) => Object.prototype.hasOwnProperty.call(response.headers || {}, String(k).toLowerCase()),
+      },
     },
     environment: {
       get: (k) => env.get(k),
@@ -156,7 +199,15 @@ function runStep(item, response, env, onRetry) {
       unset: (k) => env.delete(k),
       has: (k) => env.has(k),
     },
-    variables: { get: (k) => env.get(k) },
+    // `replaceIn` — подстановка `{{имя}}` тем же правилом, что у адреса шага: незаданная
+    // переменная даёт пустую строку. Ею адрес плоскости данных собирают шаги OCI.
+    variables: {
+      get: (k) => env.get(k),
+      replaceIn: (t) => String(t).replace(/\{\{([^}]+)\}\}/g, (_, name) => {
+        const v = env.get(name);
+        return v === undefined || v === null ? '' : String(v);
+      }),
+    },
     // АДРЕС ШАГА — ЧАСТЬ ЕГО ВХОДА, а не оформление. Раньше здесь стояли одни
     // заголовки, и `pm.request.url` был undefined: дублёр был снисходительнее
     // newman, который адрес подставляет ВСЕГДА. Скрипт, читающий адрес, ронялся
@@ -170,6 +221,7 @@ function runStep(item, response, env, onRetry) {
     request: {
       headers: { has: () => true, upsert: () => {}, remove: () => {} },
       url: { path: substitutePath(item, env), raw: (item.request && item.request.url && item.request.url.raw) || '' },
+      body: (item.request && item.request.body) || undefined,
     },
     info: { requestName: item.name },
     // ПРОПУСК ЗАПРОСА — ЧАСТЬ КОНТРАКТА NEWMAN, а не крайний случай. Санкционированная
@@ -190,6 +242,8 @@ function runStep(item, response, env, onRetry) {
       try { fn(); } catch (e) { failed.push({ name, message: e.message }); }
     },
   };
+
+  pm.request.update = sandboxRequestUpdate(pm.request);
 
   // Петли между поллами написаны как busy-wait по настоящим часам
   // (`while (Date.now() - t < 500)`) — единственный способ реально разнести поллы под
@@ -264,6 +318,12 @@ function populatedEnv() {
   e.set('regMissMsg', 'Registry reg00000000selftest0 not found');
   e.set('lastOpError', '');
   e.set('opId', 'rop00000000selftest0');
+  // Адрес плоскости данных прогонщик передаёт ВСЕГДА (`--env-var`). Без него каждый
+  // шаг OCI уходил в ветку отказа «харнесс сломан» и пропускал запрос — то есть гейт
+  // судил отказ харнесса, а собственные скрипты шага (дайджест, тело, test) не
+  // исполнял НИКОГДА: замер на сборке волны 13 — 53 шага, чьи скрипты гейт не читал.
+  // Ветка отказа от этого не теряет суда: она утверждает отказ by construction.
+  e.set('registryDataPlaneBaseUrl', 'http://selftest.invalid');
   return e;
 }
 function emptySubjectEnv() {
@@ -321,6 +381,7 @@ const PROVE_LEGIT_TWINS = [
   'ограниченный повтор',
   'отказ по имени + пропуск',
   'встроенный CryptoJS песочницы',
+  'SHA256 и правка тела запроса песочницы',
 ];
 
 function prove() {
@@ -446,6 +507,50 @@ function prove() {
   } else if (cj.executed.length !== 2) {
     problems.push(`проба CryptoJS исполнила ${cj.executed.length} утверждений вместо 2 — ` +
       'предпосылка пробы исчезла');
+  }
+  // (ж) ТОТ ЖЕ КЛАСС, ТРЕТИЙ ЭКЗЕМПЛЯР: заливка OCI-содержимого (набор
+  //     registry-public-by-class) считает дайджест `CryptoJS.SHA256(s).toString(enc.Hex)`
+  //     и задаёт тело `pm.request.update({body: {mode: 'raw', raw}})`. Дублёр без них
+  //     ронял 13 шагов исключением, и набор целиком не исполнялся.
+  //
+  //     ОРАКУЛ ВНЕШНИЙ (`sha256sum` оболочки): вектор `abc` — эталон стандарта;
+  //     многобайтный отличает хэш байтов UTF-8 от хэша кодовых единиц строки; base64
+  //     того же слова доказывает, что слово хэша — то же слово, что у Utf8.parse.
+  //     Правка тела обязана ДЕЙСТВОВАТЬ (тело видно последующему чтению), а чужой ключ —
+  //     отказывать по имени: заглушка-пустышка прошла бы первую половину молча.
+  const sha = mkPre('injected-cryptojs-sha256', [
+    "pm.environment.set('_shaAbc', CryptoJS.SHA256('abc').toString(CryptoJS.enc.Hex));",
+    "pm.environment.set('_shaUtf8', CryptoJS.SHA256('\u043a\u043b\u044e\u0447:\u0441\u0435\u043a\u0440\u0435\u0442').toString());",
+    "pm.environment.set('_shaB64', CryptoJS.enc.Base64.stringify(CryptoJS.SHA256('abc')));",
+    "pm.request.update({body: {mode: 'raw', raw: 'selftest-body'}});",
+    "pm.environment.set('_rawBody', pm.request.body.raw);",
+  ], [
+    "pm.test('sha256 abc', () => pm.expect(pm.environment.get('_shaAbc'))",
+    "  .to.eql('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'));",
+    "pm.test('sha256 utf8', () => pm.expect(pm.environment.get('_shaUtf8'))",
+    "  .to.eql('d9d99b099b184184a841d8a798a7e6e8aefa713ed8cd80088d212fcf1ec0c2fb'));",
+    "pm.test('sha256 base64', () => pm.expect(pm.environment.get('_shaB64'))",
+    "  .to.eql('ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0='));",
+    "pm.test('request body applied', () => pm.expect(pm.environment.get('_rawBody')).to.eql('selftest-body'));",
+  ]);
+  const sh = runStep(sha, RESPONSES[0], populatedEnv(), null);
+  if (sh.threw) {
+    problems.push(`дублёр не знает примитива песочницы newman: ${sh.threw} — ` +
+      'гейт объявит находкой шаг, который в прогоне работает');
+  } else if (sh.failed.length > 0) {
+    problems.push(`подделка CryptoJS.SHA256 или pm.request.update расходится с newman: ` +
+      `${sh.failed.map((f) => f.name).join(', ')}`);
+  } else if (sh.executed.length !== 4) {
+    problems.push(`проба SHA256 исполнила ${sh.executed.length} утверждений вместо 4 — ` +
+      'предпосылка пробы исчезла');
+  }
+  const foreignUpdate = mkPre('injected-request-update-foreign', [
+    "pm.request.update({method: 'DELETE'});",
+  ], ["pm.test('never', () => pm.expect(1).to.eql(1));"]);
+  const fu = runStep(foreignUpdate, RESPONSES[0], populatedEnv(), null);
+  if (!fu.threw) {
+    problems.push('pm.request.update дублёра молча принял форму, которой не умеет — ' +
+      'подделка разошлась бы с newman незаметно');
   }
   return problems;
 }
