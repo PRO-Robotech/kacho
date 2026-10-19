@@ -108,6 +108,32 @@ Check-runs одной sha приходят из разных наборов: с�
 
 Отставленные прогоны не исчезают молча: сводка называет каждый, его `id` и набор.
 
+НЕРАСКРЫТЫЙ ШАБЛОН ИМЕНИ: ОТМЕНА ДО МАТРИЦЫ (#3267)
+--------------------------------------------------
+Прогон, отменённый до вычисления матрицы, площадка показывает ШАБЛОНОМ имени —
+`build ${{ matrix.project }}`, — а замена в новом наборе того же процесса
+называет ноги раскрытыми именами: ключ у них разный, и правило выше замены не
+видит. PR #3268, голова 2b3076f7092: пять шаблонных отмен в ранних наборах трёх
+процессов (`build ${{ matrix.project }}` — check-run 118089402988, набор
+106387383545), все ноги замены — success в поздних (106387435861 и выше); свод
+(прогон 39261316944, попытка 2) был красным только от этих пяти.
+
+Шаблонный прогон отставлен, если разом:
+
+* имя несёт закрытое выражение `${{ … }}` и ни одного незакрытого (обрезанное
+  посреди выражения — не шаблон, а неизвестно что);
+* исход — `cancelled`: отказ с шаблонным именем — это отказ вычисления матрицы,
+  и поздний набор его не стирает;
+* шаблон равен в показе имени РОВНО ОДНОЙ джобы объявленного (`Declared.templates`);
+* судимый прогон, которым площадка показывает ногу ЭТОЙ джобы (`_proves` по её
+  объявленным именам), лежит в наборе с бОльшим номером и несёт исход.
+
+Нога, а не «имя, отвечающее шаблону»: шаблону `build ${{ matrix.project }}`
+(ui.yml) отвечает и `build · vet · gofmt` (ci.yaml). Ноги литеральной матрицы
+однозначны предпосылкой ключа, образец матрицы из выражения — тоже. Идущая нога
+замены — «не готово», а не красное: иначе отмена обрывала бы ожидание на первом
+заходе нового набора. Сводка называет каждую такую отмену и ногу, её заменившую.
+
 ПРЕДПОСЫЛКА КЛЮЧА: ИМЯ ПРОВЕРКИ ОДНОЗНАЧНО
 -----------------------------------------
 Проверка — это имя в пределах приложения (`app`, `name`). В ответе check-runs
@@ -318,12 +344,50 @@ def _latest_per_check(runs: list[dict]) -> tuple[list[dict], list[dict]]:
     return judged, superseded
 
 
+def _unexpanded(name: str) -> bool:
+    """Шаблон имени: есть закрытое выражение и нет незакрытого (см. шапку)."""
+    return _EXPR.search(name) is not None and "${{" not in "".join(_EXPR.split(name))
+
+
+def _set_aside_unexpanded(judged: list[dict], set_aside: list[dict], declared: Declared
+                          ) -> tuple[list[dict], list[tuple[dict, dict | None]]]:
+    """Шаблонные отмены, заменённые ногой той же джобы в более новом наборе,
+    уходят из судимых в отставленные вместе с заменой (см. шапку, #3267)."""
+    templates = dict(declared.templates)
+    keep: list[dict] = []
+    aside: list[tuple[dict, dict | None]] = [(r, None) for r in set_aside]
+    for r in judged:
+        name, order = str(r.get("name")), _order(r)
+        legs = templates.get(name)
+        replacement = None
+        if (legs and order is not None and _unexpanded(name)
+                and str(r.get("status")) == "completed" and str(r.get("conclusion")) == "cancelled"
+                and isinstance(r.get("app"), dict) and r["app"].get("slug") == ACTIONS_APP):
+            replacement = next((
+                x for x in judged
+                if x is not r and not _unexpanded(str(x.get("name")))
+                and _order(x) is not None and _order(x)[0] > order[0]
+                and _carries_outcome(x) and any(_proves(c, x) for c in legs)), None)
+        if replacement is None:
+            keep.append(r)
+        else:
+            aside.append((r, replacement))
+    return keep, aside
+
+
+def _judged_and_set_aside(examined: list[dict], declared: Declared
+                          ) -> tuple[list[dict], list[tuple[dict, dict | None]]]:
+    """Судимые прогоны и отставленные — с заменой у шаблонной отмены, `None` у прочих."""
+    judged, set_aside = _latest_per_check(examined)
+    return _set_aside_unexpanded(judged, set_aside, declared)
+
+
 def decide(payload: object, declared: Declared, self_name: str = "",
            gated: frozenset[str] = frozenset()) -> Verdict:
     """Вердикт по набору проверок против объявленного. Чистая функция: ни сети,
     ни времени, ни файлов."""
     examined = [r for r in _runs(payload) if r.get("name") != self_name]
-    runs, set_aside = _latest_per_check(examined)
+    runs, set_aside = _judged_and_set_aside(examined, declared)
 
     pending = [r for r in runs if str(r.get("status")) in PENDING]
     done = [r for r in runs if str(r.get("status")) == "completed"]
@@ -350,7 +414,11 @@ def decide(payload: object, declared: Declared, self_name: str = "",
         declared=len(declared.checks), present=len(declared.checks) - len(missing),
         missing=missing,
         judged=tuple(sorted(f"{r.get('name')} — {_outcome(r)}" for r in runs)),
-        superseded=tuple(sorted(_describe(r) for r in set_aside)),
+        superseded=tuple(sorted(
+            _describe(r) + ("" if leg is None else
+                            f"; имя не раскрыто — отменён до матрицы, замена — нога "
+                            f"«{leg.get('name')}» набора {_order(leg)[0]}")
+            for r, leg in set_aside)),
     )
 
     # Объявления нет — судить присутствие не по чему. Это «не прочитано», а не
@@ -391,7 +459,8 @@ def render(v: Verdict) -> str:
             f"на этой голове; матрица из выражения — одна проверка), появилось {v.present}, "
             f"не появилось {len(v.missing)}\n"
             f"осмотрено проверок {v.total}, отставлено {len(v.superseded)} "
-            f"(у той же проверки судится последний по набору и id прогон, несущий исход); "
+            f"(у той же проверки судится последний по набору и id прогон, несущий исход; "
+            f"отмена с нераскрытым шаблоном имени — ногой той же джобы в более новом наборе); "
             f"из судимых зелёных {v.green}, "
             f"не-зелёных {v.blocking}, нейтральных или пропущенных {v.neutralish}, "
             f"идущих {v.pending}")
@@ -583,6 +652,9 @@ class Declared:
     workflows: int                # процессов прочитано
     on_request: int               # из них идут на запросе в эту базу
     breaches: tuple[str, ...]
+    # Шаблон имени (в показе площадки) джобы с выражением в имени → её
+    # объявленные имена; шаблон двух джоб — `None`: замену не доказать (#3267).
+    templates: tuple[tuple[str, tuple[JobName, ...] | None], ...] = ()
 
 
 def _branch_pattern(pattern: str) -> re.Pattern[str]:
@@ -671,6 +743,7 @@ def declare(workflows: dict[str, object], base: str, self_name: str) -> Declared
     функция над разобранными процессами: `{путь: документ}`."""
     checks: list[JobName] = []
     breaches: list[str] = []
+    templates: dict[str, tuple[JobName, ...] | None] = {}
     on_request = own = 0
     if not base:
         breaches.append("база запроса не передана — какие процессы запрос запускает, "
@@ -702,15 +775,21 @@ def declare(workflows: dict[str, object], base: str, self_name: str) -> Declared
         for job_id, job in jobs.items():
             got, bad = _job_names(f"{path}: jobs.{job_id}", str(job_id), job)
             breaches += bad
+            mine: list[JobName] = []
             for n in got:
                 if n.parts is not None:
-                    checks.append(n)
+                    mine.append(n)
                     continue
                 shown = provider_cut(n.text)
                 if shown == self_name:
                     own += 1
                 else:
-                    checks.append(JobName(n.where, shown, None))
+                    mine.append(JobName(n.where, shown, None))
+            checks += mine
+            template = str(job.get("name", job_id)) if isinstance(job, dict) else ""
+            if _EXPR.search(template) and mine:
+                key = provider_cut(template)
+                templates[key] = None if key in templates else tuple(mine)
     if self_name and own != 1:
         breaches.append(f"собственная джоба «{self_name}» найдена среди джоб запроса {own} "
                         f"раз, а не один — исключать себя не из чего, и свод ждал бы сам себя")
@@ -718,7 +797,7 @@ def declare(workflows: dict[str, object], base: str, self_name: str) -> Declared
         breaches.append("объявлено ноль проверок — это не «проверять нечего», а «никто не "
                         "смотрел»")
     return Declared(checks=tuple(checks), workflows=len(workflows), on_request=on_request,
-                    breaches=tuple(breaches))
+                    breaches=tuple(breaches), templates=tuple(sorted(templates.items())))
 
 
 def _is_cut(name: str) -> bool:
@@ -804,7 +883,7 @@ def narrow_to_draft(d: Declared, selection: object) -> tuple[Declared, Drafted]:
     keep = set(map(str, selection["jobs"])) | set(map(str, selection["always"]))
     checks = tuple(c for c in d.checks if _job_key(c) in keep)
     narrowed = Declared(checks=checks, workflows=d.workflows, on_request=d.on_request,
-                        breaches=d.breaches)
+                        breaches=d.breaches, templates=d.templates)
     return narrowed, Drafted(False, len(checks), len(d.checks))
 
 

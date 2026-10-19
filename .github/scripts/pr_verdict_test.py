@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import yaml
 
@@ -1029,6 +1030,163 @@ def test_the_wait_passes_the_tree_and_the_base_to_the_decider(tmp_path: Path) ->
     assert code == 1 and "не завершились" in out and "golangci-lint" in out, (code, out)
     code, out = _wait(tmp_path, {"total_count": len(d.checks), "check_runs": all_green(d)}, None)
     assert code == 1 and "вердикт не вынесен (код 2)" in out, (code, out)
+
+
+# ── Нераскрытый шаблон имени: отменённый до матрицы набор вытеснен (#3267) ────
+#
+# Прогон, отменённый до вычисления матрицы, площадка показывает НЕРАСКРЫТЫМ
+# шаблоном имени — `build ${{ matrix.project }}`, — а замена в более новом
+# наборе того же процесса называет ноги раскрытыми именами. Ключ (приложение,
+# имя) у них разный, и до #3267 отмена шаблона судилась отдельной проверкой и
+# красила вердикт, хотя каждая нога замены зелена.
+#
+# Наблюдённый вход — kacho PR #3268, голова 2b3076f7092, свод — прогон
+# 39261316944 попытка 2 (задание 118180847568): пять шаблонных отмен в ранних
+# наборах трёх процессов, ноги — в поздних наборах тех же процессов, все success.
+# Номера check-run и наборов ниже — оттуда (`gh api .../commits/<sha>/check-runs`).
+OBSERVED_3268_UNEXPANDED = (
+    ("build ${{ matrix.project }}", 118089402988, 106387383545),
+    ("unit (${{ matrix.pkg }})", 118089403079, 106387383545),
+    (SHARD, 118089405089, 106387383751),
+    ("integration (${{ matrix.svc }})", 118089402405, 106387384216),
+    ("юниты ${{ matrix.shard.id }}", 118089402822, 106387384216),
+)
+# Самый поздний из наборов замены на той же голове (ci.yaml); все ранние меньше.
+OBSERVED_3268_FRESH_SUITE = 106387436161
+
+
+def _unexpanded_cancelled(suite_of=None) -> list[dict]:
+    return [run(name, "completed", "cancelled", run_id=rid,
+                suite=sid if suite_of is None else suite_of)
+            for name, rid, sid in OBSERVED_3268_UNEXPANDED]
+
+
+def _fresh_legs(d, suite: int = OBSERVED_3268_FRESH_SUITE) -> list[dict]:
+    return [dict(r, check_suite={"id": suite}, id=200_000_000_000 + r["id"])
+            for r in all_green(d)]
+
+
+def test_the_observed_unexpanded_names_are_jobs_of_the_tree() -> None:
+    """Предпосылка проб раздела: каждое наблюдённое шаблонное имя — имя джобы
+    процесса запроса в дереве, и объявление знает её ноги. Иначе пробы ниже
+    судили бы выдуманный вход."""
+    d = tree_declared()
+    templates = dict(d.templates)
+    for name, _, _ in OBSERVED_3268_UNEXPANDED:
+        assert name in templates and templates[name], (name, sorted(templates))
+
+
+def test_cancelled_unexpanded_names_superseded_by_a_fresher_suite_are_green() -> None:
+    """Наблюдённая картина: пять шаблонных отмен ранних наборов, каждая нога
+    замены — success в более позднем наборе. Вердикт зелёный, отмены названы
+    отставленными вместе с ногой, которая их заменила."""
+    d = tree_declared()
+    v = decide(_unexpanded_cancelled() + _fresh_legs(d), d, VERDICT)
+    assert v.state == GREEN, render(v)
+    assert v.blocking == 0 and len(v.superseded) == len(OBSERVED_3268_UNEXPANDED), v
+    text = render(v)
+    for name, rid, sid in OBSERVED_3268_UNEXPANDED:
+        assert f"{name} — cancelled, check-run {rid}, набор {sid}" in text, text
+    assert "не раскрыт" in text and "build compute" in text, text
+
+
+def test_the_wait_reads_the_observed_unexpanded_picture_as_green(tmp_path: Path) -> None:
+    """Тот же вход через НАСТОЯЩЕЕ ожидание (`pr-verdict-wait.sh`) с деревом
+    процессов: код 0. Близнец — шаблонная отмена без более позднего набора: 1."""
+    d = tree_declared()
+    payload = _unexpanded_cancelled() + _fresh_legs(d)
+    code, out = _wait(tmp_path, {"total_count": len(payload), "check_runs": payload}, LINE_BASE)
+    assert code == 0, (code, out)
+    alone = _unexpanded_cancelled() + _fresh_legs(d, suite=106387383545)
+    code, out = _wait(tmp_path, {"total_count": len(alone), "check_runs": alone}, LINE_BASE)
+    assert code == 1 and "build ${{ matrix.project }}" in out, (code, out)
+
+
+def test_an_unexpanded_cancel_without_a_fresher_suite_is_red() -> None:
+    """Близнец 1: та же отмена в ЕДИНСТВЕННОМ наборе процесса — ноги в том же
+    наборе, а не в более позднем. Замены нет — красно, отмена названа. Меняется
+    ровно один факт против наблюдённой картины — номер набора ног."""
+    d = tree_declared()
+    only = OBSERVED_3268_UNEXPANDED[0]
+    runs = [run(only[0], "completed", "cancelled", run_id=only[1], suite=only[2])]
+    runs += _fresh_legs(d, suite=only[2])
+    v = decide(runs, d, VERDICT)
+    assert v.state == RED and v.offenders == (only[0],), render(v)
+    assert v.superseded == (), v
+
+
+def test_an_expanded_cancel_without_its_own_fresh_leg_is_red() -> None:
+    """Близнец 2: отменена РАСКРЫТАЯ нога раннего набора, а в позднем её пары
+    нет, хотя соседние ноги той же джобы есть. Раскрытое имя — своя проверка:
+    чужая нога его не заменяет."""
+    d = tree_declared()
+    fresh = [r for r in _fresh_legs(d) if r["name"] != "build compute"]
+    runs = [run("build compute", "completed", "cancelled", run_id=118089402988,
+                suite=106387383545)] + fresh
+    v = decide(runs, d, VERDICT)
+    assert v.state == RED and v.offenders == ("build compute",), render(v)
+
+
+def test_an_unexpanded_failure_is_not_set_aside() -> None:
+    """Отставляется только ОТМЕНА: отказ с нераскрытым именем — это отказ
+    вычисления матрицы, и поздний набор его не стирает. Меняется один факт —
+    исход шаблонного прогона."""
+    d = tree_declared()
+    runs = _unexpanded_cancelled() + _fresh_legs(d)
+    runs[0]["conclusion"] = "failure"
+    v = decide(runs, d, VERDICT)
+    assert v.state == RED and v.offenders == ("build ${{ matrix.project }}",), render(v)
+
+
+def test_a_fresh_job_of_another_workflow_does_not_replace_an_unexpanded_cancel() -> None:
+    """Замену доказывает нога ТОЙ ЖЕ джобы, а не имя, отвечающее шаблону: шаблону
+    `build ${{ matrix.project }}` (ui.yml) отвечает и `build · vet · gofmt`
+    (ci.yaml). Ноги ui.yml — в раннем наборе, чужая джоба — в позднем: красно.
+    Меняется один факт против наблюдённой картины — набор ног build."""
+    d = tree_declared()
+    fresh = _fresh_legs(d)
+    for r in fresh:
+        if r["name"].startswith("build ") and r["name"] != "build · vet · gofmt":
+            r["check_suite"] = {"id": 106387383545}
+    assert any(r["name"] == "build · vet · gofmt" for r in fresh), "чужой джобы нет во входе"
+    v = decide(_unexpanded_cancelled() + fresh, d, VERDICT)
+    assert v.state == RED and v.offenders == ("build ${{ matrix.project }}",), render(v)
+
+
+def test_a_cancel_whose_fresh_leg_still_runs_is_not_ready() -> None:
+    """Ноги замены ещё идут — ВСЕ ноги джобы, чтобы замену не доказала
+    завершённая соседняя: замена есть, исхода ещё нет — «не готово», а не
+    красно. Красное обрывало бы ожидание на первом заходе нового набора."""
+    d = tree_declared()
+    fresh = _fresh_legs(d)
+    running = []
+    for r in fresh:
+        if r["name"].startswith("build ") and r["name"] != "build · vet · gofmt":
+            r["status"], r["conclusion"] = "in_progress", None
+            running.append(r["name"])
+    assert len(running) > 1, running
+    v = decide(_unexpanded_cancelled() + fresh, d, VERDICT)
+    assert v.state == NOT_READY and v.offenders == tuple(sorted(running)), render(v)
+
+
+def test_the_mutant_that_keeps_unexpanded_cancels_reddens_the_observed_picture() -> None:
+    """Мутант «не отставлять шаблонные»: правило снято — наблюдённая картина
+    обязана покраснеть. Иначе проба зелёного выше ничего не держит."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    marker = "    return _set_aside_unexpanded(judged, set_aside, declared)\n"
+    assert src.count(marker) == 1, "точка мутации не найдена ровно один раз"
+    mutant_src = src.replace(marker, "    return judged, [(r, None) for r in set_aside]\n")
+    mod = ModuleType("pr_verdict_mutant")
+    mod.__dict__["__file__"] = str(SCRIPT)
+    sys.modules["pr_verdict_mutant"] = mod
+    try:
+        exec(compile(mutant_src, str(SCRIPT), "exec"), mod.__dict__)
+        d = mod.declare(tree_workflows(), LINE_BASE, VERDICT)
+        v = mod.decide(_unexpanded_cancelled() + _fresh_legs(tree_declared()), d, VERDICT)
+    finally:
+        sys.modules.pop("pr_verdict_mutant", None)
+    assert v.state == mod.RED, mod.render(v)
+    assert set(v.offenders) == {n for n, _, _ in OBSERVED_3268_UNEXPANDED}, v.offenders
 
 
 # ── Показ GitHub: имя длиннее 100 байт обрезается до 97 байт и многоточия ─────
