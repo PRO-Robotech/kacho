@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 import yaml
 
 _spec = importlib.util.spec_from_file_location(
@@ -1177,29 +1178,212 @@ def test_a_template_shared_by_two_jobs_proves_no_replacement() -> None:
     wf[CI]["jobs"]["twin-build"] = {"name": "build ${{ matrix.project }}", "steps": [],
                                     "strategy": {"matrix": "${{ fromJSON('[]') }}"}}
     d = tree_declared(workflows=wf)
-    assert dict(d.templates)["build ${{ matrix.project }}"] is None, d.templates
     v = decide(_unexpanded_cancelled() + _fresh_legs(d), d, VERDICT)
+    assert v.state == RED and v.offenders == ("build ${{ matrix.project }}",), render(v)
+    assert dict(d.templates)["build ${{ matrix.project }}"] is None, d.templates
+
+
+def _build_legs(runs: list[dict]) -> list[dict]:
+    """Ноги джобы `build ${{ matrix.project }}` (ui.yml) — без одноимённого
+    начала чужой джобы `build · vet · gofmt` (ci.yaml)."""
+    return [r for r in runs if r["name"].startswith("build ") and "${{" not in r["name"]
+            and r["name"] != "build · vet · gofmt"]
+
+
+def test_a_skipped_replacement_does_not_set_aside_an_unexpanded_cancel() -> None:
+    """Замена обязана нести исход: пропуск ничего не осмотрел. Все ноги build
+    в позднем наборе — `skipped`: шаблонная отмена остаётся красной. Меняется
+    один факт против наблюдённой картины — исход ног build."""
+    d = tree_declared()
+    fresh = _fresh_legs(d)
+    for r in _build_legs(fresh):
+        r["conclusion"] = "skipped"
+    v = decide(_unexpanded_cancelled() + fresh, d, VERDICT)
     assert v.state == RED and v.offenders == ("build ${{ matrix.project }}",), render(v)
 
 
-def test_the_mutant_that_keeps_unexpanded_cancels_reddens_the_observed_picture() -> None:
-    """Мутант «не отставлять шаблонные»: правило снято — наблюдённая картина
-    обязана покраснеть. Иначе проба зелёного выше ничего не держит."""
+def test_an_unexpanded_cancel_from_another_app_is_not_set_aside() -> None:
+    """Отставляется отмена приложения процессов: шаблонное имя от чужого
+    приложения (`some-ci-app`) — не прогон джобы, и нога процесса её не
+    заменяет. Меняется один факт — приложение отмены build."""
+    d = tree_declared()
+    runs = _unexpanded_cancelled() + _fresh_legs(d)
+    runs[0]["app"] = {"slug": "some-ci-app"}
+    v = decide(runs, d, VERDICT)
+    assert v.state == RED and v.offenders == ("build ${{ matrix.project }}",), render(v)
+
+
+# Имя джобы, которое площадка обрезает ВНУТРИ второго выражения: 70 + 16 байт
+# до второго выражения, бюджет основы — 97 байт.
+CUT_TEMPLATE = "x" * 70 + " ${{ matrix.a }} ${{ matrix.target }}"
+
+
+def test_a_template_cut_inside_its_second_expression_is_not_set_aside() -> None:
+    """Обрезанное посреди выражения имя — не шаблон, а неизвестно что: замену
+    не доказать, отмена красна. Инъекция — джоба с таким именем в настоящем
+    дереве; объявление её знает (ключ — показ площадки), нога — в позднем наборе."""
+    wf = tree_workflows()
+    wf[CI]["jobs"]["long-template"] = {"name": CUT_TEMPLATE, "steps": [], "strategy": {
+        "matrix": {"a": ["1"], "target": ["linux"]}}}
+    d = tree_declared(workflows=wf)
+    shown = pr_verdict.provider_cut(CUT_TEMPLATE)
+    assert shown != CUT_TEMPLATE and "${{" in shown.split("}}")[-1], shown
+    assert dict(d.templates).get(shown), d.templates
+    runs = [run(shown, "completed", "cancelled", run_id=100, suite=106387383545)]
+    runs += _fresh_legs(d)
+    assert any(r["name"] == "x" * 70 + " 1 linux" for r in runs), "ноги джобы нет во входе"
+    v = decide(runs, d, VERDICT)
+    assert v.state == RED and v.offenders == (shown,), render(v)
+
+
+def test_an_unexpanded_replacement_is_not_a_leg() -> None:
+    """Замена — РАСКРЫТАЯ нога. Шаблонное имя в позднем наборе, отвечающее
+    образцу той же матрицы из выражения, ногой не является: отмена красна.
+    Инъекция — нога e2e заменена закрытым шаблоном с другим выражением."""
+    d = tree_declared()
+    fresh = [r for r in _fresh_legs(d) if not r["name"].startswith("e2e ")]
+    fake = "e2e ${{ matrix.shard.id }} (${{ matrix.other }})"
+    fresh.append(run(fake, "completed", "success", run_id=300, suite=OBSERVED_3268_FRESH_SUITE))
+    v = decide(_unexpanded_cancelled() + fresh, d, VERDICT)
+    assert v.state == RED and v.offenders == (SHARD,), render(v)
+
+
+def test_an_unordered_cancel_or_leg_is_judged_not_crashed() -> None:
+    """Без номера набора порядка нет: отмена без набора — красна; ноги без
+    набора замену не доказывают — красно. Решатель не падает ни на одном."""
+    d = tree_declared()
+    runs = _unexpanded_cancelled() + _fresh_legs(d)
+    del runs[0]["check_suite"]
+    v = decide(runs, d, VERDICT)
+    assert v.state == RED and v.offenders == ("build ${{ matrix.project }}",), render(v)
+    runs = _unexpanded_cancelled() + _fresh_legs(d)
+    for r in _build_legs(runs):
+        del r["check_suite"]
+    v = decide(runs, d, VERDICT)
+    assert v.state == RED and v.offenders == ("build ${{ matrix.project }}",), render(v)
+
+
+def test_a_cancelled_conclusion_on_an_unfinished_run_is_not_set_aside() -> None:
+    """Отставляется ЗАВЕРШЁННАЯ отмена. Идущий прогон с заполненным исходом —
+    форма, которую площадка не шлёт, но которую вход представляет: он идёт, и
+    это «не готово», а не «отставлено»."""
+    d = tree_declared()
+    runs = _unexpanded_cancelled() + _fresh_legs(d)
+    runs[0]["status"] = "in_progress"
+    v = decide(runs, d, VERDICT)
+    assert v.state == NOT_READY and v.offenders == ("build ${{ matrix.project }}",), render(v)
+
+
+# ── Таблица мутантов правила (#3267): каждое условие шапки — своя проба ───────
+#
+# Строка — условие правила «шаблонная отмена отставлена» (шапка `pr-verdict.py`),
+# правка решателя, снимающая ровно его, и проба, которая на мутанте краснеет.
+# Проба `test_every_rule_condition_has_a_mutant_its_probe_kills` исполняет КАЖДУЮ
+# строку: правит текст решателя (точка правки обязана найтись ровно один раз),
+# подставляет мутанта пробам и требует отказа названной пробы ПРЕДСКАЗАННЫМ
+# исходом — последняя колонка: вердикт мутанта на входе пробы либо TypeError.
+#
+# Ложное зелёное (колонка «зелено») мутант даёт везде, кроме трёх строк:
+# M1 и M6b — ложное красное (отмена не отставлена; идущая замена не признана),
+# M5a и M5b — входа с ложным зелёным НЕТ. Без порядка у отмены (M5a) либо у
+# кандидата в замену (M5b) мутант вычисляет `None[0]` раньше, чем что-либо
+# отставит, и падает TypeError; там, где до этого места не доходит, исход тот
+# же, что у решателя. `main` ловит только ValueError — трасса и код 1, ожидание
+# читает его как «красно». M9 вход с ложным зелёным ЕСТЬ: закрытый шаблон в
+# позднем наборе, отвечающий образцу матрицы из выражения той же джобы.
+#
+# Эквивалентный мутант, строкой не исполняемый: снять `x is not r`. Отмена сама
+# себе не замена и без него — её имя шаблонное, и условие `not _unexpanded(x)`
+# (M9) исключает её раньше; входа, где мутант разошёлся бы с решателем, нет.
+_COND = "if (legs and order is not None and _unexpanded(name)\n"
+RULE_MUTANTS = (
+    # id, условие, было, стало, проба, исход пробы на мутанте
+    ("M1", "правило вообще", "    return _set_aside_unexpanded(judged, set_aside, declared)\n",
+     "    return judged, [(r, None) for r in set_aside]\n",
+     "test_cancelled_unexpanded_names_superseded_by_a_fresher_suite_are_green", "красно"),
+    ("M2", "нога ЭТОЙ джобы, а не имя по шаблону", "and any(_proves(c, x) for c in legs)",
+     'and _fits(str(x.get("name")), tuple(_EXPR.split(name)))',
+     "test_a_fresh_job_of_another_workflow_does_not_replace_an_unexpanded_cancel", "зелено"),
+    ("M3", "исход — cancelled", 'and str(r.get("conclusion")) == "cancelled"',
+     'and str(r.get("conclusion")) in BLOCKING',
+     "test_an_unexpanded_failure_is_not_set_aside", "зелено"),
+    ("M3b", "отмена завершена", 'and str(r.get("status")) == "completed" and str(r.get("conclusion"))',
+     'and str(r.get("conclusion"))',
+     "test_a_cancelled_conclusion_on_an_unfinished_run_is_not_set_aside", "зелено"),
+    ("M4", "набор замены новее", "and _order(x)[0] > order[0]", "and _order(x)[0] >= order[0]",
+     "test_an_unexpanded_cancel_without_a_fresher_suite_is_red", "зелено"),
+    ("M5a", "у отмены есть порядок", _COND, "if (legs and _unexpanded(name)\n",
+     "test_an_unordered_cancel_or_leg_is_judged_not_crashed", "TypeError"),
+    ("M5b", "у замены есть порядок", "and _order(x) is not None and _order(x)[0]",
+     "and _order(x)[0]", "test_an_unordered_cancel_or_leg_is_judged_not_crashed", "TypeError"),
+    ("M6", "замена несёт исход", "and _carries_outcome(x) and any(", "and True and any(",
+     "test_a_skipped_replacement_does_not_set_aside_an_unexpanded_cancel", "зелено"),
+    ("M6b", "идущая замена — тоже замена", "and _carries_outcome(x) and any(",
+     'and str(x.get("status")) == "completed" and any(',
+     "test_a_cancel_whose_fresh_leg_still_runs_is_not_ready", "красно"),
+    ("M7", "отмена — от приложения процессов",
+     '\n                and isinstance(r.get("app"), dict) and r["app"].get("slug") == ACTIONS_APP):',
+     "):", "test_an_unexpanded_cancel_from_another_app_is_not_set_aside", "зелено"),
+    ("M8", "в имени нет незакрытого выражения",
+     'return _EXPR.search(name) is not None and "${{" not in "".join(_EXPR.split(name))',
+     "return _EXPR.search(name) is not None",
+     "test_a_template_cut_inside_its_second_expression_is_not_set_aside", "зелено"),
+    ("M9", "замена — раскрытая нога", "if x is not r and not _unexpanded(str(x.get(\"name\")))",
+     "if x is not r", "test_an_unexpanded_replacement_is_not_a_leg", "зелено"),
+    ("M10", "шаблон ровно одной джобы",
+     "templates[key] = None if key in templates else tuple(mine)", "templates[key] = tuple(mine)",
+     "test_a_template_shared_by_two_jobs_proves_no_replacement", "зелено"),
+    ("M11", "имя — шаблон (вызов `_unexpanded`)", _COND, "if (legs and order is not None\n",
+     "test_a_template_cut_inside_its_second_expression_is_not_set_aside", "зелено"),
+)
+
+
+def _mutant(old: str, new: str) -> ModuleType:
     src = SCRIPT.read_text(encoding="utf-8")
-    marker = "    return _set_aside_unexpanded(judged, set_aside, declared)\n"
-    assert src.count(marker) == 1, "точка мутации не найдена ровно один раз"
-    mutant_src = src.replace(marker, "    return judged, [(r, None) for r in set_aside]\n")
+    assert src.count(old) == 1, f"точка мутации найдена {src.count(old)} раз, а не один: {old!r}"
     mod = ModuleType("pr_verdict_mutant")
     mod.__dict__["__file__"] = str(SCRIPT)
     sys.modules["pr_verdict_mutant"] = mod
     try:
-        exec(compile(mutant_src, str(SCRIPT), "exec"), mod.__dict__)
-        d = mod.declare(tree_workflows(), LINE_BASE, VERDICT)
-        v = mod.decide(_unexpanded_cancelled() + _fresh_legs(tree_declared()), d, VERDICT)
+        exec(compile(src.replace(old, new), str(SCRIPT), "exec"), mod.__dict__)
     finally:
         sys.modules.pop("pr_verdict_mutant", None)
-    assert v.state == mod.RED, mod.render(v)
-    assert set(v.offenders) == {n for n, _, _ in OBSERVED_3268_UNEXPANDED}, v.offenders
+    return mod
+
+
+@pytest.mark.parametrize("mid,cond,old,new,probe,on_mutant", RULE_MUTANTS,
+                         ids=[m[0] for m in RULE_MUTANTS])
+def test_every_rule_condition_has_a_mutant_its_probe_kills(mid, cond, old, new, probe, on_mutant,
+                                                            monkeypatch) -> None:
+    """Проба строки зелена на решателе и падает на его мутанте: условие держит
+    именно она. Решатель — тот же для обеих половин, меняется одно условие."""
+    me = sys.modules[__name__]
+    getattr(me, probe)()
+    mod = _mutant(old, new)
+    for name in ("decide", "render"):
+        monkeypatch.setattr(me, name, getattr(mod, name))
+    monkeypatch.setattr(me, "pr_verdict", mod)
+    with pytest.raises((AssertionError, TypeError)) as failed:
+        getattr(me, probe)()
+    # Упала не «как-нибудь», а предсказанным исходом: вердикт мутанта назван в
+    # первой строке отказа пробы (`render`), падение без порядка — TypeError.
+    if on_mutant == "TypeError":
+        assert failed.type is TypeError, (mid, failed.value)
+    else:
+        assert str(failed.value).startswith(f"вердикт: {on_mutant}"), (mid, failed.value)
+
+
+def test_the_mutant_table_covers_every_condition_of_the_rule() -> None:
+    """Перепись: каждая точка мутации таблицы — в теле правила, и условий
+    правила в таблице не меньше, чем в шапке решателя (четыре пункта шапки и их
+    составные части — M2…M11)."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    body = src[src.index("def _unexpanded("):src.index("def _judged_and_set_aside(")]
+    rule = [m for m in RULE_MUTANTS if m[0] not in ("M1", "M10")]
+    for mid, _, old, _, _, _ in rule:
+        assert old in body, (mid, "точка мутации вне тела правила")
+    roots = {m[0].rstrip("ab") for m in RULE_MUTANTS}
+    assert roots == {f"M{i}" for i in range(1, 12)}, sorted(roots)
 
 
 # ── Показ GitHub: имя длиннее 100 байт обрезается до 97 байт и многоточия ─────
