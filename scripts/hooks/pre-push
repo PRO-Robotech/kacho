@@ -64,8 +64,34 @@ if [ "$attribution_rc" -ne 0 ]; then
     exit 1
 fi
 
+# НОВЫЕ BLOB'Ы — ВТОРЫМИ, ТОЖЕ ДО ОБХОДА И ДО ЧЕРНОВИКОВ (#3286).
+#
+# Бинарь и файл больше 1 МБ среди blob'ов, которые отправка вносит в публичную
+# историю (добавление, правка, переименование с правкой — любой статус), — отказ
+# с именем файла (scripts/hooks/prepush-added-files.sh, перечень исключений —
+# prepush-added-files.allow). Класс тот же, что у атрибуции: опубликованное не
+# отзывается, ветка на удалённом публична, обход снимает проверки, а не правило.
+# Признак — #3284: ELF края на 39 МБ в коммите ветки поймало ревью, а не хук.
+# Стража нет либо он не смог судить — ОТКАЗ. Держит это
+# scripts/hooks/prepush-added-files-inject.sh.
+added_guard="$hooks_dir/prepush-added-files.sh"
+if [ ! -f "$added_guard" ]; then
+    echo "pre-push ОТКАЗ: стража добавленных файлов нет ($added_guard) — судить нечем, отправка остановлена." >&2
+    exit 1
+fi
+if [ -n "$push_input" ]; then
+    bash "$added_guard" "${1:-origin}" <<< "$push_input" >&2
+else
+    bash "$added_guard" "${1:-origin}" < /dev/null >&2
+fi
+added_rc=$?
+if [ "$added_rc" -ne 0 ]; then
+    echo "pre-push ОТКАЗ: добавленные файлы отвергнуты либо не судимы (код стража $added_rc) — отправка остановлена до проверок и до обхода." >&2
+    exit 1
+fi
+
 if [ "${KACHO_SKIP_PREPUSH:-0}" = "1" ]; then
-    echo "pre-push: пропущен по KACHO_SKIP_PREPUSH=1 — проверки дерева НЕ выполнялись (страж атрибуции исполнен выше)" >&2
+    echo "pre-push: пропущен по KACHO_SKIP_PREPUSH=1 — проверки дерева НЕ выполнялись (стражи атрибуции и новых blob'ов исполнены выше)" >&2
     exit 0
 fi
 

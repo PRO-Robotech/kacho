@@ -128,6 +128,7 @@ scripts/go-mod-tidy-check-inject.sh
 scripts/overwritten-work-inject.sh
 scripts/hooks/attribution-inject.sh
 scripts/hooks/install-inject.sh
+scripts/hooks/prepush-added-files-inject.sh
 scripts/hooks/prepush-groups-inject.sh
 scripts/hooks/prepush-range-inject.sh
 scripts/release/assert-foundation-floor-inject.sh
