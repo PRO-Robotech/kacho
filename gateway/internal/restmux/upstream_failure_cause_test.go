@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/upstreamfailure"
@@ -59,12 +60,9 @@ func cellsOf(t *upstreamfailure.Tally) map[string]uint64 {
 }
 
 func TestBridgeFailureCauseIsVisibleOnTheInstrument(t *testing.T) {
-	stopped, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	stoppedAddr := stopped.Addr().String()
-	_ = stopped.Close()
+	// Остановленная служба: подключение отвергается, занять адрес до конца
+	// пробы не может никто (kacho#3331).
+	stoppedAddr := privateloopback.Hold(t).Addr()
 
 	slow, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

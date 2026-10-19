@@ -1264,7 +1264,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("listen %s: %v", cfg.ListenAddr, err)
 	}
-	logger.Info("api-gateway started", "addr", cfg.ListenAddr)
+	// Журнал называет адрес, который ядро дало слушателю, а не объявленную
+	// строку: при объявленном порте 0 строка «:0» не называла бы ничего, и
+	// подключиться к открытому слушателю по журналу старта было бы нельзя.
+	logger.Info("api-gateway started", "addr", listener.Addr().String())
 
 	cmuxer := newEdgeCmux(listener, edgeFirstByteBudget)
 	// Отказ сервера на внешнем слушателе гасит процесс: край с мёртвой половиной
@@ -1314,7 +1317,7 @@ func main() {
 			log.Fatalf("internal REST listen %s: %v", cfg.InternalRESTAddr, restErr)
 		}
 		logger.Info("api-gateway internal admin REST started",
-			"addr", cfg.InternalRESTAddr,
+			"addr", internalRESTListener.Addr().String(),
 			"transport", "mtls",
 			"client_cert", "required",
 			"client_circle_size", len(circle),
@@ -1358,7 +1361,7 @@ func main() {
 		if tlsErr != nil {
 			log.Fatalf("tls listen %s: %v", cfg.TLSListenAddr, tlsErr)
 		}
-		logger.Info("api-gateway TLS started", "addr", cfg.TLSListenAddr)
+		logger.Info("api-gateway TLS started", "addr", tlsListener.Addr().String())
 
 		tlsCmux := newEdgeCmux(tlsListener, edgeFirstByteBudget)
 		// Разделение gRPC/REST, метка «внешний» на REST и подъём обоих серверов —

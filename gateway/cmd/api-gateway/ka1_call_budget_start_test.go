@@ -20,16 +20,17 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/big"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -95,20 +96,18 @@ func ka1Material(t *testing.T) (cert, key, ca string) {
 	return cert, key, cert
 }
 
-func ka1FreeAddr(t *testing.T) string {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := l.Addr().String()
-	_ = l.Close()
-	return addr
-}
+// ka1AnyPort — адрес слушателя пробы старта: порт выбирает ядро в момент, когда
+// процесс края открывает слушатель. Порт, выбранный пробой заранее («открыть
+// :0, прочитать, закрыть»), к подъёму процесса мог занять кто угодно — соседний
+// процесс или второй слушатель того же края (kacho#3324, близнец домена
+// печенья); адрес открытого слушателя проба берёт у самого процесса
+// (ka1StartedAddr).
+const ka1AnyPort = "127.0.0.1:0"
 
 // ka1EdgeEnv — окружение края, полное во всём (посадка `own`, адресат,
 // издатели, хопы к службе доступа), с ОБЕИМИ ручками Р4 в годных величинах.
-func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string) {
+// Порт ни одного слушателя заранее не выбран (ka1AnyPort).
+func ka1EdgeEnv(t *testing.T, mode string) map[string]string {
 	t.Helper()
 	cert, key, ca := ka1Material(t)
 	// Якорь звеньев фронта (kacho#3028, круг 5) — ОТДЕЛЬНЫЙ удостоверяющий
@@ -116,7 +115,6 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 	_, _, linkCA := ka1Material(t)
 	// Якорь оператора внутреннего слушателя (kacho#3189) — тоже отдельный центр.
 	_, _, operatorCA := ka1Material(t)
-	listen = ka1FreeAddr(t)
 	appEnv, authz := "dev", "false"
 	if mode != "dev" {
 		// Боевая посадка: класс окружения боевой, проверка прав включена — без
@@ -128,13 +126,13 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 		"KACHO_APP_ENV":                                         appEnv,
 		"KACHO_API_GATEWAY_AUTHN_MODE":                          mode,
 		"KACHO_API_GATEWAY_AUTHN_TRUST_DOMAIN":                  "kacho.test",
-		"KACHO_API_GATEWAY_LISTEN_ADDR":                         listen,
-		"KACHO_API_GATEWAY_INTERNAL_REST_ADDR":                  ka1FreeAddr(t),
+		"KACHO_API_GATEWAY_LISTEN_ADDR":                         ka1AnyPort,
+		"KACHO_API_GATEWAY_INTERNAL_REST_ADDR":                  ka1AnyPort,
 		"KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE":         cert,
 		"KACHO_API_GATEWAY_INTERNAL_REST_TLS_KEY_FILE":          key,
 		"KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS":           "spiffe://kacho.test/ns/kacho/sa/kacho-internal-rest-operator",
 		"KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE":        operatorCA,
-		"KACHO_API_GATEWAY_METRICS_ADDR":                        ka1FreeAddr(t),
+		"KACHO_API_GATEWAY_METRICS_ADDR":                        ka1AnyPort,
 		"KACHO_API_GATEWAY_IDENTITY_PROVIDER":                   "own",
 		"KACHO_API_GATEWAY_TOKEN_AUDIENCE":                      "https://api.kacho.test",
 		"KACHO_API_GATEWAY_TOKEN_ISSUERS":                       "https://kaname.kacho.local",
@@ -159,11 +157,11 @@ func ka1EdgeEnv(t *testing.T, mode string) (env map[string]string, listen string
 		// TLS-слушателем с необязательным клиентским сертификатом и якорем.
 		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_SANS":    "api-gateway-front-console.front-link.kacho.internal",
 		"KACHO_API_GATEWAY_AUTHZ_TRUSTED_PROXY_CA_FILE": linkCA,
-		"KACHO_API_GATEWAY_TLS_LISTEN_ADDR":             ka1FreeAddr(t),
+		"KACHO_API_GATEWAY_TLS_LISTEN_ADDR":             ka1AnyPort,
 		"KACHO_API_GATEWAY_TLS_CERT_FILE":               cert,
 		"KACHO_API_GATEWAY_TLS_KEY_FILE":                key,
 		"KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL":        "true",
-	}, listen
+	}
 }
 
 type ka1Start struct {
@@ -173,9 +171,46 @@ type ka1Start struct {
 	healthz int
 }
 
+// ka1Journal — журнал процесса края, который проба читает, пока процесс в него
+// пишет.
+type ka1Journal struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (j *ka1Journal) Write(p []byte) (int, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.buf.Write(p)
+}
+
+func (j *ka1Journal) String() string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.buf.String()
+}
+
+// ka1StartedAddr — адрес, который ядро дало открытому слушателю края: поле addr
+// записи «api-gateway started» журнала старта. Записи ещё нет — второй исход
+// ложь (недописанная строка не разбирается и тоже даёт ложь).
+func ka1StartedAddr(journal string) (string, bool) {
+	for _, line := range strings.Split(journal, "\n") {
+		var rec struct {
+			Msg  string `json:"msg"`
+			Addr string `json:"addr"`
+		}
+		if json.Unmarshal([]byte(line), &rec) != nil || rec.Msg != "api-gateway started" {
+			continue
+		}
+		return rec.Addr, rec.Addr != ""
+	}
+	return "", false
+}
+
 // ka1RunEdge запускает процесс края. Ждёт либо завершения (исход старта), либо
-// ответа `/healthz` (процесс стартовал) — и тогда останавливает его сам.
-func ka1RunEdge(t *testing.T, env map[string]string, listen string) ka1Start {
+// ответа `/healthz` (процесс стартовал) — и тогда останавливает его сам. Адрес
+// `/healthz` — тот, что открытый слушатель получил у ядра (ka1StartedAddr).
+func ka1RunEdge(t *testing.T, env map[string]string) ka1Start {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -184,7 +219,7 @@ func ka1RunEdge(t *testing.T, env map[string]string, listen string) ka1Start {
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
-	var out bytes.Buffer
+	var out ka1Journal
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -204,6 +239,10 @@ func ka1RunEdge(t *testing.T, env map[string]string, listen string) ka1Start {
 			}
 			return ka1Start{exited: true, code: code, journal: out.String()}
 		case <-tick.C:
+			listen, ok := ka1StartedAddr(out.String())
+			if !ok {
+				continue
+			}
 			resp, err := http.Get("http://" + listen + "/healthz")
 			if err != nil {
 				continue
@@ -238,12 +277,12 @@ func ka1StartGuard(t *testing.T, knob, twin string) {
 	for _, mode := range []string{"production", "dev"} {
 		for _, v := range variants {
 			t.Run(mode+" "+v.name, func(t *testing.T) {
-				env, listen := ka1EdgeEnv(t, mode)
+				env := ka1EdgeEnv(t, mode)
 				delete(env, knob)
 				if v.set {
 					env[knob] = v.value
 				}
-				got := ka1RunEdge(t, env, listen)
+				got := ka1RunEdge(t, env)
 				if !got.exited || got.code == 0 {
 					t.Fatalf("процесс обязан завершиться с ненулевым кодом до открытия слушателей; стартовал (/healthz %d)", got.healthz)
 				}
@@ -265,9 +304,9 @@ func ka1StartGuard(t *testing.T, knob, twin string) {
 		}
 	}
 	t.Run("близнец "+twin, func(t *testing.T) {
-		env, listen := ka1EdgeEnv(t, "production")
+		env := ka1EdgeEnv(t, "production")
 		env[knob] = twin
-		got := ka1RunEdge(t, env, listen)
+		got := ka1RunEdge(t, env)
 		if got.exited || got.healthz != http.StatusOK {
 			t.Fatalf("с %s=%s процесс обязан стартовать и отвечать /healthz 200; исход: завершился=%v код=%d\n%s",
 				knob, twin, got.exited, got.code, ka1Tail(got.journal))
@@ -306,12 +345,12 @@ func TestSessionCookieDomainIsJudgedAtStart(t *testing.T) {
 		{"адрес вместо домена", "https://kacho.example", "объявлено, но не годится", true},
 	} {
 		t.Run(v.name, func(t *testing.T) {
-			env, listen := ka1EdgeEnv(t, "production")
+			env := ka1EdgeEnv(t, "production")
 			delete(env, knob)
 			if v.set {
 				env[knob] = v.value
 			}
-			got := ka1RunEdge(t, env, listen)
+			got := ka1RunEdge(t, env)
 			if !got.exited || got.code == 0 {
 				t.Fatalf("процесс обязан завершиться с ненулевым кодом до открытия слушателей; стартовал (/healthz %d)", got.healthz)
 			}
@@ -322,9 +361,9 @@ func TestSessionCookieDomainIsJudgedAtStart(t *testing.T) {
 	}
 	for _, twin := range []string{"none", "kacho.example"} {
 		t.Run("близнец "+twin, func(t *testing.T) {
-			env, listen := ka1EdgeEnv(t, "production")
+			env := ka1EdgeEnv(t, "production")
 			env[knob] = twin
-			if got := ka1RunEdge(t, env, listen); got.exited {
+			if got := ka1RunEdge(t, env); got.exited {
 				t.Fatalf("законное значение %q: процесс не стартовал (код %d):\n%s", twin, got.code, ka1Tail(got.journal))
 			}
 		})

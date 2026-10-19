@@ -22,17 +22,15 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/upstreamfailure"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
+// stoppedAddr — адрес остановленной службы: подключение отвергается, а занять
+// адрес до конца пробы не может никто (kacho#3331) — иначе «остановленная»
+// служба оживала бы чужим слушателем.
 func stoppedAddr(t *testing.T) string {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := l.Addr().String()
-	_ = l.Close()
-	return addr
+	return privateloopback.Hold(t).Addr()
 }
 
 // silentAddr — слушатель службы, который принимает вызов и молчит до срока.

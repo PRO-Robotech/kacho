@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/upstreamfailure"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // policies — политики балансировки, какими край набирает соседей.
@@ -104,12 +105,9 @@ func TestUnresolvedAddressIsItsOwnCause(t *testing.T) {
 // разрешается, слушателя нет (служба остановлена). Та же величина 503 у
 // вызывающего, ДРУГАЯ причина на приборе.
 func TestStoppedServiceIsUnavailableNotUnresolved(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := l.Addr().String()
-	_ = l.Close() // адрес настоящий, слушателя за ним больше нет
+	// Адрес настоящий, слушателя за ним нет, и занять его до конца пробы не
+	// может никто (kacho#3331).
+	addr := privateloopback.Hold(t).Addr()
 	for pname, popts := range policies {
 		err := callThrough(t, addr, 2*time.Second, popts...)
 		if status.Code(err) != codes.Unavailable {
