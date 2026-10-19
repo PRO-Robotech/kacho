@@ -124,6 +124,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fga := fgaSubject(subject, h.anonSubjectID)
+	// kacho#3305: `sub` проверенного токена, не сводимый ни к анонимному классу, ни к
+	// субъекту известного вида порождённой формы, — отказ тем же вызовом, что у
+	// непрошедшего проверку токена, до любого Check и пересылки. Breakglass
+	// (verifier==nil) проверенного субъекта не имеет и этим суждением не задет.
+	if fga == "" && h.verifier != nil {
+		h.challenge(w, true)
+		return
+	}
 	switch p.route {
 	case routePing:
 		h.writePing(w, r)

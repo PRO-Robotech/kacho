@@ -147,6 +147,10 @@ func bearerReq(t *testing.T, h http.Handler, method, target string) *httptest.Re
 	return rec
 }
 
+// e2eSubject — `sub` токена сцены: служебная учётка порождённой формы, иначе
+// плоскость данных отвергла бы его до маршрута (kacho#3305).
+const e2eSubject = "sva000000000000000c1"
+
 // TestE2E_REG33IP_RevokeSafety_RealHandlerRealPGRealForward — полный revoke-путь на реальном
 // стеке handler+PG+HTTP-forward. Доказывает: (1) immediate-pull-after-push работает; (2) после
 // материализации v_get (allow) delete-on-materialized снимает push-grant в реальном PG;
@@ -181,7 +185,7 @@ func TestE2E_REG33IP_RevokeSafety_RealHandlerRealPGRealForward(t *testing.T) {
 
 	az := &e2eAuthz{vgetOpen: false} // v_get ещё НЕ материализован (как сразу после push нового repo)
 	h := dataplane.New(
-		e2eVerifier{subject: "sva-ci"}, az, e2eBackend{}, e2ePresence{declared: true}, fwd,
+		e2eVerifier{subject: e2eSubject}, az, e2eBackend{}, e2ePresence{declared: true}, fwd,
 		// repoReg — задан, но регистрацию сцены здесь не проверяем: этот кейс про мост
 		// revoke-safety, а не про первый push. presence=declared:true поэтому же —
 		// репозиторий сцены существует как ресурс, значит manifest-PUT идёт полосой
@@ -191,7 +195,7 @@ func TestE2E_REG33IP_RevokeSafety_RealHandlerRealPGRealForward(t *testing.T) {
 		"https://api.kacho.local/iam/token", "registry.kacho.local", logger,
 	)
 
-	const fgaSubject = "service_account:sva-ci" // fgaSubject("sva-ci")
+	const fgaSubject = "service_account:" + e2eSubject // fgaSubject(e2eSubject)
 	ctx := context.Background()
 
 	// ── шаг 1: PUSH manifest → 201, реальный push-grant записан в PG (detached-ctx, sync). ──

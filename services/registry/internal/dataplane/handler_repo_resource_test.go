@@ -45,7 +45,7 @@ func TestDataplane_DeclaredEmptyRepo_NeighbourWithRegistryCreate_Denied(t *testi
 	be := &fakeBackend{exists: map[string]bool{}}                     // тегов нет — движок репозитория не знает
 	pr := &fakePresence{declared: map[string]bool{"reg-A/app": true}} // но РЕСУРС заявлен (A)
 	rr := &fakeRepoReg{}
-	h := newTestHandlerP(&fakeVerifier{subject: "sva-evil"}, az, be, pr, fw, rr)
+	h := newTestHandlerP(&fakeVerifier{subject: saEvil}, az, be, pr, fw, rr)
 
 	for _, step := range []struct {
 		name, method, path string
@@ -67,7 +67,7 @@ func TestDataplane_DeclaredEmptyRepo_NeighbourWithRegistryCreate_Denied(t *testi
 
 	// Гейтом обязано быть право на ЭТОТ репозиторий, а не общее право реестра.
 	for _, c := range az.checkedObjects() {
-		require.Equal(t, checkCall{"service_account:sva-evil", relVUpdate, "registry_repository:reg-A/app"}, c,
+		require.Equal(t, checkCall{"service_account:" + saEvil, relVUpdate, "registry_repository:reg-A/app"}, c,
 			"заявленный репозиторий гейтится правом на себя")
 	}
 }
@@ -84,7 +84,7 @@ func TestDataplane_DeclaredEmptyRepo_Mount_UsesRepositoryVerb(t *testing.T) {
 	fw := &fakeForwarder{}
 	be := &fakeBackend{blobs: map[string]bool{"reg-A/src|sha256:layer": true}} // тегов у dst нет
 	pr := &fakePresence{declared: map[string]bool{"reg-A/dst": true}}          // dst заявлен другим
-	h := newTestHandlerP(&fakeVerifier{subject: "sva-evil"}, az, be, pr, fw, &fakeRepoReg{})
+	h := newTestHandlerP(&fakeVerifier{subject: saEvil}, az, be, pr, fw, &fakeRepoReg{})
 
 	rec := doReq(h, http.MethodPost, "/v2/reg-A/dst/blobs/uploads/?mount=sha256:layer&from=reg-A/src", true)
 	require.Equal(t, http.StatusForbidden, rec.Code, "mount в чужой заявленный dst отвергается")
@@ -98,7 +98,7 @@ func TestDataplane_RepoPresenceUnavailable_FailClosed(t *testing.T) {
 	az := &fakeAuthz{} // allow-all: отказ обязан прийти ДО authz-решения
 	fw := &fakeForwarder{}
 	pr := &fakePresence{err: errors.New("db down")}
-	h := newTestHandlerP(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, pr, fw, &fakeRepoReg{})
+	h := newTestHandlerP(&fakeVerifier{subject: saCI}, az, &fakeBackend{}, pr, fw, &fakeRepoReg{})
 
 	rec := doReq(h, http.MethodPost, "/v2/reg-A/app/blobs/uploads/", true)
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code, "предикат недоступен → fail-closed 503")
@@ -126,7 +126,7 @@ func TestDataplane_FirstPush_RegistrationFails_ClientGetsError_RetryReEmits(t *t
 	be := &fakeBackend{exists: map[string]bool{}}
 	pr := &fakePresence{} // регистрация не закоммичена ⇒ ресурса нет
 	rr := &fakeRepoReg{err: errors.New("outbox insert failed")}
-	h := newTestHandlerP(&fakeVerifier{subject: "sva-ci"}, az, be, pr, fw, rr)
+	h := newTestHandlerP(&fakeVerifier{subject: saCI}, az, be, pr, fw, rr)
 
 	first := doReq(h, http.MethodPut, "/v2/reg-A/app/manifests/v1", true)
 	require.NotEqual(t, http.StatusCreated, first.Code,
@@ -154,7 +154,7 @@ func TestDataplane_FirstPush_RegistrationFails_ClientGetsError_RetryReEmits(t *t
 func TestDataplane_FirstPush_NilRegistrar_FailClosed(t *testing.T) {
 	az := &fakeAuthz{allow: map[string]bool{"v_create registry_registry:reg-A": true}}
 	fw := &fakeForwarder{status: 201}
-	h := newTestHandlerFull(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, &fakePresence{},
+	h := newTestHandlerFull(&fakeVerifier{subject: saCI}, az, &fakeBackend{}, &fakePresence{},
 		fw, nil, &fakeRegistryLookup{}, &fakeUploadRecorder{}, &fakePushGrantRecorder{})
 
 	rec := doReq(h, http.MethodPut, "/v2/reg-A/app/manifests/v1", true)
@@ -174,7 +174,7 @@ func TestDataplane_RePush_ExistingResource_StreamsAndDoesNotReRegister(t *testin
 	pr := &fakePresence{declared: map[string]bool{"reg-A/app": true}}
 	rr := &fakeRepoReg{err: errors.New("registrar would fail if called")}
 	pgr := &fakePushGrantRecorder{}
-	h := newTestHandlerFull(&fakeVerifier{subject: "sva-ci"}, az, be, pr, fw, rr,
+	h := newTestHandlerFull(&fakeVerifier{subject: saCI}, az, be, pr, fw, rr,
 		&fakeRegistryLookup{}, &fakeUploadRecorder{}, pgr)
 
 	rec := doReq(h, http.MethodPut, "/v2/reg-A/app/manifests/v1", true)
@@ -199,7 +199,7 @@ func TestDataplane_FirstPush_ProjectLookupError_NoDegradedIntent(t *testing.T) {
 	fw := &fakeForwarder{status: 201}
 	rr := &fakeRepoReg{}
 	lk := &fakeRegistryLookup{err: errors.New("registry lookup down")}
-	h := newTestHandlerFull(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, &fakePresence{},
+	h := newTestHandlerFull(&fakeVerifier{subject: saCI}, az, &fakeBackend{}, &fakePresence{},
 		fw, rr, lk, &fakeUploadRecorder{}, &fakePushGrantRecorder{})
 
 	rec := doReq(h, http.MethodPut, "/v2/reg-A/app/manifests/v1", true)
@@ -226,7 +226,7 @@ func TestDataplane_FirstPush_NilLookup_EmitsWithoutProject(t *testing.T) {
 	az := &fakeAuthz{allow: map[string]bool{"v_create registry_registry:reg-A": true}}
 	fw := &fakeForwarder{status: 201}
 	rr := &fakeRepoReg{}
-	h := newTestHandlerFull(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, &fakePresence{},
+	h := newTestHandlerFull(&fakeVerifier{subject: saCI}, az, &fakeBackend{}, &fakePresence{},
 		fw, rr, nil, &fakeUploadRecorder{}, &fakePushGrantRecorder{})
 
 	rec := doReq(h, http.MethodPut, "/v2/reg-A/app/manifests/v1", true)

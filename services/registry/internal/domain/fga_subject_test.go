@@ -10,17 +10,50 @@ package domain
 
 import "testing"
 
+// Законные субъекты — порождённой продуктом формы (kaname pkg/generatedid): префикс
+// вида и 17 знаков crockford-base32. Форму здесь не пересказывает ни одно выражение:
+// её судит публичный предикат kaname, а значения ниже — его законные близнецы.
+const (
+	formUser       = "usr0123456789abcdefg"
+	formSA         = "sva0123456789abcdefg"
+	formOtherKind  = "grp0123456789abcdefg"
+	formAccessKey  = "ak-0123456789abcdefg"
+	formOtherKind2 = "cag_0123456789abcdefg"
+	// Порождённая форма, но префикс субъектного вида ей не вид: `sva_` + тело —
+	// не то, чем служба доступа чеканит учётку; `sv` + тело на `a…` — вид `sv`.
+	formSASepNotMinted = "sva_0123456789abcdefg"
+	formSVKind         = "sva0123456789abcdef"
+)
+
+// TestFGASubjectFromID — kacho#3305: тип субъекта выводится только из идентификатора
+// порождённой формы известного вида; всё прочее — "" (субъекта нет, вызывающий
+// обязан отказать), а не субъект какого-либо класса. Отрицательные кейсы меняют
+// ровно один факт против законного близнеца (форма либо вид).
 func TestFGASubjectFromID(t *testing.T) {
 	cases := []struct {
 		name string
 		id   string
 		want string
 	}{
-		{"user-prefix", "usr_alice", "user:usr_alice"},
-		{"service-account-prefix", "sva_ci", "service_account:sva_ci"},
+		{"user-of-the-generated-form", formUser, "user:" + formUser},
+		{"service-account-of-the-generated-form", formSA, "service_account:" + formSA},
 		{"empty", "", ""},
-		{"unknown-prefix-defaults-to-sa", "grp_admins", "service_account:grp_admins"},
-		{"legacy-dash-user", "usr-legacy", "user:usr-legacy"},
+		// Форма порождённого, но вид не субъектный — не субъект ни одного класса.
+		{"generated-form-group-kind-refused", formOtherKind, ""},
+		{"generated-form-access-key-kind-refused", formAccessKey, ""},
+		{"generated-form-grant-kind-refused", formOtherKind2, ""},
+		// Известный префикс, но не порождённая форма — отказ (одна правка против близнеца).
+		{"user-prefix-unknown-form-refused", "usr_alice", ""},
+		{"user-prefix-legacy-dash-refused", "usr-legacy", ""},
+		{"service-account-prefix-unknown-form-refused", "sva-ci", ""},
+		{"service-account-prefix-with-separator-not-minted-refused", formSASepNotMinted, ""},
+		{"two-letter-kind-sharing-the-prefix-refused", formSVKind, ""},
+		{"service-account-uppercase-refused", "SVA0123456789ABCDEFG", ""},
+		{"service-account-trailing-space-refused", formSA + " ", ""},
+		{"model-subject-spelling-refused", "service_account:" + formSA, ""},
+		// Прежний дефект: неизвестный префикс считался service_account.
+		{"unknown-prefix-refused-not-service-account", "grp_admins", ""},
+		{"breakglass-word-refused", "bootstrap", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -50,14 +83,16 @@ func TestFGASubjectForPrincipalID_Anon(t *testing.T) {
 		{"anon-id-configured-maps-to-the-anonymous-class", anonID, anonID, FGASubjectAnonymousClass},
 		{"anonymous-class-spelling", anonID, anonID, "system_class:anonymous"},
 		// A real SA is unaffected even when anon is enabled (resolves by prefix).
-		{"sa-unaffected-when-anon-enabled", "sva_ci", anonID, "service_account:sva_ci"},
-		{"user-unaffected-when-anon-enabled", "usr_alice", anonID, "user:usr_alice"},
-		// Anonymous DISABLED (empty anonID): even the anon-shaped id resolves as an
-		// ordinary principal (never silently becomes the class) — secure-by-default.
-		{"anon-disabled-empty-anonid-no-wildcard", anonID, "", "service_account:cid-registry-anon"},
+		{"sa-unaffected-when-anon-enabled", formSA, anonID, "service_account:" + formSA},
+		{"user-unaffected-when-anon-enabled", formUser, anonID, "user:" + formUser},
+		// Anonymous DISABLED (empty anonID): the anon id never silently becomes the
+		// class, and — not being of the generated form — is no principal either:
+		// "" (kacho#3305, refused by the caller), not service_account:<anon id>.
+		{"anon-disabled-empty-anonid-no-wildcard", anonID, "", ""},
 		{"empty-id-empty-anonid", "", "", ""},
 		// Anon enabled but a DIFFERENT sub arrives → not the anon principal.
-		{"different-sub-not-anon", "sva_other", anonID, "service_account:sva_other"},
+		{"different-sub-not-anon", formUser, anonID, "user:" + formUser},
+		{"different-sub-unknown-form-refused", "sva_other", anonID, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -76,8 +111,8 @@ func TestFGASubject_TwoEncodersAgree(t *testing.T) {
 		pType string
 		id    string
 	}{
-		{"user", "usr_alice"},
-		{"service_account", "sva_ci"},
+		{"user", formUser},
+		{"service_account", formSA},
 	}
 	for _, p := range pairs {
 		fromID := FGASubjectFromID(p.id)
