@@ -123,8 +123,9 @@ kaname:
   image:
     repository: docker.io/prorobotech/kaname
     # Выпуск службы v0.5.0 (93ad1b88, ствол PRO-Robotech/kaname): входное слово
-    # публикации `system_class:anonymous` (kaname#893, kacho#3287); содержит 81fa3e12 —
-    # прежний пин с классами субъектов kaname#829 (kacho#3251).
+    # публикации `system_class:anonymous` (kaname#893, kacho#3287); содержит efac3adf —
+    # вложенные правила ролей children (kaname#874, вливание kaname#879) — и 81fa3e12 —
+    # классы субъектов kaname#829 (kacho#3251).
     # Ту же ревизию называет пин модуля службы в go.mod: поднимаются вместе, их
     # согласие держит deploy/outsourced_image_pin_agrees_with_module_pin_test.go.
     tag: v0.5.0
