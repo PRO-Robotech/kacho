@@ -97,9 +97,10 @@ func TestConfig_TokenAcceptance_Defaults(t *testing.T) {
 	assert.Equal(t, "registry.kacho.local", c.ServiceAud)
 }
 
-// TestConfig_AnonymousSubject_DefaultDisabled (RG-1 D-7) — anonymous public pull is
-// OFF by default (secure-by-default): KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID unset ⇒
-// empty ⇒ the data-plane resolves no token to the class system_class:anonymous (anon disabled).
+// TestConfig_AnonymousSubject_DefaultDisabled (RG-1 D-7) — анонимный публичный pull
+// по умолчанию ВЫКЛЮЧЕН (безопасно по умолчанию): KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID
+// не задан ⇒ пусто ⇒ data-plane не сводит ни один токен к классу system_class:anonymous
+// (аноним выключен).
 func TestConfig_AnonymousSubject_DefaultDisabled(t *testing.T) {
 	var c Config
 	require.NoError(t, LoadInto(&c, baseEnv()))
@@ -108,9 +109,9 @@ func TestConfig_AnonymousSubject_DefaultDisabled(t *testing.T) {
 		"anonymous pull must be DISABLED by default (empty anon subject id, secure-by-default)")
 }
 
-// TestConfig_AnonymousSubject_Override (RG-1 D-7) — the anon principal id is
-// env-configurable (KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID) and MUST match kaname's
-// AnonymousClientID; the data-plane resolves a token with this sub to system_class:anonymous.
+// TestConfig_AnonymousSubject_Override (RG-1 D-7) — id анонимного принципала задаётся
+// окружением (KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID) и ОБЯЗАН совпадать с AnonymousClientID
+// в kaname; data-plane сводит токен с таким sub к system_class:anonymous.
 func TestConfig_AnonymousSubject_Override(t *testing.T) {
 	env := baseEnv()
 	env["KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID"] = "cid-registry-anon"

@@ -62,7 +62,7 @@ type Lifecycle int32
 // Значения Lifecycle (parity с proto-enum registry.v1.RepositoryLifecycle).
 const (
 	LifecycleUnspecified Lifecycle = iota // 0 — не задано (UNSPECIFIED → DURABLE by default)
-	LifecycleDurable                      // 1 — survives-empty (durable overlay)
+	LifecycleDurable                      // 1 — переживает опустение (durable overlay)
 	LifecycleEphemeral                    // 2 — register-on-first-push / auto-removed-when-empty
 )
 

@@ -129,7 +129,7 @@ func registryListWhere(q registry.ListQuery) ([]string, []any, error) {
 }
 
 // List возвращает реестры project'а cursor-пагинацией (created_at,id) ASC.
-// filter — whitelist `name=` (corelib filter.Parse; garbage → InvalidArgument);
+// filter — допускается только `name=` (corelib filter.Parse; мусор → InvalidArgument);
 // garbage page_token → InvalidArgument. Запрашивает pageSize+1 для next-cursor.
 func (r *RegistryRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Registry, string, error) {
 	if err := r.ready(); err != nil {

@@ -3,8 +3,8 @@
 
 package domain
 
-// fga_intent_test.go — repo register-intent carries the owning-project so the iam
-// reconciler can materialize per-object v_* on registry_repository.
+// fga_intent_test.go — register-intent репозитория несёт проект-владелец, чтобы
+// сверщик iam мог материализовать пообъектные v_* на registry_repository.
 //
 // Баг: register-on-first-push эмитил intent БЕЗ ParentProjectID → resource_mirror
 // строка репо пустая → IsContainedIn(project)=false → v_* НЕ материализуется → образы

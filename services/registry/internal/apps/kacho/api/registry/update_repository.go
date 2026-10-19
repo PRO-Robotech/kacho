@@ -159,8 +159,8 @@ func (u *UseCase) applyRepoUpdate(ctx context.Context, spec RepositoryConfigUpda
 
 // updateGovernanceIntents — public-grant governance для UpdateRepository: эмитится
 // ТОЛЬКО при явном visibility в mask (иначе visibility не тронут — governance неизменна).
-// PUBLIC → register "system_class:anonymous v_get" (B01); PRIVATE → unregister (B06 revoke). Presence
-// tuple конвергирует к финальному visibility по commit-порядку (B09, X03).
+// PUBLIC → register "system_class:anonymous v_get" (B01); PRIVATE → unregister (отзыв B06).
+// Наличие кортежа конвергирует к финальному visibility по commit-порядку (B09, X03).
 func updateGovernanceIntents(spec RepositoryConfigUpdate) []OutboxIntent {
 	if !spec.ApplyVisibility {
 		return nil
