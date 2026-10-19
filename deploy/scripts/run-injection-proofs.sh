@@ -160,6 +160,7 @@ tools/unreadfieldaudit/unread-field-audit-inject.sh
 #   gosec-subject-inject.sh                   код 0, но 166 с и правка рабочей копии
 # Остальные четыре из той же волны дали код 0 за 0–4 с и потому стоят в DECLARED.
 ELSEWHERE="
+deploy/scripts/own-front-san-pin-inject.sh|.github/workflows/e2e-newman.yml|нужны node и newman, которых в задании обхода нет; в задании plan e2e-newman.yml они ставятся шагом выше (setup-node, npm i -g newman@6)
 deploy/scripts/assert-scan-stubs-hide-nothing-inject.sh|.github/workflows/security-scan.yml|нужен trivy, которого в задании обхода нет; там он уже в PATH от trivy-action. Решение записано над самим шагом
 scripts/gosec-subject-inject.sh|.github/workflows/security-scan.yml|предмет доказательства — последний шаг задания gosec, и тот же пиннутый сканер ставится там шагом выше, поэтому свой экземпляр проба берёт из прогретого кэша модуля. Здесь она тянула бы его по сети вхолодную, шла 166 с и ПРАВИЛА БЫ рабочую копию, отказываясь стартовать после любого соседа, оставившего дерево грязным
 scripts/release/breaking-since-release-inject.sh|.github/workflows/ci.yaml|нужен buf, которого в задании обхода нет; в задании proto он ставится buf-setup-action

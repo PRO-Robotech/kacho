@@ -125,3 +125,10 @@ Dev-стенд Kachō (kind + Helm + Postgres + ingress) + e2e.
 - e2e/newman гоняются против REST api-gateway. Порт задаётся `GW_PORT` (умолчание 18080)
   и его приходится менять, когда умолчание занято посторонним слушателем: проба посева
   тогда получает чужой ответ и честно отказывается устанавливать посадку края.
+  Собственный фронт службы доступа под транспортом прогонщики (`newman-e2e.sh`,
+  `newman-parallel.sh`) адресуют ИМЕНЕМ из SAN его листа, а не IP проброса (kacho#3315):
+  имя и УЦ — из листа посадки (`scripts/own-front-tls-name.py`), имя пинится на петлю
+  `scripts/lib/pin-resolve.cjs` (форма `curl --resolve`), цепочка проверяется
+  `--ssl-extra-ca-certs`; имени в SAN нет — адрес не инъектируется («условие не создано»).
+  Доказательство — `scripts/own-front-san-pin-inject.sh`, решение на посадках —
+  `scripts/assert-own-front-leaf-decision.sh`.
