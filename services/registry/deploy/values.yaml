@@ -107,6 +107,22 @@ service:
     httpsPort: 443
     loadBalancerIP: ""    # request a specific VIP (empty → provider assigns)
     loadBalancerClass: "" # e.g. Cilium/io class if the provider needs it
+    # ─── Адрес клиента до пода — Local (kacho#3330) ──────────────────────────
+    # TLS-сайдкар пересылает службе доступа адрес клиента (X-Forwarded-For =
+    # $remote_addr) — ключ темпа анонимной выдачи токена на источник. При Cluster
+    # (умолчание Kubernetes) узел подменяет источник своим адресом: все клиенты,
+    # вошедшие через узел, — один источник. При включённом сайдкаре иное значение —
+    # отказ установки (registry.requireSidecarForwarderIdentity).
+    # ЦЕНА Local:
+    #   - трафик принимают только узлы с подом реестра; балансировщик узнаёт их
+    #     проверкой здоровья (healthCheckNodePort службы), узлы без пода выпадают
+    #     из пула — это ожидаемо, а не авария;
+    #   - распределение — по узлам, не по подам: при replicaCount=1 весь трафик
+    #     идёт на один узел; при нескольких подах на узле нагрузка между узлами
+    #     неравна;
+    #   - переезд пода на другой узел даёт окно отказов до следующей проверки
+    #     здоровья балансировщика (интервал проверки задаёт его аннотация).
+    externalTrafficPolicy: Local
     annotations: {}
     # ─── TLS-терминирующий nginx sidecar для data-plane ──────────────────────
     # docker требует https для non-localhost registry. Data-plane pod остаётся

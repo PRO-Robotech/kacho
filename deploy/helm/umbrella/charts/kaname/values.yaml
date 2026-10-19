@@ -377,9 +377,33 @@ config:
     #
     # `issuer` — `iss` + realm в WWW-Authenticate; должен совпадать с realm'ом
     # data-plane реестра (KACHO_REGISTRY_TOKEN_REALM).
+    #
+    # АНОНИМНЫЙ ПОТОК (kaname#495, #928, #930; kacho#3330). `anonymousClientId` —
+    # публичный принципал анонимного чтения; пусто — поток выключен, ни одна из
+    # трёх ручек в файл настроек не попадает. Включённый поток требует:
+    #   - `anonymousPerSourcePerSec` — темп на источник, на реплику, сверх — 429;
+    #   - `anonymousForwarderSan` — точный URI SAN клиентского листа сайдкара
+    #     реестра: только у пира с этим проверенным листом служба берёт адрес
+    #     клиента из X-Forwarded-For;
+    #   - `mtls.registryToken: true` и `mtls.registryTokenClientAuthMode:
+    #     optional-mutual` (корень — внутренний УЦ серверного секрета).
+    # Без любого — отказ рендера (`kaname.requireAnonymousRegistryLane`).
+    #
+    # ТЕМП 10 — предварительное число, не замер: `docker pull` берёт один токен на
+    # репозиторий на срок токена, 10 в секунду с одного адреса — 600 в минуту на
+    # реплику; то же число, что у соседнего темпа на источник
+    # (authn.clientToken.authorizePerSourcePerSec). Перемерить на стенде до
+    # включения потока в профиле (kacho#3303).
+    # ПЕРЕСЫЛЬЩИК — учётка `kacho-registry` в пространстве, которое объявляет
+    # клиентский лист реестра (`registry.mtls.spiffe.namespace`, `kacho`), в
+    # домене доверия установки (`mtls.spiffe.trustDomain` ниже, `kacho.cloud`):
+    # ровно его URI SAN выписывает `services/registry/deploy/templates/certificate.yaml`.
     registryToken:
       issuer: ""
       service: ""
+      anonymousClientId: ""
+      anonymousPerSourcePerSec: 10
+      anonymousForwarderSan: "spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
   repository:
     postgres:
       # Приведён к НАИМЕНЬШЕМУ пределу, который эта служба может встретить.

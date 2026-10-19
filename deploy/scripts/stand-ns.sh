@@ -23,6 +23,11 @@
 #   STAND_KANAME_BRANCH=<ветка> [STAND_KANAME_REF=<sha40>] (up, run) — служба доступа
 #   ставится образом этой ветки, а не пином профиля (kacho#3312; раздел «ОБРАЗ
 #   ВЕТКИ СЛУЖБЫ ДОСТУПА» ниже)
+#   STAND_VALUES=<файл>[:<файл>…] (up, run) — накладки значений ЭТОГО стенда поверх
+#   цепочки и слоёв стенда: условие пробы, которого профили репозитория не
+#   объявляют (kacho#3330 — анонимный поток и сайдкар реестра). Живёт только в
+#   пространстве стенда и снимается вместе с ним; файл обязан существовать до
+#   первой записи в кластер.
 #
 # Зовут его цели `make -C deploy stand-ns-up | stand-ns-down | stand-ns-run | stand-ns-census`.
 #
@@ -1354,6 +1359,16 @@ cmd_up() {
   bash "$HERE/helm-umbrella-deps.sh" >/dev/null || die "зависимости зонтичного чарта не материализованы" 2
   local extra_base=(-f "$work/images.yaml" -f "$work/stand.yaml")
   [ -z "$KANAME_IMAGE_REF" ] || extra_base+=(-f "$work/kaname.yaml")
+  local sv
+  if [ -n "${STAND_VALUES:-}" ]; then
+    local IFS_SAVE="$IFS"; IFS=:
+    for sv in $STAND_VALUES; do
+      [ -f "$sv" ] || { IFS="$IFS_SAVE"; die "накладки стенда «$sv» (STAND_VALUES) нет — ни одной записи не сделано" 2; }
+      extra_base+=(-f "$sv")
+      log "накладка стенда: $sv"
+    done
+    IFS="$IFS_SAVE"
+  fi
   # shellcheck disable=SC2206 # цепочка — слова `-f <файл>`, разбор по словам и нужен
   local chain_args=($chain)
   # Предрендер ДО записи: отказ переноса и заявка на том без класса видны раньше,

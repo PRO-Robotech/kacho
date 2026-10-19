@@ -18,7 +18,14 @@
 //     релиз упёрся бы во владение чужого, а общий корень сделал бы листы
 //     тестового стенда доверенными рабочему;
 //   - входы (`Ingress`) с хостами рабочего стенда: на кластере с контроллером
-//     входа они делили бы хост с рабочим стендом.
+//     входа они делили бы хост с рабочим стендом;
+//   - внешние службы (`LoadBalancer`, `NodePort`): квота пространства стенда
+//     их запрещает (`services.loadbalancers: "0"`, `services.nodeports: "0"`),
+//     и тестовый стенд не заводит адресов вне кластера. Они приводятся к
+//     `ClusterIP` с теми же селектором и портами — поды за ними (сайдкар
+//     плоскости данных реестра, kacho#3330) достижимы изнутри кластера, а поля
+//     внешней службы (политика внешнего трафика, адрес и класс
+//     балансировщика, порты узлов) снимаются: у ClusterIP API их отвергает.
 //
 // Перенос делает пост-обработчик рендера helm (`deploy/helm/plugins/kacho-stand-ns`)
 // над РАЗОБРАННЫМ YAML: правятся узлы-значения, а не текст, и только строки.
@@ -79,13 +86,16 @@ type Census struct {
 	IssuerRefs       int
 	CARootsRenamed   int
 	IngressesDropped int
+	ExternalServices int // внешних служб, приведённых к ClusterIP
 	OperatorLeaves   int // листов операторской личности, сверенных с кругом края
 }
 
 func (c Census) String() string {
 	return fmt.Sprintf("документов %d; адресов соседей перенесено %d; издателей CA переименовано %d, "+
-		"ссылок на них %d; корней CA %d; входов снято %d; листов оператора сверено с кругом края %d",
-		c.Documents, c.AddressRewrites, c.IssuersRenamed, c.IssuerRefs, c.CARootsRenamed, c.IngressesDropped, c.OperatorLeaves)
+		"ссылок на них %d; корней CA %d; входов снято %d; внешних служб приведено к ClusterIP %d; "+
+		"листов оператора сверено с кругом края %d",
+		c.Documents, c.AddressRewrites, c.IssuersRenamed, c.IssuerRefs, c.CARootsRenamed, c.IngressesDropped,
+		c.ExternalServices, c.OperatorLeaves)
 }
 
 var dnsName = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
@@ -162,6 +172,9 @@ func Relocate(in io.Reader, out io.Writer, opts Options) (Census, error) {
 		case d.kind == "Ingress":
 			census.IngressesDropped++
 			continue
+		case d.kind == "Service" && externalService(child(d.root, "spec")):
+			toClusterIP(child(d.root, "spec"))
+			census.ExternalServices++
 		case d.kind == "ClusterIssuer":
 			setScalar(meta, "name", issuers[d.name])
 			label(meta, opts.Namespace)
@@ -294,6 +307,46 @@ func rewriteAddresses(n *yaml.Node, ns string) int {
 	}
 	walk(n, false)
 	return count
+}
+
+// externalService — служба выходит за кластер: LoadBalancer либо NodePort.
+func externalService(spec *yaml.Node) bool {
+	t := scalar(spec, "type")
+	return t == "LoadBalancer" || t == "NodePort"
+}
+
+// externalOnlyFields — поля спецификации, которые API принимает только у
+// внешней службы.
+var externalOnlyFields = map[string]bool{
+	"externalTrafficPolicy": true, "healthCheckNodePort": true, "loadBalancerIP": true,
+	"loadBalancerClass": true, "loadBalancerSourceRanges": true, "allocateLoadBalancerNodePorts": true,
+}
+
+// toClusterIP — внешняя служба становится ClusterIP: тип, поля внешней службы
+// и порты узлов снимаются; селектор и порты остаются.
+func toClusterIP(spec *yaml.Node) {
+	setScalar(spec, "type", "ClusterIP")
+	var kept []*yaml.Node
+	for i := 0; i+1 < len(spec.Content); i += 2 {
+		if !externalOnlyFields[spec.Content[i].Value] {
+			kept = append(kept, spec.Content[i], spec.Content[i+1])
+		}
+	}
+	spec.Content = kept
+	if ports := child(spec, "ports"); ports != nil && ports.Kind == yaml.SequenceNode {
+		for _, p := range ports.Content {
+			if p.Kind != yaml.MappingNode {
+				continue
+			}
+			var pk []*yaml.Node
+			for i := 0; i+1 < len(p.Content); i += 2 {
+				if p.Content[i].Value != "nodePort" {
+					pk = append(pk, p.Content[i], p.Content[i+1])
+				}
+			}
+			p.Content = pk
+		}
+	}
 }
 
 func child(m *yaml.Node, key string) *yaml.Node {

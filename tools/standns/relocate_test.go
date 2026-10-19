@@ -162,3 +162,85 @@ func TestRelocateRefusesWhatItCannotMove(t *testing.T) {
 		})
 	}
 }
+
+// TestRelocateTurnsExternalServicesIntoClusterIP — квота стенда внешних служб не
+// допускает: LoadBalancer и NodePort приводятся к ClusterIP с теми же
+// селектором и портами, поля внешней службы снимаются; ClusterIP — близнец,
+// не тронут.
+func TestRelocateTurnsExternalServicesIntoClusterIP(t *testing.T) {
+	const in = `apiVersion: v1
+kind: Service
+metadata:
+  name: registry-lb
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: "Local"
+  loadBalancerIP: "203.0.113.7"
+  loadBalancerClass: "io.cilium/l2"
+  selector:
+    app: registry
+  ports:
+    - name: dataplane-https
+      port: 443
+      targetPort: dp-tls
+      nodePort: 30443
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: front
+spec:
+  type: NodePort
+  externalTrafficPolicy: Cluster
+  selector:
+    app: front
+  ports:
+    - port: 80
+      nodePort: 30080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+spec:
+  selector:
+    app: registry
+  ports:
+    - port: 9090
+`
+	out, c, err := relocate(t, in, Options{Namespace: "t1-x", CANamespace: "cm"})
+	if err != nil {
+		t.Fatalf("законный стенд отвергнут: %v", err)
+	}
+	if c.ExternalServices != 2 {
+		t.Errorf("внешних служб приведено %d, ждали 2", c.ExternalServices)
+	}
+	for _, d := range docsOf(t, out) {
+		spec, _ := d["spec"].(map[string]any)
+		name := d["metadata"].(map[string]any)["name"]
+		if typ, _ := spec["type"].(string); typ == "LoadBalancer" || typ == "NodePort" {
+			t.Errorf("%v: внешняя служба пережила перенос (type %s)", name, typ)
+		}
+		for f := range externalOnlyFields {
+			if _, has := spec[f]; has {
+				t.Errorf("%v: поле внешней службы %s пережило перенос", name, f)
+			}
+		}
+		if sel, _ := spec["selector"].(map[string]any); len(sel) == 0 {
+			t.Errorf("%v: селектор потерян", name)
+		}
+		for _, p := range spec["ports"].([]any) {
+			if _, has := p.(map[string]any)["nodePort"]; has {
+				t.Errorf("%v: порт узла пережил перенос", name)
+			}
+		}
+		if name == "registry" {
+			if _, has := spec["type"]; has {
+				t.Errorf("ClusterIP-близнец тронут: %v", spec)
+			}
+		}
+	}
+	if !strings.Contains(out, "targetPort: dp-tls") {
+		t.Errorf("порт службы перед сайдкаром потерян:\n%s", out)
+	}
+}

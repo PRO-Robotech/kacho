@@ -298,3 +298,37 @@ deploy/own_lane_memory_budget_test.go.
 {{- define "kaname.identity.consoleOrigin" -}}
 {{- .appBaseURL | default (printf "https://%s.%s" .appSubdomain .domain) -}}
 {{- end -}}
+
+{{/*
+kaname.requireAnonymousRegistryLane — АНОНИМНЫЙ ПОТОК ДОКЕРНОЙ ПОЛОСЫ
+СОБИРАЕТСЯ ТОЛЬКО ЦЕЛИКОМ (kacho#3330; kaname#928, kaname#930).
+
+Поток поднят — `config.apiServer.registryToken.anonymousClientId` непуст
+(слушатель полосы у этой копии есть всегда). Тогда служба не стартует без
+темпа на источник, без доверенного пересыльщика (клиентский лист сайдкара
+реестра) и без слушателя выдачи под TLS, ЗАПРАШИВАЮЩЕГО клиентский сертификат
+(`optional-mutual`) по корню внутреннего УЦ — корень этот шаблон развёртывания
+берёт из серверного секрета сам. Отказ приходит на установке, а не падающим
+подом. Форму значений судит страж старта службы.
+*/}}
+{{- define "kaname.requireAnonymousRegistryLane" -}}
+{{- $rt := ((.Values.config).apiServer).registryToken | default dict -}}
+{{- if $rt.anonymousClientId -}}
+{{- $missing := list -}}
+{{- if not $rt.anonymousPerSourcePerSec -}}
+{{- $missing = append $missing "  kaname.config.apiServer.registryToken.anonymousPerSourcePerSec — анонимных запросов токена в секунду на источник, на реплику; сверх — 429." -}}
+{{- end -}}
+{{- if not $rt.anonymousForwarderSan -}}
+{{- $missing = append $missing "  kaname.config.apiServer.registryToken.anonymousForwarderSan — точный URI SAN клиентского листа сайдкара реестра (spiffe://<домен доверия>/ns/<пространство>/sa/kacho-registry)." -}}
+{{- end -}}
+{{- if not (and .Values.mtls.enable (dig "registryToken" .Values.mtls.httpListeners .Values.mtls)) -}}
+{{- $missing = append $missing "  kaname.mtls.enable=true и kaname.mtls.registryToken=true — слушатель выдачи под TLS: без него сертификата пересыльщика не спрашивают." -}}
+{{- end -}}
+{{- if ne (toString (.Values.mtls.registryTokenClientAuthMode | default "")) "optional-mutual" -}}
+{{- $missing = append $missing (printf "  kaname.mtls.registryTokenClientAuthMode=optional-mutual — сейчас %q: слушатель выдачи обязан запрашивать клиентский сертификат и проверять предъявленный." (toString (.Values.mtls.registryTokenClientAuthMode | default ""))) -}}
+{{- end -}}
+{{- if $missing -}}
+{{- fail (printf "kaname: анонимный поток докерной полосы включён (kaname.config.apiServer.registryToken.anonymousClientId), а его условия не объявлены — %d.\n\nБез них страж старта службы её не поднимает: адрес клиента для темпа на источник берётся только у проверенного пересыльщика, иначе все клиенты за сайдкаром реестра делят один предел.\n\n%s" (len $missing) (join "\n" $missing)) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

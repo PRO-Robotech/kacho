@@ -13,7 +13,9 @@ registry-iam-jwks-unify — sidecar БОЛЬШЕ НЕ проксирует `/.we
 фиксирован (один pod). Рендерится только при включённом LB + TLS-sidecar.
 */}}
 {{- if and .Values.service.dataplaneLB.enabled .Values.service.dataplaneLB.tlsSidecar.enabled }}
+{{- include "registry.requireSidecarForwarderIdentity" . }}
 {{- $s := .Values.service.dataplaneLB.tlsSidecar }}
+{{- $cli := include "registry.sidecarClientDir" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -50,6 +52,20 @@ data:
         proxy_ssl_trusted_certificate /etc/registry-ca/internal-ca.crt;
         proxy_ssl_name {{ regexReplaceAll ":[0-9]+$" $s.iamTokenShimUpstream "" }};
         proxy_ssl_server_name on;
+        # ДОВЕРЕННЫЙ ПЕРЕСЫЛЬЩИК (kacho#3330, kaname#930). Сайдкар предъявляет
+        # службе доступа клиентский лист реестра (URI SAN
+        # spiffe://<домен доверия>/ns/<пространство>/sa/kacho-registry,
+        # kacho-internal-ca, clientAuth), и только у пира с этим проверенным
+        # листом служба берёт адрес клиента из X-Forwarded-For — ключ темпа
+        # анонимной выдачи на источник.
+        proxy_ssl_certificate     {{ $cli }}/tls.crt;
+        proxy_ssl_certificate_key {{ $cli }}/tls.key;
+        # ЗАГОЛОВОК ПЕРЕЗАПИСЫВАЕТСЯ, а не дополняется. Служба читает ОДНО значение;
+        # `$proxy_add_x_forwarded_for` дописал бы адрес к присланному клиентом, и
+        # клиент выбирал бы себе ключ темпа сам. `$remote_addr` — пир сайдкара,
+        # то есть адрес клиента только при externalTrafficPolicy Local у службы
+        # плоскости данных (иначе — адрес узла; страж в _helpers.tpl).
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-Proto https;
       }

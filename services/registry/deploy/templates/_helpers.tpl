@@ -145,3 +145,41 @@ registry.trustDomain — ДОМЕН ДОВЕРИЯ установки, ОДНИ�
 {{- $sp := (.Values.mtls | default dict).spiffe | default dict -}}
 {{- $sp.trustDomain | default "kacho.cloud" -}}
 {{- end -}}
+
+{{/*
+registry.sidecarClientDir — каталог клиентской пары реестра в контейнере
+TLS-сайдкара плоскости данных. Одно написание на два читателя: том в
+deployment.yaml и `proxy_ssl_certificate` в registry-dataplane-nginx-cm.yaml.
+*/}}
+{{- define "registry.sidecarClientDir" -}}/etc/registry-client{{- end -}}
+
+{{/*
+registry.requireSidecarForwarderIdentity — TLS-САЙДКАР ПЛОСКОСТИ ДАННЫХ БЕЗ
+КЛИЕНТСКОЙ ПАРЫ И С АДРЕСОМ УЗЛА НЕ СОБИРАЕТСЯ (kacho#3330, kaname#930).
+
+Сайдкар — единственный пересыльщик точки анонимной выдачи токена: служба
+доступа берёт адрес клиента из X-Forwarded-For только у пира, предъявившего
+проверенный клиентский лист с объявленным URI SAN. Без пары (mtls выключен либо
+секрет клиентского листа не назван) служба его не узнаёт, и все клиенты за ним
+делят один темп. С политикой внешнего трафика, отличной от `Local`, адрес
+источника на узле подменяется адресом узла, и сайдкар пишет в заголовок его —
+тот же исход. Оба случая молчаливы на стенде, поэтому — отказ установки.
+*/}}
+{{- define "registry.requireSidecarForwarderIdentity" -}}
+{{- $lb := .Values.service.dataplaneLB -}}
+{{- if and $lb.enabled $lb.tlsSidecar.enabled -}}
+{{- $missing := list -}}
+{{- if not .Values.mtls.enable -}}
+{{- $missing = append $missing "  mtls.enable=true — клиентский лист реестра (kacho-internal-ca, clientAuth) выпускается только при нём." -}}
+{{- end -}}
+{{- if not .Values.mtls.clientSecretName -}}
+{{- $missing = append $missing "  mtls.clientSecretName — секрет клиентского листа, который сайдкар предъявляет службе доступа на /iam/token." -}}
+{{- end -}}
+{{- if ne (toString ($lb.externalTrafficPolicy | default "")) "Local" -}}
+{{- $missing = append $missing (printf "  service.dataplaneLB.externalTrafficPolicy=Local — сейчас %q: при Cluster адрес клиента на узле подменяется адресом узла." (toString ($lb.externalTrafficPolicy | default ""))) -}}
+{{- end -}}
+{{- if $missing -}}
+{{- fail (printf "registry: TLS-сайдкар плоскости данных не собирается — %d.\n\nСайдкар пересылает службе доступа адрес клиента на /iam/token, и служба верит ему только по проверенному клиентскому листу реестра; без листа или с адресом узла все клиенты делят один темп анонимной выдачи.\n\n%s" (len $missing) (join "\n" $missing)) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

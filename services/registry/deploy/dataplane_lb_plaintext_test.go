@@ -23,11 +23,13 @@ import (
 )
 
 // lbSets — минимальный набор, поднимающий внешний VIP с TLS-терминацией в поде
-// (боевая форма fe3455).
+// (боевая форма fe3455). mtls — условие сборки сайдкара: он предъявляет службе
+// доступа клиентский лист реестра (kacho#3330).
 var lbSets = []string{
 	"zot.auth.password=" + renderPassword,
 	"service.dataplaneLB.enabled=true",
 	"service.dataplaneLB.tlsSidecar.enabled=true",
+	"mtls.enable=true",
 }
 
 // TestDataplaneLB_PublishesNoPlaintextPortByDefault — при включённом VIP

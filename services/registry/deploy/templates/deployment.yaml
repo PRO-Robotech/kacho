@@ -54,6 +54,12 @@ spec:
         # этот файл не накладывает (offline-рендер, чужой реестр), получает "unset" —
         # и тогда привязки нет, что честно: привязывать не к чему.
         kacho.cloud/image-id: {{ dig "kachoImageIds" "registry" "unset" (.Values.global | default dict) | quote }}
+        {{- if and .Values.service.dataplaneLB.enabled .Values.service.dataplaneLB.tlsSidecar.enabled }}
+        # ОТПЕЧАТОК НАСТРОЕК САЙДКАРА. Карта монтируется томом, а nginx читает её
+        # только при старте: без отпечатка правка карты не перекатывает под, и
+        # сайдкар исполняет прежние настройки при новой карте.
+        checksum/dataplane-nginx: {{ include (print $.Template.BasePath "/registry-dataplane-nginx-cm.yaml") . | sha256sum }}
+        {{- end }}
       labels:
         app: {{ .Values.name }}
     spec:
@@ -428,6 +434,13 @@ spec:
             # JWKS-леаф iam (условие рендера тома совпадает с условием sidecar'а).
             - name: internal-ca
               mountPath: /etc/registry-ca
+              readOnly: true
+            # Клиентский лист реестра — предъявляется службе доступа на хопе
+            # `/iam/token` (доверенный пересыльщик, kacho#3330). Тот же секрет,
+            # что у рёбер процесса к службе доступа; без mtls сайдкар не
+            # собирается (registry.requireSidecarForwarderIdentity).
+            - name: mtls-client
+              mountPath: {{ include "registry.sidecarClientDir" . | quote }}
               readOnly: true
         {{- end }}
       volumes:

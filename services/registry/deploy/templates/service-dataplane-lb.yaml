@@ -35,6 +35,11 @@ metadata:
   {{- end }}
 spec:
   type: LoadBalancer
+  {{- with .Values.service.dataplaneLB.externalTrafficPolicy }}
+  # Адрес клиента доходит до пода только при Local (kacho#3330): при Cluster
+  # узел подменяет источник своим адресом. Цена — values.yaml у ручки.
+  externalTrafficPolicy: {{ . | quote }}
+  {{- end }}
   {{- with .Values.service.dataplaneLB.loadBalancerIP }}
   loadBalancerIP: {{ . | quote }}
   {{- end }}
