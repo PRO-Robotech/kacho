@@ -105,6 +105,13 @@ Dev-стенд Kachō (kind + Helm + Postgres + ingress) + e2e.
   способностью — `scripts/stand-ns-isolation-probe.sh NS` командой прогона. REF может
   отставать от рабочей копии, только если между ними не менялся ни один вход сборки
   образов — правило выводится из Dockerfile дерева (`tools/standns/inputs.go`).
+- Копия чарта службы доступа в зонте (`helm/umbrella/charts/kaname`) сверяется с чартом
+  службы по пину go.mod (kacho#3314): каждая ручка процесса чарта службы (ключ файла
+  настроек, переменная `KANAME_*`) есть у копии либо названа с причиной в
+  `kaname-chart-differences.yaml` (`differences`) — `kaname_subchart_knob_parity_test.go`
+  (перепись на другом пине — `KACHO_KANAME_OWN_CHART=<каталог чарта>`); каждая величина
+  подчарта, объявленная зонтом, доходит до рендера подчарта на каждой цепочке stacks.txt
+  либо названа в `overrides` — `kaname_subchart_override_reaches_render_test.go` (тег helmcharts).
 - Database-per-service — отдельная Postgres-схема `kacho_<domain>` на сервис.
 - e2e/newman гоняются против REST api-gateway. Порт задаётся `GW_PORT` (умолчание 18080)
   и его приходится менять, когда умолчание занято посторонним слушателем: проба посева

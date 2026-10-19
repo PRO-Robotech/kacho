@@ -92,6 +92,23 @@ data:
       {{- if .Values.ports.loginLane }}
       login-lane-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.loginLane | quote }}
       {{- end }}
+      {{- /* ВЫКЛЮЧЕНИЕ ПОВЕРХНОСТИ ПУСТЫМ АДРЕСОМ — та же ручка, что у чарта службы
+      (kacho#2477; перенесена kacho#3314, гейт kaname_subchart_knob_parity_test.go).
+      Адреса метрик, набора ключей проверки подписи и полосы токена реестра
+      приходят НЕПУСТЫМ умолчанием процесса; выключить поверхность можно ровно
+      одним способом — объявить адрес пустым. Ветвь по `hasKey`, а не по
+      значению: `if` не отличает «не объявлено» от «объявлено пустым». Ключ,
+      которого профиль не назвал, не рендерится, и адрес остаётся умолчанием
+      процесса — второго места об умолчании здесь нет. */}}
+      {{- $as := .Values.config.apiServer | default dict }}
+      {{- if hasKey $as "metricsEndpoint" }}
+      metrics-endpoint: {{ $as.metricsEndpoint | quote }}
+      {{- end }}
+      {{- $jp := $as.jwksProxy | default dict }}
+      {{- if hasKey $jp "endpoint" }}
+      jwks-proxy:
+        endpoint: {{ $jp.endpoint | quote }}
+      {{- end }}
       {{- $rt := .Values.config.apiServer.registryToken | default dict }}
       {{- /* Адресат полосы ВЫВОДИТСЯ из объявленной стороны реестра — одно
            объявление на обе стороны, см. kaname.laneServiceAud. Прежде здесь
@@ -99,10 +116,14 @@ data:
            умолчанием процесса: второе объявление того же предмета, молча
            расходившееся с именем, которое реестр называет докер-клиенту. */}}
       {{- $laneService := include "kaname.laneServiceAud" . }}
-      {{- if or $rt.issuer $laneService }}
+      {{- if or $rt.issuer $laneService (hasKey $rt "endpoint") }}
       # Docker Registry v2 token shim. `service` — адресат, которому полоса чеканит
       # `aud`; расхождение с тем, что docker шлёт в `?service=`, ломает login (#321).
       registry-token:
+        {{- if hasKey $rt "endpoint" }}
+        # ВНЕШНЕ ДОСЯГАЕМАЯ поверхность выдачи. Пустой адрес выключает её вовсе.
+        endpoint: {{ $rt.endpoint | quote }}
+        {{- end }}
         {{- with $rt.issuer }}
         issuer: {{ . | quote }}
         {{- end }}
@@ -112,9 +133,17 @@ data:
       {{- end }}
 
     repository:
+      # Вид хранилища — тот же литерал, что у чарта службы (kacho#3314).
+      type: POSTGRES
       postgres:
         url: {{ printf "postgres://%s@%s:%v/%s" .Values.db.user .Values.db.host .Values.db.port .Values.db.name | quote }}
         max-conns: {{ default 0 .Values.config.repository.postgres.maxConns }}
+        {{- /* ЧИТАЮЩАЯ РЕПЛИКА — необязательная исходящая полоса, ручка чарта службы
+        (kacho#2474; перенесена kacho#3314). Незаданный адрес — «реплики нет»,
+        чтения уходят в основной узел; ключ тогда не рендерится. */}}
+        {{- with .Values.config.repository.postgres.slaveUrl }}
+        slave-url: {{ . | quote }}
+        {{- end }}
         # ВЫВОДИТСЯ ИЗ ТОГО ЖЕ ЗНАЧЕНИЯ, что рендерит `spec.replicas` у Deployment.
         #
         # Предел соединений у базы ОБЩИЙ на все реплики, а пул объявлен на ОДНУ:
@@ -570,9 +599,41 @@ data:
     означающего «без срока», в словаре ручки не существует вовсе — непозитивную
     величину отвергает страж старта, называя ключ. */}}
     {{- with $inv := .Values.config.invite | default dict }}
-    {{- with $inv.ttl }}
+    {{- /* ─── ОГРАНИЧЕНИЕ ЧАСТОТЫ ПИСЕМ НА АДРЕС (приёмка ID-MAIL-1, Р14, MAIL-42/43;
+    ручка чарта службы, перенесена kacho#3314) ─────────────────────────────
+
+    Страж рендера тот же, что у чарта службы: непозитивная величина отвергается
+    до посадки с именем ручки. Ключи отдаются только объявленными: молчание
+    профиля — согласие с умолчанием процесса, а не «без ограничения». */}}
+    {{- $lim := $inv.mailRateLimit | default dict }}
+    {{- $maxDeclared := hasKey $lim "maxPerWindow" }}
+    {{- $winDeclared := hasKey $lim "window" }}
+    {{- if $maxDeclared }}
+    {{- $max := $lim.maxPerWindow }}
+    {{- if or (not (or (kindIs "int64" $max) (kindIs "float64" $max) (kindIs "int" $max))) (le (int $max) 0) }}
+    {{- fail (printf "kaname: `config.invite.mailRateLimit.maxPerWindow` = %v — ожидается положительное целое число писем одному адресу за окно. Значения «без ограничения» не существует: профиль вправе изменить величину, но не снять её (решение Р14 приёмки ID-MAIL-1, MAIL-43)" $max) }}
+    {{- end }}
+    {{- end }}
+    {{- if $winDeclared }}
+    {{- $win := toString $lim.window }}
+    {{- if or (not (regexMatch "^([0-9]+(ns|us|ms|s|m|h))+$" $win)) (regexMatch "^(0+(ns|us|ms|s|m|h))+$" $win) }}
+    {{- fail (printf "kaname: `config.invite.mailRateLimit.window` = %q — ожидается положительная длительность окна (`1h`, `30m`). Значения «без ограничения» не существует: профиль вправе изменить величину, но не снять её (решение Р14 приёмки ID-MAIL-1, MAIL-43)" $win) }}
+    {{- end }}
+    {{- end }}
+    {{- if or $inv.ttl $maxDeclared $winDeclared }}
     invite:
+      {{- with $inv.ttl }}
       ttl: {{ . | quote }}
+      {{- end }}
+      {{- if or $maxDeclared $winDeclared }}
+      mail-rate-limit:
+        {{- if $maxDeclared }}
+        max-per-window: {{ int $lim.maxPerWindow }}
+        {{- end }}
+        {{- if $winDeclared }}
+        window: {{ $lim.window | quote }}
+        {{- end }}
+      {{- end }}
     {{- end }}
     {{- end }}
 
