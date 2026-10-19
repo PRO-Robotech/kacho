@@ -320,7 +320,14 @@ type Registry struct {
 	Labels map[string]string `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Output-only: базовый OCI-endpoint namespace, напр. registry.kacho.local/<id>.
 	Endpoint string `protobuf:"bytes,7,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	// Output-only: число repositories в namespace (проекция из zot, не источник истины).
+	// Output-only: число репозиториев реестра на момент чтения — заявленных через
+	// CreateRepository (включая пустые) либо появившихся первым push и ещё не снятых
+	// (DeleteRepository; удаление последнего тега у незаявленного репозитория). Считается
+	// по состоянию сервиса: строка наложения либо строка регистрации, имя из обеих — один
+	// раз; содержимое движка в число не входит. Это те же репозитории, что перечисляет
+	// ListRepositories этого реестра, без сужения правом вызывающего: перечень отдаёт лишь
+	// репозитории, видимые вызывающему, число — все. Заполняется на Get и List; в ответе
+	// операции Create — 0 (реестр новый).
 	RepositoryCount int32 `protobuf:"varint,8,opt,name=repository_count,json=repositoryCount,proto3" json:"repository_count,omitempty"`
 	// Состояние жизненного цикла.
 	Status RegistryStatus `protobuf:"varint,10,opt,name=status,proto3,enum=kacho.cloud.registry.v1.RegistryStatus" json:"status,omitempty"`
