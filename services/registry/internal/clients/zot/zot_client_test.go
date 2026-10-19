@@ -87,6 +87,7 @@ type fakeZot struct {
 	deleted      []string                   // записанные DELETE digest'ы
 	failCatalog  bool                       // 500 на _catalog (эмуляция недоступности)
 	failManifest map[string]bool            // full-repo → 500 на GET манифеста
+	failTags     map[string]bool            // full-repo → 500 на tags/list
 	gqlRepos     map[string]*gqlRepoFixture // search-ext GraphQL-фикстуры
 	gqlFail      bool                       // 500 на GraphQL (транспортная недоступность)
 	gqlErrors    bool                       // непустой errors-массив в GraphQL-ответе
@@ -99,6 +100,7 @@ func newFakeZot() *fakeZot {
 		repos:        map[string]map[string]manifestFixture{},
 		blobs:        map[string][]byte{},
 		failManifest: map[string]bool{},
+		failTags:     map[string]bool{},
 		gqlRepos:     map[string]*gqlRepoFixture{},
 	}
 }
@@ -153,6 +155,15 @@ func (f *fakeZot) setGqlAgg(repo string, size int64, lastUpdated string, downloa
 	fx.downloadCount = downloadCount
 }
 
+// leftover регистрирует имя repo БЕЗ единого тега — так движок (zot v2.1.20) держит в
+// каталоге repo, с которого сняли последний тег, и repo с одной открытой загрузкой
+// (измерено zot_engine_integration_test.go на настоящем движке).
+func (f *fakeZot) leftover(repo string) {
+	if f.repos[repo] == nil {
+		f.repos[repo] = map[string]manifestFixture{}
+	}
+}
+
 func (f *fakeZot) manifestByRef(repo, ref string) (manifestFixture, bool) {
 	tags := f.repos[repo]
 	if tags == nil {
@@ -190,6 +201,10 @@ func (f *fakeZot) server(t *testing.T) *httptest.Server {
 			_ = json.NewEncoder(w).Encode(map[string]any{"repositories": names})
 		case strings.HasSuffix(path, "/tags/list"):
 			repo := strings.TrimSuffix(strings.TrimPrefix(path, "/v2/"), "/tags/list")
+			if f.failTags[repo] {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			tags := f.repos[repo]
 			if tags == nil {
 				w.WriteHeader(http.StatusNotFound)
@@ -761,6 +776,50 @@ func TestZot_REG08_NamespaceEmpty(t *testing.T) {
 	empty, err = cli.NamespaceEmpty(t.Context(), "reg-Z")
 	require.NoError(t, err)
 	require.True(t, empty, "reg-Z has no repos")
+}
+
+// kacho#3327 — имена без тегов содержимым не являются: каталог движка помнит repo после
+// снятия последнего тега и repo с открытой загрузкой, и реестр из одних таких имён пуст.
+func TestZot_REG08_NamespaceEmpty_NamesWithoutTagsAreEmpty(t *testing.T) {
+	fz := newFakeZot()
+	fz.leftover("reg-A/app")
+	fz.leftover("reg-A/up")
+	fz.put("reg-AB/x", "v1", "sha256:x1", 10, 100) // соседний id с общим началом — не предмет
+	srv := fz.server(t)
+	cli := zotclient.New(srv.URL)
+
+	empty, err := cli.NamespaceEmpty(t.Context(), "reg-A")
+	require.NoError(t, err)
+	require.True(t, empty, "в каталоге reg-A лишь имена без тегов — содержимого нет")
+	require.NoError(t, cli.RemoveNamespace(t.Context(), "reg-A"))
+}
+
+// kacho#3327, близнец — один тег среди имён без тегов делает реестр непустым.
+func TestZot_REG08_NamespaceEmpty_OneTagAmongLeftoversIsContent(t *testing.T) {
+	fz := newFakeZot()
+	fz.leftover("reg-A/app")
+	fz.leftover("reg-A/up")
+	fz.put("reg-A/web", "v1", "sha256:web1", 10, 100)
+	srv := fz.server(t)
+	cli := zotclient.New(srv.URL)
+
+	empty, err := cli.NamespaceEmpty(t.Context(), "reg-A")
+	require.NoError(t, err)
+	require.False(t, empty, "тег у reg-A/web — содержимое")
+	require.ErrorIs(t, cli.RemoveNamespace(t.Context(), "reg-A"), regerrors.ErrFailedPrecondition)
+}
+
+// kacho#3327 — теги repo не прочитаны → пустота не установлена: Unavailable, а не
+// «пусто» и не «непусто» (fail-closed, удаление не продолжается).
+func TestZot_REG08_NamespaceEmpty_TagsUnreadable_FailClosed(t *testing.T) {
+	fz := newFakeZot()
+	fz.leftover("reg-A/app")
+	fz.failTags["reg-A/app"] = true
+	srv := fz.server(t)
+	cli := zotclient.New(srv.URL)
+
+	_, err := cli.NamespaceEmpty(t.Context(), "reg-A")
+	require.ErrorIs(t, err, regerrors.ErrUnavailable)
 }
 
 // REG-38 — Stats агрегирует namespace: repo/tag count, суммарный размер (config +
