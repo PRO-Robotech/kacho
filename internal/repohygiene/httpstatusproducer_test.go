@@ -41,10 +41,14 @@
 package repohygiene
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -156,6 +160,16 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 	filesRead := 0
 	var total statusCensus
 	var findings []string
+	bodies := make(map[string]string, len(files))
+	for _, f := range files {
+		b, err := os.ReadFile(f) // #nosec G304 -- путь из обхода дерева
+		if err != nil {
+			t.Fatalf("чтение %s: %v", f, err)
+		}
+		rel, _ := filepath.Rel(root, f)
+		bodies[rel] = string(b)
+	}
+	dials := dialledTransports(t, bodies)
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
@@ -163,7 +177,7 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 		}
 		filesRead++
 		rel, _ := filepath.Rel(root, f)
-		got, c := judgeStatusAssertions(rel, string(b), producible)
+		got, c := judgeStatusAssertions(rel, string(b), producible, dials[rel])
 		findings = append(findings, got...)
 		total.add(c)
 	}
@@ -172,10 +186,13 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 		"(из них ПРОЧИТАНО предикатом %d, НЕ прочитано %d — отрицательные сравнения, "+
 		"ветвления, списки с подстановкой); утверждений о коде ответа %d; "+
 		"производимых статусов %d (вычислено вызовом библиотеки, не выписано); "+
-		"файлов, набирающих транспорт мимо края, %d — утверждений, отнесённых к его "+
-		"слушателю, %d (в таких файлах край судится по-прежнему: освобождён только код слушателя)",
+		"файлов, набирающих транспорт мимо края В КОДЕ, %d — утверждений, отнесённых к его "+
+		"слушателю, %d (в таких файлах край судится по-прежнему: освобождён только код слушателя); "+
+		"файлов, называющих транспорт лишь текстом (комментарий, описание, константа без набора), "+
+		"%d — освобождения у них нет; вызовов набора с неразрешённым адресатом %d",
 		filesRead, total.lines, total.mentioning, total.mentioning-total.unread, total.unread,
-		assertionsSeen, len(producible), total.transportFiles, total.viaTransport)
+		assertionsSeen, len(producible), total.transportFiles, total.viaTransport,
+		total.mentionOnly, total.unresolvedDials)
 
 	if filesRead == 0 {
 		t.Fatal("прочитано НОЛЬ файлов кейсов — гейт не проверен ни против чего. " +
@@ -200,6 +217,11 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 // успешные коды (`201` — блоб или манифест принят, `202` — сеанс загрузки открыт)
 // край не производит никогда. Пока такие шаги утверждали только отказы (401, 404),
 // ложь предпосылки была невидима: эти коды край тоже производит.
+//
+// «Набирает» решается по КОДУ, а не по тексту (dialledTransports): вызов
+// `require_env_url`, чей адресат — имя транспорта литералом либо модульной
+// константой. Имя в комментарии, описании или константе, которую никто не
+// набирает, освобождения не даёт.
 //
 // Освобождение — ПО ФАЙЛУ, набирающему транспорт, и ТОЛЬКО по кодам его слушателя:
 // шаг края в том же файле, ждущий 201, проходит молча — это объявленная слепая зона,
@@ -229,6 +251,7 @@ type transportStatuses struct {
 type statusCensus struct {
 	lines, mentioning, unread, seen int
 	transportFiles, viaTransport    int
+	mentionOnly, unresolvedDials    int
 }
 
 func (c *statusCensus) add(o statusCensus) {
@@ -238,19 +261,141 @@ func (c *statusCensus) add(o statusCensus) {
 	c.seen += o.seen
 	c.transportFiles += o.transportFiles
 	c.viaTransport += o.viaTransport
+	c.mentionOnly += o.mentionOnly
+	c.unresolvedDials += o.unresolvedDials
+}
+
+// fileDials — ответ распознавателя набора об одном файле.
+type fileDials struct {
+	Dials      []string `json:"dials"`
+	Unresolved int      `json:"unresolved"`
+	Error      string   `json:"error"`
+}
+
+// transportDialDriver — распознаватель набора транспорта, исполняется python3 над
+// РАЗОБРАННЫМ модулем (`ast`), а не над текстом: комментарий в дерево разбора не
+// попадает, описание и строка — узлы-константы, а не вызов.
+//
+// Набор — вызов `require_env_url` (единственная функция генераторов, которая
+// направляет шаг на адрес транспорта, `scripts/gen.py`), именем либо атрибутом;
+// адресат — первый позиционный довод либо `var=`. Адресат разрешается, если он
+// строковый литерал или имя, связанное на уровне модуля ровно одной строковой
+// константой; иначе вызов считается неразрешённым и освобождения не даёт.
+// Формы, найденные обходом дерева (2026-10-19, 82 файла): вызов именем с
+// литералом (5) и с именем (3). Иная форма набора освобождения не получит и
+// покраснеет находкой — в сторону отказа, а не молчания.
+//
+// Вход — JSON «путь → текст» на stdin, выход — JSON «путь → ответ». Отказ
+// разбора — поле error, и гейт на нём падает: неразобранный файл не «не
+// набирает», а не прочитан.
+const transportDialDriver = `
+import ast, json, sys
+
+FUNC = "require_env_url"
+
+def module_constants(tree):
+    seen, bad = {}, set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+        for tg in targets:
+            if not isinstance(tg, ast.Name):
+                continue
+            if (isinstance(value, ast.Constant) and isinstance(value.value, str)
+                    and seen.get(tg.id, value.value) == value.value):
+                seen[tg.id] = value.value
+            else:
+                bad.add(tg.id)
+    return {k: v for k, v in seen.items() if k not in bad}
+
+def dials(src):
+    tree = ast.parse(src)
+    consts = module_constants(tree)
+    found, unresolved = set(), 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        name = f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
+        if name != FUNC:
+            continue
+        arg = node.args[0] if node.args else next(
+            (k.value for k in node.keywords if k.arg == "var"), None)
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            found.add(arg.value)
+        elif isinstance(arg, ast.Name) and arg.id in consts:
+            found.add(consts[arg.id])
+        else:
+            unresolved += 1
+    return sorted(found), unresolved
+
+out = {}
+for rel, src in json.load(sys.stdin).items():
+    try:
+        d, u = dials(src)
+        out[rel] = {"dials": d, "unresolved": u, "error": ""}
+    except SyntaxError as e:
+        out[rel] = {"dials": [], "unresolved": 0, "error": "%s:%s %s" % (rel, e.lineno, e.msg)}
+sys.stdout.write(json.dumps(out))
+`
+
+// dialledTransports — для каждого файла: транспорты, которые он набирает В КОДЕ.
+// Один вызов интерпретатора на весь обход; отказ разбора хоть одного файла —
+// провал гейта с координатой.
+func dialledTransports(t *testing.T, bodies map[string]string) map[string]fileDials {
+	t.Helper()
+	in, err := json.Marshal(bodies)
+	if err != nil {
+		t.Fatalf("вход распознавателя набора: %v", err)
+	}
+	cmd := exec.Command(pythonInterpreter(t), "-c", transportDialDriver) // #nosec G204 -- фиксированный интерпретатор и текст распознавателя
+	cmd.Stdin = bytes.NewReader(in)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	raw, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("распознаватель набора транспорта не исполнился: %v\n%s", err, stderr.String())
+	}
+	out := map[string]fileDials{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("ответ распознавателя набора не разобран: %v\n%s", err, raw)
+	}
+	if len(out) != len(bodies) {
+		t.Fatalf("распознаватель ответил о %d файлах из %d — набор не судим", len(out), len(bodies))
+	}
+	for _, d := range out {
+		if d.Error != "" {
+			t.Fatalf("файл кейсов не разобран, набор транспорта не установлен: %s", d.Error)
+		}
+	}
+	return out
 }
 
 // judgeStatusAssertions — суд одного файла кейсов: утверждения о коде, которого
-// не производит ни край, ни слушатель транспорта, набираемого этим файлом.
-func judgeStatusAssertions(rel, body string, producible map[int]codes.Code) ([]string, statusCensus) {
-	var c statusCensus
+// не производит ни край, ни слушатель транспорта, набираемого этим файлом В КОДЕ
+// (d — ответ dialledTransports о файле).
+func judgeStatusAssertions(rel, body string, producible map[int]codes.Code, d fileDials) ([]string, statusCensus) {
+	c := statusCensus{unresolvedDials: d.Unresolved}
 	var findings []string
 	dialled := map[int]bool{}
-	for name, tr := range transportOwnStatuses {
-		if strings.Contains(body, name) {
-			c.transportFiles = 1
-			for code := range tr.statuses {
-				dialled[code] = true
+	for _, name := range d.Dials {
+		tr, ok := transportOwnStatuses[name]
+		if !ok {
+			continue
+		}
+		c.transportFiles = 1
+		for code := range tr.statuses {
+			dialled[code] = true
+		}
+	}
+	if c.transportFiles == 0 {
+		for name := range transportOwnStatuses {
+			if strings.Contains(body, name) {
+				c.mentionOnly = 1
 			}
 		}
 	}
@@ -301,33 +446,65 @@ func judgeStatusAssertions(rel, body string, producible map[int]codes.Code) ([]s
 }
 
 // TestStatusJudgeInjection_TransportFileMayAssertOnlyItsListenerStatus — суд
-// способен упасть и смолчать на синтетике, по одному факту на пару:
+// способен упасть и смолчать на синтетике, по одному факту на пару. Набор
+// решает тот же распознаватель, что судит дерево (dialledTransports), — не
+// подставленный ответ:
 //
 //	(а) файл без транспорта ждёт 201 — находка (край 201 не производит);
-//	(б) тот же файл, набирающий транспорт плоскости данных, — молчание, и
+//	(б) тот же файл, набирающий транспорт модульной константой, — молчание, и
 //	    утверждение отнесено к слушателю;
-//	(в) файл с транспортом ждёт 207 — находка: освобождён код слушателя, а не всё.
+//	(в) файл с набором ждёт 207 — находка: освобождён код слушателя, а не всё;
+//	(г) набор литералом и (д) доводом `var=` — молчание;
+//	(е) имя транспорта в КОММЕНТАРИИ — находка, файл не засчитан набирающим;
+//	(ж) имя в описании модуля — находка; (з) константа, которую никто не
+//	    набирает, — находка (прежняя синтетика ставила набор именно так);
+//	(и) набор с адресатом-параметром функции — находка, вызов неразрешён.
 func TestStatusJudgeInjection_TransportFileMayAssertOnlyItsListenerStatus(t *testing.T) {
 	t.Parallel()
 	producible := producibleStatuses()
-	const step = "\"pm.test('s', () => pm.expect(pm.response.code).to.eql(%d));\"\n"
-	const dial = "DP = \"registryDataPlaneBaseUrl\"\n"
-
-	if got, _ := judgeStatusAssertions("a.py", fmt.Sprintf(step, 201), producible); len(got) != 1 {
-		t.Errorf("(а) 201 без транспорта не найден: находок %d", len(got))
+	const step = "S = \"pm.test('s', () => pm.expect(pm.response.code).to.eql(%d));\"\n"
+	const dial = "DP = \"registryDataPlaneBaseUrl\"\nPRE = require_env_url(DP, \"/v2/\")\n"
+	cases := []struct {
+		name, body                      string
+		findings, transport, via, other int
+	}{
+		{"(а) без транспорта, 201", fmt.Sprintf(step, 201), 1, 0, 0, 0},
+		{"(б) набор константой, 201", dial + fmt.Sprintf(step, 201), 0, 1, 1, 0},
+		{"(в) набор константой, 207", dial + fmt.Sprintf(step, 207), 1, 1, 0, 0},
+		{"(г) набор литералом, 201",
+			"PRE = require_env_url(\"registryDataPlaneBaseUrl\", \"/v2/\", \"why\")\n" + fmt.Sprintf(step, 201), 0, 1, 1, 0},
+		{"(д) набор доводом var=, 202",
+			"PRE = require_env_url(var=\"registryDataPlaneBaseUrl\", path=\"/v2/\")\n" + fmt.Sprintf(step, 202), 0, 1, 1, 0},
+		{"(е) имя в комментарии, 201", "# registryDataPlaneBaseUrl\n" + fmt.Sprintf(step, 201), 1, 0, 0, 1},
+		{"(ж) имя в описании, 201",
+			"\"\"\"Шаги ходят на {{registryDataPlaneBaseUrl}}.\"\"\"\n" + fmt.Sprintf(step, 201), 1, 0, 0, 1},
+		{"(з) константа без набора, 201", "DP = \"registryDataPlaneBaseUrl\"\n" + fmt.Sprintf(step, 201), 1, 0, 0, 1},
+		{"(и) адресат-параметр, 201",
+			"def _dp(v):\n    return require_env_url(v, \"/v2/\")\n" + fmt.Sprintf(step, 201), 1, 0, 0, 0},
 	}
-	got, c := judgeStatusAssertions("b.py", dial+fmt.Sprintf(step, 201), producible)
-	if len(got) != 0 || c.viaTransport != 1 || c.transportFiles != 1 {
-		t.Errorf("(б) 201 в файле транспорта: находок %d, отнесено к слушателю %d, файлов транспорта %d — "+
-			"ждали 0, 1, 1", len(got), c.viaTransport, c.transportFiles)
+	bodies := map[string]string{}
+	for i, tc := range cases {
+		bodies[fmt.Sprintf("c%d.py", i)] = tc.body
 	}
-	if got, _ := judgeStatusAssertions("c.py", dial+fmt.Sprintf(step, 207), producible); len(got) != 1 {
-		t.Errorf("(в) 207 в файле транспорта не найден: находок %d — освобождено больше, чем код слушателя", len(got))
+	dials := dialledTransports(t, bodies)
+	for i, tc := range cases {
+		rel := fmt.Sprintf("c%d.py", i)
+		got, c := judgeStatusAssertions(rel, tc.body, producible, dials[rel])
+		if len(got) != tc.findings || c.transportFiles != tc.transport || c.viaTransport != tc.via ||
+			c.mentionOnly != tc.other {
+			t.Errorf("%s: находок %d, набирающих %d, отнесено к слушателю %d, названо лишь текстом %d — "+
+				"ждали %d, %d, %d, %d", tc.name, len(got), c.transportFiles, c.viaTransport, c.mentionOnly,
+				tc.findings, tc.transport, tc.via, tc.other)
+		}
+	}
+	if d := dials["c8.py"]; d.Unresolved != 1 {
+		t.Errorf("(и): неразрешённых вызовов набора %d, ждали 1 — перепись не видит набора мимо распознавателя", d.Unresolved)
 	}
 }
 
 // TestTransportOwnStatusesStillHaveASubject — освобождение по транспорту живёт,
-// пока живы транспорт, его производитель и хоть один файл, его набирающий.
+// пока живы транспорт, его производитель и хоть один файл, его набирающий В
+// КОДЕ: упоминание в описании или комментарии освобождение не держит.
 func TestTransportOwnStatusesStillHaveASubject(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -335,24 +512,37 @@ func TestTransportOwnStatusesStillHaveASubject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("объявление транспортов не читается: %v", err)
 	}
+	var declared struct {
+		OptionalTransports map[string]json.RawMessage `json:"optional_transports"`
+	}
+	if err := json.Unmarshal(shards, &declared); err != nil {
+		t.Fatalf("deploy/e2e-shards.json не разобран: %v", err)
+	}
 	// Состав — из индекса git, а не с диска: игнорируемое (распаковки, отчёты)
 	// лежит на любой машине, где поднимали стенд.
 	tracked, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".py")
 	if err != nil {
 		t.Fatalf("состав кейсов из индекса: %v", err)
 	}
-	var cases []string
+	bodies := map[string]string{}
 	for _, f := range tracked {
-		if strings.Contains(filepath.ToSlash(f), "/tests/newman/cases/") {
-			cases = append(cases, f)
+		if !strings.Contains(filepath.ToSlash(f), "/tests/newman/cases/") {
+			continue
 		}
+		b, err := os.ReadFile(f) // #nosec G304 -- путь из индекса git
+		if err != nil {
+			t.Fatalf("чтение %s: %v", f, err)
+		}
+		bodies[f] = string(b)
 	}
-	if len(cases) == 0 {
+	if len(bodies) == 0 {
 		t.Fatal("обход кейсов пуст — освобождение не с чем сверить")
 	}
+	dials := dialledTransports(t, bodies)
 	for name, tr := range transportOwnStatuses {
-		if !strings.Contains(string(shards), `"`+name+`"`) {
-			t.Errorf("%s: транспорта нет в deploy/e2e-shards.json — освобождение пережило свой предмет", name)
+		if _, ok := declared.OptionalTransports[name]; !ok {
+			t.Errorf("%s: транспорта нет в optional_transports deploy/e2e-shards.json — "+
+				"освобождение пережило свой предмет", name)
 		}
 		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(tr.file)))
 		found := false
@@ -371,17 +561,20 @@ func TestTransportOwnStatusesStillHaveASubject(t *testing.T) {
 			t.Errorf("%s: в %s нет исполняемого %s — слушатель больше не ретранслирует коды, "+
 				"а освобождение продолжает их прощать", name, tr.file, tr.literal)
 		}
-		dialling := 0
-		for _, f := range cases {
-			b, err := os.ReadFile(f)
-			if err == nil && strings.Contains(string(b), name) {
+		dialling, mentioning := 0, 0
+		for f, d := range dials {
+			if slices.Contains(d.Dials, name) {
 				dialling++
+			} else if strings.Contains(bodies[f], name) {
+				mentioning++
 			}
 		}
-		t.Logf("перепись: транспорт %s · кодов освобождено %d · файлов кейсов осмотрено %d, набирают его %d",
-			name, len(tr.statuses), len(cases), dialling)
+		t.Logf("перепись: транспорт %s · кодов освобождено %d · файлов кейсов осмотрено %d, "+
+			"набирают его в коде %d, называют лишь текстом %d",
+			name, len(tr.statuses), len(bodies), dialling, mentioning)
 		if dialling == 0 {
-			t.Errorf("%s: ни один файл кейсов транспорт не набирает — освобождению нечего освобождать", name)
+			t.Errorf("%s: ни один файл кейсов транспорт в коде не набирает (называют лишь текстом %d) — "+
+				"освобождению нечего освобождать", name, mentioning)
 		}
 	}
 }

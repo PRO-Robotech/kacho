@@ -11,15 +11,26 @@
 // единственное, что видно из обоих контекстов подчартов (довод `serviceAud`,
 // iam_lane_service_aud_test.go).
 //
+// ЧТО НЕСЁТ ЭТА ПАРА. Стороны у значения НЕ симметричны. Реестр, узнающий
+// анонима, которого никто не чеканит, безвреден: такого `sub` ни у кого нет.
+// Служба доступа, чеканящая анонимный токен, который реестр НЕ узнаёт, —
+// дыра: плоскость данных читает такой `sub` как обычный принципал вида
+// service_account, а этот вид модель прав относит к классу
+// `system_class:authenticated` — вызывающий без удостоверения читал бы всё,
+// выданное вошедшим, а не только опубликованное анониму. Поэтому у стороны
+// личности СОБСТВЕННОЙ ручки нет: чеканка включается только единым источником,
+// который тем же рендером зонта доезжает до пода реестра.
+//
 // Оси:
 //
 //	(а) единый источник доезжает до `registry-token.anonymous-client-id`;
-//	(б) без него действует собственная ручка подчарта (одиночная установка);
-//	(в) объявлены обе и не сходятся ⇒ рендер ОТКАЗЫВАЕТ, называя обе ручки и обе величины;
-//	(г) законный близнец: объявлены обе и сходятся ⇒ рендер молчит;
-//	(д) не объявлено ни одной ⇒ ключа в карте настроек НЕТ (а не пустая строка),
+//	(б) собственная ручка подчарта `config.apiServer.registryToken.anonymousClientId`
+//	    ОТКАЗЫВАЕТ рендер в любой форме — одна (чеканка без узнающей стороны) и
+//	    рядом с единым источником, даже равная ему (второго объявления нет);
+//	    отказ называет ручку и единый источник;
+//	(в) не объявлено ничего ⇒ ключа в карте настроек НЕТ (а не пустая строка),
 //	    положительный контроль рядом;
-//	(е) значение объявлено, а блока полосы нет (ни `issuer`, ни `service`) ⇒
+//	(г) значение объявлено, а блока полосы нет (ни `issuer`, ни `service`) ⇒
 //	    отказ: принятое и непрочитанное значение выглядело бы включённым потоком.
 package umbrella_test
 
@@ -30,7 +41,7 @@ import (
 )
 
 // laneName — законная сторона полосы, без которой блок `registry-token:` не
-// рендерится вовсе: оси (а)–(д) отличаются от неё только анонимной ручкой.
+// рендерится вовсе: оси (а)–(в) отличаются от неё только анонимной ручкой.
 const laneName = "global.kacho.registry.serviceAud=lane.example"
 
 var registryTokenAnonymous = regexp.MustCompile(
@@ -46,7 +57,7 @@ func anonymousClientIDInConfig(rendered string) (string, bool) {
 	return strings.TrimSpace(m[1]), true
 }
 
-// TestIAMAnonymousClientIDComesFromTheSingleDeclaration — оси (а) и (б).
+// TestIAMAnonymousClientIDComesFromTheSingleDeclaration — ось (а).
 func TestIAMAnonymousClientIDComesFromTheSingleDeclaration(t *testing.T) {
 	t.Parallel()
 
@@ -57,47 +68,46 @@ func TestIAMAnonymousClientIDComesFromTheSingleDeclaration(t *testing.T) {
 	if got, ok := anonymousClientIDInConfig(out); !ok || got != "registry-anonymous" {
 		t.Errorf("сторона личности не выведена из единого источника: anonymous-client-id = %q (есть: %v)", got, ok)
 	}
-
-	out, err = renderIAM(t, laneName, "config.apiServer.registryToken.anonymousClientId=solo-anonymous")
-	if err != nil {
-		t.Fatalf("рендер отказал: %v\n%s", err, out)
-	}
-	if got, ok := anonymousClientIDInConfig(out); !ok || got != "solo-anonymous" {
-		t.Errorf("без единого источника собственная ручка обязана действовать: anonymous-client-id = %q (есть: %v)", got, ok)
-	}
 }
 
-// TestIAMAnonymousClientIDRefusesUnlinkedSides — оси (в) и (г).
-func TestIAMAnonymousClientIDRefusesUnlinkedSides(t *testing.T) {
+// TestIAMAnonymousClientIDHasNoOwnKnob — ось (б). Первый случай — предикат
+// находки: собственная ручка без единого источника включала чеканку, а под
+// реестра переменной не получал.
+func TestIAMAnonymousClientIDHasNoOwnKnob(t *testing.T) {
 	t.Parallel()
 
-	out, err := renderIAM(t, laneName,
-		"global.kacho.registry.anonymousSubjectId=registry-anonymous",
-		"config.apiServer.registryToken.anonymousClientId=other-anonymous")
-	if err == nil {
-		t.Fatalf("рендер ПРОШЁЛ на разошедшихся объявлениях — аноним получил бы токен, которого реестр не узнаёт\n%s", out)
+	cases := map[string][]string{
+		"одна, без единого источника": {
+			laneName, "config.apiServer.registryToken.anonymousClientId=registry-anonymous",
+		},
+		"рядом с единым источником, иная": {
+			laneName, "global.kacho.registry.anonymousSubjectId=registry-anonymous",
+			"config.apiServer.registryToken.anonymousClientId=other-anonymous",
+		},
+		"рядом с единым источником, равная": {
+			laneName, "global.kacho.registry.anonymousSubjectId=same-anonymous",
+			"config.apiServer.registryToken.anonymousClientId=same-anonymous",
+		},
 	}
-	for _, want := range []string{
-		"global.kacho.registry.anonymousSubjectId", "kaname.config.apiServer.registryToken.anonymousClientId",
-		"registry-anonymous", "other-anonymous",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("отказ рендера не называет %q — оператору нечем чинить:\n%s", want, out)
+	for name, sets := range cases {
+		out, err := renderIAM(t, sets...)
+		if err == nil {
+			got, ok := anonymousClientIDInConfig(out)
+			t.Errorf("%s: рендер ПРОШЁЛ (anonymous-client-id = %q, есть: %v) — служба доступа чеканила бы "+
+				"анонимный токен по объявлению, которого под реестра не видит", name, got, ok)
+			continue
 		}
-	}
-
-	out, err = renderIAM(t, laneName,
-		"global.kacho.registry.anonymousSubjectId=same-anonymous",
-		"config.apiServer.registryToken.anonymousClientId=same-anonymous")
-	if err != nil {
-		t.Fatalf("сошедшиеся объявления обязаны рендериться, получен отказ: %v\n%s", err, out)
-	}
-	if got, ok := anonymousClientIDInConfig(out); !ok || got != "same-anonymous" {
-		t.Errorf("anonymous-client-id = %q (есть: %v), ждали same-anonymous", got, ok)
+		for _, want := range []string{
+			"config.apiServer.registryToken.anonymousClientId", "global.kacho.registry.anonymousSubjectId",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s: отказ рендера не называет %q — оператору нечем чинить:\n%s", name, want, out)
+			}
+		}
 	}
 }
 
-// TestIAMAnonymousClientIDAbsentWhenUndeclared — ось (д).
+// TestIAMAnonymousClientIDAbsentWhenUndeclared — ось (в).
 func TestIAMAnonymousClientIDAbsentWhenUndeclared(t *testing.T) {
 	t.Parallel()
 
@@ -116,7 +126,7 @@ func TestIAMAnonymousClientIDAbsentWhenUndeclared(t *testing.T) {
 	}
 }
 
-// TestIAMAnonymousClientIDWithoutLaneRefuses — ось (е).
+// TestIAMAnonymousClientIDWithoutLaneRefuses — ось (г).
 func TestIAMAnonymousClientIDWithoutLaneRefuses(t *testing.T) {
 	t.Parallel()
 

@@ -139,24 +139,29 @@ kaname.anonymousClientId — `sub` анонимного токена докер�
 (`api-server.registry-token.anonymous-client-id`, приёмка kaname SC-39;
 REG-PUB-1 Р9 п. 2).
 
-ВЫВОДИТСЯ ИЗ ТОГО ЖЕ ОБЪЯВЛЕНИЯ, ЧТО У РЕЕСТРА: служба доступа чеканит значение
-в `sub`, реестр по нему узнаёт анонима. Разойдись стороны — выдача классу
-`anonymous` принимается, а анонимное чтение не появляется. Источник один —
-ключ `registry.anonymousSubjectId` узла платформы в `global` (тот же узел, что у
-kaname.laneServiceAud); его же читает подчарт registry.
+ЧИТАЕТСЯ ТОЛЬКО ИЗ ЕДИНОГО ОБЪЯВЛЕНИЯ — `registry.anonymousSubjectId` узла
+платформы в `global` (тот же узел, что у kaname.laneServiceAud); его же читает
+подчарт registry и кладёт в под реестра `KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID`.
 
-Собственная ручка `config.apiServer.registryToken.anonymousClientId` — для
-одиночной установки чарта. Обе и по-разному — отказ рендера с обеими
-величинами. Ни одной — законно: ключ не рендерится, поток выключен. Форму
+Собственной ручки у этой стороны НЕТ, и это не упрощение, а граница
+безопасности. Стороны у значения не симметричны: реестр, узнающий анонима,
+которого никто не чеканит, безвреден, а служба доступа, чеканящая анонимный
+токен, которого реестр НЕ узнаёт, — дыра: плоскость данных читает такой `sub`
+как обычный принципал вида service_account, этот вид модель прав относит к
+классу `system_class:authenticated`, и вызывающий без удостоверения читал бы всё,
+выданное вошедшим, а не только опубликованное анониму. Чеканка поэтому
+включается лишь тем объявлением, которое тем же рендером доезжает до реестра.
+Задан ключ `config.apiServer.registryToken.anonymousClientId` — отказ
+рендера в любой форме (одна, рядом с единым источником, даже равная ему).
+Не объявлено ничего — законно: ключ не рендерится, поток выключен. Форму
 значения судит страж старта процесса.
 */}}
 {{- define "kaname.anonymousClientId" -}}
-{{- $source := (((.Values.global).kacho).registry).anonymousSubjectId | default "" -}}
 {{- $own := (((.Values.config).apiServer).registryToken).anonymousClientId | default "" -}}
-{{- if and $source $own (ne $source $own) -}}
-{{- fail (printf "kaname: анонимный субъект докерной полосы объявлен ДВАЖДЫ и по-разному — global.kacho.registry.anonymousSubjectId=%q против kaname.config.apiServer.registryToken.anonymousClientId=%q. У значения две стороны (iam чеканит его в sub анонимного токена, реестр по нему узнаёт анонима), и объявление у них одно: оставьте единый источник зонта, а config.apiServer.registryToken.anonymousClientId снимите — он для одиночной установки чарта, где второй стороны нет." $source $own) -}}
+{{- if $own -}}
+{{- fail (printf "kaname: config.apiServer.registryToken.anonymousClientId=%q задан, а у стороны, чеканящей анонимный токен, собственной ручки нет. Анонимный субъект объявляется ОДИН раз — global.kacho.registry.anonymousSubjectId: оттуда же его получает под реестра, который узнаёт анонима. Чеканка по ручке, которой реестр не видит, отдала бы вызывающему без удостоверения всё, что выдано классу вошедших. Перенесите значение в global.kacho.registry.anonymousSubjectId, а config.apiServer.registryToken.anonymousClientId снимите." $own) -}}
 {{- end -}}
-{{- $source | default $own -}}
+{{- (((.Values.global).kacho).registry).anonymousSubjectId | default "" -}}
 {{- end -}}
 
 {{/*

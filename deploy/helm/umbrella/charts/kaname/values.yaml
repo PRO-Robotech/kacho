@@ -380,12 +380,12 @@ config:
     registryToken:
       issuer: ""
       service: ""
-      # `anonymousClientId` — `sub` анонимного токена (`anonymous-client-id`,
-      # приёмка kaname SC-39; REG-PUB-1 Р9 п. 2). Как и `service`, объявляется
-      # посадкой ОДИН раз — в узле платформы `global` рядом с адресатом полосы — и
-      # приезжает оттуда (см. kaname.anonymousClientId); ключ ниже — для одиночной
-      # установки чарта. Пусто — ключа в настройках нет, анонимный поток выключен.
-      anonymousClientId: ""
+      # Анонимного субъекта (`anonymous-client-id`, приёмка kaname SC-39;
+      # REG-PUB-1 Р9 п. 2) здесь НЕТ намеренно: сторона, чеканящая анонимный
+      # токен, включается только единым объявлением
+      # `global.kacho.registry.anonymousSubjectId`, которое тем же рендером
+      # получает и реестр (почему — kaname.anonymousClientId). Ключ
+      # `anonymousClientId` в этом узле отказывает рендер.
   repository:
     postgres:
       # Приведён к НАИМЕНЬШЕМУ пределу, который эта служба может встретить.
