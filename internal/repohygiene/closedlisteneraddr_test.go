@@ -192,6 +192,39 @@ func serve(start func() error) string {
 	}
 	return addr
 }`},
+	// ДЕФЕКТ: цикл подбора порта — break уводит из цикла, а не из функции.
+	"pick loop with break": {want: 1, src: `package p
+import "net"
+func pick() string {
+	var addr string
+	for {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			continue
+		}
+		addr = l.Addr().String()
+		_ = l.Close()
+		break
+	}
+	return addr
+}`},
+	// БЛИЗНЕЦ: тот же цикл, закрытие только в ветке ошибки с return.
+	"pick loop error branch returns": {want: 0, src: `package p
+import "net"
+func pick(start func() error) string {
+	for {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			continue
+		}
+		addr := l.Addr().String()
+		if err := start(); err != nil {
+			_ = l.Close()
+			return ""
+		}
+		return addr
+	}
+}`},
 	// БЛИЗНЕЦ: закрытие в ветке ошибки, завершённой t.Fatal.
 	"close in a fatal branch": {want: 0, src: `package p
 import "net"

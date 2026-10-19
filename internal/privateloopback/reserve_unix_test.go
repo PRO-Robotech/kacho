@@ -137,18 +137,25 @@ func bindWithoutReuse(t *testing.T, addr string) error {
 	return syscall.Bind(fd, sa)
 }
 
-// TestLentAddressIsHeldWhileLent — одолженный адрес держит сокет пробы: пока
-// удержание стоит, соперник без SO_REUSEADDR получает «адрес занят»; после
-// снятия — привязывается. Прежняя форма («открыл, прочитал, закрыл») отдала бы
-// порт сопернику сразу — первая ветка покраснела бы.
+// TestLentAddressIsHeldWhileLent — публичный Lend держит адрес до конца ПРОБЫ,
+// которая его одолжила: внутри подтеста соперник без SO_REUSEADDR получает
+// «адрес занят»; после завершения подтеста (его Cleanup снял удержание) —
+// привязывается. Прежняя форма («открыл, прочитал, закрыл») и снятие удержания
+// раньше конца пробы отдали бы порт сопернику сразу — первая ветка покраснела бы.
 func TestLentAddressIsHeldWhileLent(t *testing.T) {
-	addr, release := lend(t)
-	t.Cleanup(release)
-	if err := bindWithoutReuse(t, addr); !errors.Is(err, syscall.EADDRINUSE) {
-		t.Fatalf("пока адрес %s одолжен, соперник без SO_REUSEADDR обязан получить «адрес занят», получено %v", addr, err)
+	var addr string
+	t.Run("одолжен", func(t *testing.T) {
+		addr = Lend(t)
+		if err := bindWithoutReuse(t, addr); !errors.Is(err, syscall.EADDRINUSE) {
+			t.Fatalf("пока адрес %s одолжен, соперник без SO_REUSEADDR обязан получить «адрес занят», получено %v", addr, err)
+		}
+	})
+	if addr == "" {
+		t.Fatal("предпосылка близнеца: подтест не одолжил адреса")
 	}
-	release()
-	if err := bindWithoutReuse(t, addr); err != nil {
-		t.Fatalf("после снятия удержания соперник обязан занять %s, получено %v", addr, err)
-	}
+	t.Run("близнец: проба, одолжившая адрес, завершилась", func(t *testing.T) {
+		if err := bindWithoutReuse(t, addr); err != nil {
+			t.Fatalf("после конца одолжившей пробы соперник обязан занять %s, получено %v", addr, err)
+		}
+	})
 }
