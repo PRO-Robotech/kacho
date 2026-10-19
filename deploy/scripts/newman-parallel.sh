@@ -206,6 +206,16 @@ internal_rest_newman_args "$GW_INTERNAL_PORT" "$IR_DIR"
 # уронить прогон блоком живости на предмете, которого в этой посадке не бывает.
 OWN_FRONT_ENV_ARGS=()
 OWN_FRONT_TLS_ARGS=()   # --ssl-client-* для фронта, чьё ребро ВЗАИМНОЕ
+# Фронт под транспортом адресуется ИМЕНЕМ из SAN своего листа, запиненным на петлю
+# (kacho#3315): лист несёт в SAN только DNS-имена Service, и адрес по IP проверку
+# имени не проходит — newman отдаёт `errored` вместо вердикта. Проверка не
+# ослабляется: имя — из листа посадки (own-front-tls-name.py), цепочка — по УЦ
+# посадки (--ssl-extra-ca-certs), разрешение имени в петлю — lib/pin-resolve.cjs
+# (форма `curl --resolve <имя>:<порт>:127.0.0.1`). Имени в SAN нет — адрес не
+# инъектируется: «условие не создано», а не откат на IP.
+OWN_FRONT_PINS=()       # «имя=127.0.0.1» на каждый фронт под транспортом
+OWN_FRONT_CA_ARGS=()    # --ssl-extra-ca-certs <УЦ посадки>
+OWN_FRONT_CA_DIR=""
 
 # own_front_client_leaf — кладёт клиентский лист посадки в OWN_FRONT_TLS_ARGS.
 # 0 — лист есть (или уже взят раньше), 1 — секрета в посадке нет.
@@ -241,6 +251,16 @@ own_front_forward() {  # <public|internal> <локальный порт> <имя
   port="$(echo "$addr" | cut -d'|' -f2)"
   svc="$(echo "$addr" | cut -d'|' -f3)"
   leaf="$(echo "$addr" | cut -d'|' -f4)"
+
+  local host="127.0.0.1"
+  if [ "$scheme" = https ]; then
+    if [ -z "$OWN_FRONT_CA_DIR" ]; then OWN_FRONT_CA_DIR="$(mktemp -d)"; TMP_DIRS+=("$OWN_FRONT_CA_DIR"); fi
+    if ! host="$(python3 "$SCRIPT_DIR/own-front-tls-name.py" "$svc" --namespace "$NS" --ca-out "$OWN_FRONT_CA_DIR/$var.pem")"; then
+      echo "[parallel] $var НЕ инъектируется: имя из SAN листа фронта svc/$svc не установлено (выше) —" \
+           "«условие не создано», а не адрес по IP с проверкой, которая не пройдёт"
+      return 0
+    fi
+  fi
 
   # ТРЕБУЕТ ЛИ ФРОНТ ПРОВЕРЕННОГО КЛИЕНТСКОГО ЛИСТА — РЕШЕНИЕ ПРОИЗВОДИТЕЛЯ (#2372).
   #
@@ -287,11 +307,27 @@ own_front_forward() {  # <public|internal> <локальный порт> <имя
 
   kubectl -n "$NS" port-forward "svc/$svc" "$local_port:$port" >"/tmp/e2e-pp-$var.log" 2>&1 &
   PF_PIDS+=($!); PF_WHAT+=("$local_port|$var → svc/$svc (:$port, $scheme)|/tmp/e2e-pp-$var.log")
-  OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://127.0.0.1:$local_port")
-  echo "[parallel] собственный фронт: $var → svc/$svc :$port ($scheme, лист $leaf) на 127.0.0.1:$local_port"
+  if [ "$scheme" = https ]; then
+    OWN_FRONT_PINS+=("$host=127.0.0.1")
+    cat "$OWN_FRONT_CA_DIR/$var.pem" >>"$OWN_FRONT_CA_DIR/bundle.pem"
+    OWN_FRONT_CA_ARGS=(--ssl-extra-ca-certs "$OWN_FRONT_CA_DIR/bundle.pem")
+  fi
+  OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://$host:$local_port")
+  echo "[parallel] собственный фронт: $var → svc/$svc :$port ($scheme, лист $leaf) на $host:$local_port (проброс на 127.0.0.1)"
 }
 own_front_forward public   "$OWN_REST_PORT"           ownRestBaseUrl
 own_front_forward internal "$OWN_INTERNAL_REST_PORT"  ownInternalRestBaseUrl
+# Пин имён фронтов на петлю — процессам node этого прогона (newman), и только им:
+# NODE_OPTIONS другие инструменты прогонщика не читают.
+if [ "${#OWN_FRONT_PINS[@]}" -gt 0 ]; then
+  KACHO_PIN_RESOLVE="$(IFS=,; printf '%s' "${OWN_FRONT_PINS[*]}")"
+  # Кавычки вокруг пути — для разбора NODE_OPTIONS самим node, а не оболочкой.
+  # shellcheck disable=SC2089,SC2090
+  NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--require \"$SCRIPT_DIR/lib/pin-resolve.cjs\""
+  # shellcheck disable=SC2090
+  export KACHO_PIN_RESOLVE NODE_OPTIONS
+  echo "[parallel] имена фронтов запинены на петлю: $KACHO_PIN_RESOLVE; УЦ посадки — ${OWN_FRONT_CA_ARGS[*]}"
+fi
 # Та же строка для волн, которые принимают набор аргументов ОДНОЙ строкой.
 OWN_FRONT_ENV_STR=""
 for _a in "${OWN_FRONT_ENV_ARGS[@]}"; do
@@ -738,6 +774,7 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
         --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
         "${OWN_FRONT_ENV_ARGS[@]}" \
         ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
+        ${OWN_FRONT_CA_ARGS[@]+"${OWN_FRONT_CA_ARGS[@]}"} \
         "${INTERNAL_REST_NEWMAN_ARGS[@]}" \
         "${OPT_ENV_ARR[@]}" \
         >"$d/out/suite.log" 2>&1; echo "$?" > "$d/out/suite.rc" ) &
