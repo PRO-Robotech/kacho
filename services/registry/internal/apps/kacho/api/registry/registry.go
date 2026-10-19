@@ -91,6 +91,11 @@ type RegistryReader interface {
 	Get(ctx context.Context, id string) (*domain.Registry, error)
 	// List возвращает реестры project'а (cursor-пагинация; listauthz-фильтр — в handler).
 	List(ctx context.Context, q ListQuery) ([]*domain.Registry, string, error)
+	// RepositoryCounts возвращает число репозиториев каждого из registryIDs ОДНИМ
+	// запросом: репозиторий существует ⟺ есть строка наложения ЛИБО строка регистрации
+	// (тот же предикат, что RepositoryDeclared). Реестра без репозиториев в ответе нет —
+	// его число 0. Пустой registryIDs → пустой ответ без обращения к базе.
+	RepositoryCounts(ctx context.Context, registryIDs []string) (map[string]int32, error)
 }
 
 // RegistryWriter — write-порт таблицы registries. Мутации атомарны на DB-уровне

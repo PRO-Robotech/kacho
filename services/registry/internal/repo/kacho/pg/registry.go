@@ -398,6 +398,11 @@ func (r *RegistryRepo) RepositoryDeclared(ctx context.Context, registryID, repo 
 	return declared, nil
 }
 
+// RepositoryCounts — заготовка пробы kacho#3328 (до реализации).
+func (r *RegistryRepo) RepositoryCounts(ctx context.Context, registryIDs []string) (map[string]int32, error) {
+	return map[string]int32{}, nil
+}
+
 // RegisterRepository эмитит register-intent (parent+owner tuple) нового repo в
 // registry_outbox И записывает durable-признак его существования
 // (registry_repository_registration) — обе записи в ОДНОЙ tx (см. emitFGAIntent).

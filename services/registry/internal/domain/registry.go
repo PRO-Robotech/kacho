@@ -127,6 +127,10 @@ type Registry struct {
 	// (B10/B11). Дефолт PRIVATE (fail-safe). CreateRepository без явного visibility
 	// наследует это значение (B12 gate-at-default).
 	DefaultVisibility Visibility
+	// RepositoryCount — output-only проекция чтения: число репозиториев реестра
+	// (строка наложения либо строка регистрации). Ставится use-case'ом на Get/List,
+	// в таблицу registries не пишется.
+	RepositoryCount int32
 }
 
 // Validate проверяет domain-инварианты Registry перед созданием/сохранением:

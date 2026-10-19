@@ -121,6 +121,9 @@ func (r listReader) Get(context.Context, string) (*domain.Registry, error) {
 func (r listReader) List(context.Context, registry.ListQuery) ([]*domain.Registry, string, error) {
 	return r.regs, r.next, nil
 }
+func (r listReader) RepositoryCounts(context.Context, []string) (map[string]int32, error) {
+	return map[string]int32{}, nil
+}
 
 func newListHandler(reader registry.RegistryReader, az Authorizer) *RegistryHandler {
 	uc := registry.New(reader, stubRepo{}, stubCfg{}, &fakeZotH{}, stubIAM{}, stubGeo{}, stubRepo{}, newMemOpsH(), "registry.kacho.local")
