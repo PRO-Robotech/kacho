@@ -61,13 +61,19 @@ type RegionServiceClient interface {
 	List(ctx context.Context, in *ListRegionsRequest, opts ...grpc.CallOption) (*ListRegionsResponse, error)
 	// Creates a region. Administrator's verb: the same permission, relation, scope
 	// and identity-assurance floor as InternalRegionService.Create.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Create(ctx context.Context, in *CreatePublicRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates a region (status, countryCode). Same gate as
 	// InternalRegionService.Update.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Update(ctx context.Context, in *UpdatePublicRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes a region. A region that still has zones is refused in
 	// Operation.error (FAILED_PRECONDITION "region <id> is not empty"). Same gate
 	// as InternalRegionService.Delete.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Delete(ctx context.Context, in *DeleteRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
@@ -160,13 +166,19 @@ type RegionServiceServer interface {
 	List(context.Context, *ListRegionsRequest) (*ListRegionsResponse, error)
 	// Creates a region. Administrator's verb: the same permission, relation, scope
 	// and identity-assurance floor as InternalRegionService.Create.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Create(context.Context, *CreatePublicRegionRequest) (*operation.Operation, error)
 	// Updates a region (status, countryCode). Same gate as
 	// InternalRegionService.Update.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Update(context.Context, *UpdatePublicRegionRequest) (*operation.Operation, error)
 	// Deletes a region. A region that still has zones is refused in
 	// Operation.error (FAILED_PRECONDITION "region <id> is not empty"). Same gate
 	// as InternalRegionService.Delete.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Delete(context.Context, *DeleteRegionRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedRegionServiceServer()
 }

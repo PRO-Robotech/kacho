@@ -140,8 +140,8 @@ var surfaceFiles = []surfaceFile{
 		whatFor: "каталог прав, вшитый в край",
 	}, {
 		path:    "gateway/internal/restmux/mux.go",
-		genre:   "RegisterAccessBindingServiceHandlerFromEndpoint",
-		forbid:  "RegisterConditionsServiceHandlerFromEndpoint",
+		genre:   "RegisterAccessBindingServiceHandlerClient",
+		forbid:  "RegisterConditionsServiceHandler",
 		whatFor: "регистрация REST-мультиплексора",
 	},
 }
