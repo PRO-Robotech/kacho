@@ -304,10 +304,10 @@ func TestPermissionCatalog_LookupKnownEntries_FromEmbed(t *testing.T) {
 	// contract: it enumerated the universe instead of narrowing a page, and it was
 	// not paginated by construction.
 	//
-	// They used to declare `viewer` on the cluster singleton, which the bootstrap
-	// grants to `user:*` for the global reference catalogue: a check that admitted
-	// every authenticated subject on the surface that describes who can reach what
-	// across the platform.
+	// Прежде они объявляли `viewer` на синглтоне кластера, которое начальная выдача
+	// даёт классу `system_class:authenticated` ради глобального справочника:
+	// проверка пропускала каждого вошедшего субъекта на поверхности, описывающей,
+	// кто до чего дотягивается по всей платформе.
 	for _, fqn := range []string{
 		"kaname.cloud.iam.v1.AuthorizeService/Check",
 		"kaname.cloud.iam.v1.AuthorizeService/ListSubjects",
