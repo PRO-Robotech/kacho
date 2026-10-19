@@ -114,13 +114,27 @@ var foundationClasses = map[string]foundationClass{
 	// импортируют `pkg/api/kaname/cloud/iam/v1` (класс службы), поэтому их переезд
 	// завёл бы ребро `corelib -> kaname` — ровно то, что запрещает
 	// forbiddenDirections. Предикат снятия внешний: класс стабов контракта доступа.
-	"credsecret":      classCorelib,
-	"db":              classCorelib,
-	"dbready":         classCorelib,
-	"dropguard":       classCorelib,
-	"envknob":         classCorelib,
-	"errors":          classCorelib,
-	"filter":          classCorelib,
+	"credsecret": classCorelib,
+	"db":         classCorelib,
+	"dbready":    classCorelib,
+	"dropguard":  classCorelib,
+	"envknob":    classCorelib,
+	"errors":     classCorelib,
+	"filter":     classCorelib,
+	// generatedid — форма порождённого продуктом идентификатора (kaname#908).
+	// Живёт в ТРЕТЬЕМ доме — модуле службы доступа, `kaname/pkg/generatedid`, —
+	// и приезжает сюда пином этого модуля, как `ownerregister` и
+	// `subjectchange`. Класс выведен правилом K3-1 §3, а не местом хранения:
+	//   - ОГРАНИЧЕНИЕ не срабатывает: прод-код фундамента пакета не называет
+	//     (у фундамента и права такого нет — ребро `corelib -> kaname`);
+	//   - В1 нет: вход — предъявленный идентификатор, а не дерево исходников;
+	//   - В2 не задаётся: это одно выражение формы, а не перечень записей;
+	//   - В3 даёт `kaname`: пакет меняется вместе с формой удостоверения,
+	//     которую чеканит служба доступа; платформа форму только ЧИТАЕТ
+	//     (`services/registry`, приёмная сторона субъекта).
+	// Предикат пересмотра внешний: форму начинает чеканить платформа — тогда
+	// чеканщиков двое, и класс становится фундаментом.
+	"generatedid":     classKaname,
 	"gitenv":          classToolchain,
 	"grpcclient":      classCorelib,
 	"grpcsrv":         classCorelib,
