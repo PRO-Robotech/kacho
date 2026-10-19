@@ -141,8 +141,11 @@ type ZotClient interface {
 	// DeleteTag удаляет тег/манифест repo в zot.
 	DeleteTag(ctx context.Context, registryID, repository, tag string) error
 	// NamespaceEmpty сообщает, пуст ли namespace (Delete непустого → FailedPrecondition).
+	// Пуст ⟺ ни у одного repo namespace нет тега — тот же предикат, что RepositoryEmpty;
+	// имя, которое движок помнит без единого тега, содержимым не является.
 	NamespaceEmpty(ctx context.Context, registryID string) (bool, error)
-	// RemoveNamespace снимает storage-namespace реестра в zot (шаг async-Delete).
+	// RemoveNamespace — шаг async-Delete: подтверждает пустоту по содержимому (снять
+	// имена repo через API движка нельзя, их снимает сборщик мусора движка).
 	RemoveNamespace(ctx context.Context, registryID string) error
 	// TriggerGC запускает garbage collection namespace в zot.
 	TriggerGC(ctx context.Context, registryID string) error
