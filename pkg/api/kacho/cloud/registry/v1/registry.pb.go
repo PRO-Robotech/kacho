@@ -185,8 +185,8 @@ func (ArtifactType) EnumDescriptor() ([]byte, []int) {
 
 // Visibility — публичность репозитория (overlay-authoritative на Repository;
 // сид-дефолт на Registry.default_visibility). Дефолт PRIVATE (fail-safe).
-// PUBLIC ⟺ FGA-tuple `user:* v_get registry_repository:<reg>/<repo>` (anonymous
-// pull через data-plane). ЛЮБОЙ путь, где принципал сам приводит ресурс к PUBLIC
+// PUBLIC ⟺ FGA-tuple `system_class:anonymous v_get registry_repository:<reg>/<repo>`
+// (anonymous pull через data-plane). ЛЮБОЙ путь, где принципал сам приводит ресурс к PUBLIC
 // (per-repo flip, create-with-PUBLIC, default_visibility→PUBLIC), требует registry
 // admin (D-6). Аноним к PRIVATE|absent-repo → uniform 404 (public-ность НЕ
 // existence-oracle).
@@ -195,7 +195,7 @@ type Visibility int32
 const (
 	Visibility_VISIBILITY_UNSPECIFIED Visibility = 0 // не задано → наследует Registry.default_visibility
 	Visibility_PRIVATE                Visibility = 1 // приватный (дефолт) — только авторизованный v_get
-	Visibility_PUBLIC                 Visibility = 2 // публичный — анонимный pull разрешён (user:* v_get tuple)
+	Visibility_PUBLIC                 Visibility = 2 // публичный — анонимный pull разрешён (system_class:anonymous v_get tuple)
 )
 
 // Enum value maps for Visibility.
