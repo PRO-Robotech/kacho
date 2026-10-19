@@ -90,8 +90,10 @@ usage() {
 gen-managed-image-pins.sh [--profile <путь от deploy/>] [--ref <git-ref>] [--branch <имя>]
                           [--check] [--self-test]
 gen-managed-image-pins.sh --tag-of <образ>[,<образ>…] [--ref <git-ref>] [--branch <имя>]
-    печатает «образ<TAB>тег» — тег, под которым CI публикует образ для коммита
-    ветки (тот же вывод, что у пинов профиля). Читатель — deploy/scripts/stand-ns.sh
+    печатает «образ<TAB>тег» — тег, под которым CI публикует образ для коммита,
+    собранного из ветки (тот же вывод, что у пинов профиля; имя ветки переведено
+    так, как его переводит сборка). Членства коммита в ветке не судит: опубликован
+    ли тег, отвечает реестр (kacho#3260). Читатель — deploy/scripts/stand-ns.sh
     (стенд проб в своём пространстве имён, kacho#3102): правило формы тега живёт
     здесь одно.
 EOF
@@ -257,10 +259,28 @@ pins_of() {
 # консольных модулей у службы доступа нет. Тот же литерал по той же причине несёт
 # близнец на Go (`deploy/managed_cluster_profile_test.go`), и разводить их здесь
 # значило бы завести третье место об одном предмете.
+#
+# ИМЯ ВЕТКИ В ТЕГЕ — ТО, ЧТО ПИШЕТ СБОРКА, А НЕ ИМЯ GIT (kacho#3260). Слэш законен
+# в имени ветки и незаконен в теге, и две сборки переводят его ПО-РАЗНОМУ:
+#   сервисы  docker-build.yml, шаг «состояние под проверкой»: `sed 's/\//-/g'` —
+#            только слэш становится дефисом, прочее остаётся;
+#   консоль  ui.yml, шаг «gate on DockerHub secrets»: всякий знак вне
+#            `a-zA-Z0-9._-` — дефис, подряд идущие схлопываются, обрезка до 60,
+#            начало не с буквы, цифры или подчёркивания — приставка `ref-`.
+# Прежняя редакция ставила имя ветки как есть: для `main` и `1266` это совпадает,
+# для ветки запроса `wip/3238-verify` — нет, и стенд искал образ `wip/3238-verify-…`,
+# которого не публикует никто (полоса kacho#3259 обходила это веткой-тёзкой).
+_service_tag_branch() { printf '%s' "${1//\//-}"; }
+_console_tag_branch() {
+  local s
+  s="$(printf '%s' "$1" | LC_ALL=C tr -c 'a-zA-Z0-9._-' '-' | tr -s '-' | cut -c1-60)"
+  case "$s" in [a-zA-Z0-9_]*) ;; *) s="ref-$s" ;; esac
+  printf '%s' "$s"
+}
 want_tag() {
   case "$1" in
-    kacho-ui-future-*) printf '%s-%s' "$2" "$3" ;;
-    *)                 printf '%s-%s' "$2" "${3:0:8}" ;;
+    kacho-ui-future-*) printf '%s-%s' "$(_console_tag_branch "$2")" "$3" ;;
+    *)                 printf '%s-%s' "$(_service_tag_branch "$2")" "${3:0:8}" ;;
   esac
 }
 
@@ -326,14 +346,19 @@ rewrite_profile() {
   # и образ слоя стенда (`kaname:dev`) не переписывается оттого, что его тёзка
   # запинен полным адресом в другом месте того же профиля.
   ours="$(_our_pins_of "$file" | awk '{print $1}' | sort -u | tr '\n' ' ')" || return 2
+  # Теги обеих семей выводит `want_tag` — ЕДИНСТВЕННОЕ место правила формы
+  # тега; awk получает готовые значения, а не второе толкование правила.
+  local svc_tag ui_tag
+  svc_tag="$(want_tag kacho-service "$branch" "$sha")"
+  ui_tag="$(want_tag kacho-ui-future-host "$branch" "$sha")"
   tmp="$(mktemp)"
-  awk -v branch="$branch" -v sha="$sha" -v exempt=" $exempt " -v ours=" $ours " '
+  awk -v branch="$branch" -v sha="$sha" -v exempt=" $exempt " -v ours=" $ours " \
+      -v svc_tag="$svc_tag" -v ui_tag="$ui_tag" '
     function is_exempt(img) { return index(exempt, " " img " ") > 0 }
     function is_ours(repo)  { return index(ours, " " repo " ") > 0 }
-    function tag_for(img,   short) {
-      if (img ~ /^kacho-ui-future-/) return branch "-" sha
-      short = substr(sha, 1, 8)
-      return branch "-" short
+    function tag_for(img) {
+      if (img ~ /^kacho-ui-future-/) return ui_tag
+      return svc_tag
     }
     /^#[[:space:]]*порождено-от:/ { print "# порождено-от: " branch " " sha; next }
     /^[[:space:]]*#/ { print; next }
@@ -609,11 +634,54 @@ EOF
     bad "код $rc, вывод: $out"
   fi
 
+  # ── ИМЯ ВЕТКИ В ТЕГЕ — ПЕРЕВОДОМ СБОРКИ (kacho#3260) ────────────────────────
+  #
+  # Ожидаемые значения выписаны ЛИТЕРАЛАМИ, а не вычислены тем же правилом:
+  # проба, считающая ответ функцией, которую судит, зеленеет на любом её дефекте.
+  # 18 и 19 — теги, которые реестр действительно несёт для ветки
+  # `wip/3238-verify` (ручные запуски docker-build и ui 2026-10-16).
+  local got
+  say "18. ветка со слэшем, образ службы: слэш переведён в дефис, коммит — восемь знаков"
+  got="$(want_tag kacho-vpc wip/3238-verify "$sha40")"
+  [ "$got" = "wip-3238-verify-01234567" ] && ok "«$got»" || bad "«$got», ждали «wip-3238-verify-01234567»"
+
+  say "19. ветка со слэшем, образ консоли: слэш переведён в дефис, коммит целиком"
+  got="$(want_tag kacho-ui-future-host wip/3238-verify "$sha40")"
+  [ "$got" = "wip-3238-verify-$sha40" ] && ok "«$got»" || bad "«$got»"
+
+  say "20. правила двух сборок РАЗНЫЕ: консоль схлопывает и переводит всё вне алфавита тега, службы — только слэш"
+  local g1 g2
+  g1="$(want_tag kacho-vpc 'a//b+-c' "$sha40")"; g2="$(want_tag kacho-ui-future-host 'a//b+-c' "$sha40")"
+  if [ "$g1" = "a--b+-c-01234567" ] && [ "$g2" = "a-b-c-$sha40" ]; then ok "службы «$g1», консоль «$g2»"
+  else bad "службы «$g1», консоль «$g2»"; fi
+
+  say "21. консоль: начало вне алфавита — приставка ref-, обрезка до 60"
+  g1="$(want_tag kacho-ui-future-host '.tmp' "$sha40")"
+  g2="$(want_tag kacho-ui-future-host "$(printf 'x%.0s' {1..70})" "$sha40")"
+  if [ "$g1" = "ref-.tmp-$sha40" ] && [ "$g2" = "$(printf 'x%.0s' {1..60})-$sha40" ]; then ok "«${g1:0:12}…», длина тега ${#g2} = 60 + 1 + 40"
+  else bad "«$g1» / «$g2»"; fi
+
+  say "22. законный близнец: ветка без особых знаков — тег прежний"
+  g1="$(want_tag kacho-vpc main "$sha40")"; g2="$(want_tag kacho-ui-future-host 3260-stand-pr-images "$sha40")"
+  if [ "$g1" = "main-01234567" ] && [ "$g2" = "3260-stand-pr-images-$sha40" ]; then ok "«$g1», «${g2:0:24}…»"
+  else bad "«$g1» / «$g2»"; fi
+
+  say "23. порождение профиля переводит имя ветки тем же правилом"
+  write_fixture
+  rewrite_profile "$f" wip/x "$sha2"
+  if grep -q "kacho-vpc:wip-x-89abcdef" "$f" && grep -q "kacho-ui-future-host:wip-x-$sha2" "$f" \
+     && grep -q "tag: wip-x-89abcdef" "$f"; then ok "обе семьи переведены"
+  else bad "файл: $(cat "$f")"; fi
+
   say "итог самопроверки: прошло $pass, провалено $fail"
   [ "$fail" -eq 0 ]
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Подключённый (`. gen-managed-image-pins.sh`) — только определения:
+# доказательство инъекцией (stand-pr-images-inject.sh) подменяет правило формы
+# тега в памяти и требует, чтобы самопроверка покраснела.
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 cd "$DEPLOY_ROOT" || exit 2
 
 case "$MODE" in
@@ -631,10 +699,24 @@ case "$MODE" in
       echo "       Пин, выведенный из неразрешимой ссылки, назвал бы образ, которого нет." >&2
       exit 2
     }
-    # Тег несёт ИМЯ ВЕТКИ, и образ публикуется только сборкой этой ветки. Коммит,
-    # в неё не входящий, дал бы синтаксически правильный пин на несуществующий
-    # образ — отказ здесь дешевле, чем ImagePullBackOff через минуты после
-    # успешного «helm upgrade».
+    # --tag-of ЧЛЕНСТВА В ВЕТКЕ НЕ СУДИТ (kacho#3260). Тег — функция пары «ветка,
+    # коммит», и ответ на «опубликован ли он» даёт РЕЕСТР, а не история клона:
+    # ручной запуск сборки публикует голову ЛЮБОЙ ветки (docker-build.yml и ui.yml,
+    # `workflow_dispatch`), и коммит ветки запроса, которого нет ни в `1266`, ни в
+    # `main`, свой образ имеет. Прежнее требование членства отказывало ровно этому
+    # коммиту. Существование образа спрашивает у реестра вызывающий
+    # (deploy/scripts/stand-ns.sh, `reachable`), а после подъёма — провенанс
+    # каждого пода против той же sha.
+    if [ "$MODE" = tag-of ]; then
+      for img in ${TAG_OF//,/ }; do
+        printf '%s\t%s\n' "$img" "$(want_tag "$img" "$BRANCH" "$sha")"
+      done
+      exit 0
+    fi
+    # Профиль посадки — другое дело: его тег несёт ИМЯ ВЕТКИ ствола, и образ
+    # публикуется только сборкой этой ветки. Коммит, в неё не входящий, дал бы
+    # синтаксически правильный пин на несуществующий образ — отказ здесь дешевле,
+    # чем ImagePullBackOff через минуты после успешного «helm upgrade».
     contained=""
     for candidate in "origin/$BRANCH" "$BRANCH"; do
       if git -C "$REPO_ROOT" rev-parse --verify "$candidate" >/dev/null 2>&1; then
@@ -652,12 +734,6 @@ case "$MODE" in
       echo "       Образы с тегом «$BRANCH-…» публикует сборка этой ветки; для стороннего" >&2
       echo "       коммита такого образа нет." >&2
       exit 2
-    fi
-    if [ "$MODE" = tag-of ]; then
-      for img in ${TAG_OF//,/ }; do
-        printf '%s\t%s\n' "$img" "$(want_tag "$img" "$BRANCH" "$sha")"
-      done
-      exit 0
     fi
     rewrite_profile "$PROFILE" "$BRANCH" "$sha" || { echo "ОТКАЗ: переписать $PROFILE не удалось" >&2; exit 2; }
     check_profile "$PROFILE"; exit $?
