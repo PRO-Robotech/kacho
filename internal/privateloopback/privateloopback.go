@@ -134,17 +134,7 @@ func certificateFor(addr net.Addr) (tls.Certificate, error) {
 // общего, — и тогда не отдаст ни одного, сколько ни пробуй.
 func Listen(tb testing.TB) net.Listener {
 	tb.Helper()
-	var b [3]byte
-	if _, err := crand.Read(b[:]); err != nil {
-		tb.Fatalf("privateloopback: случайный адрес петли не выбран: %v", err)
-	}
-	if b[0] == 0 {
-		b[0] = 1 // 127.0.0.0/16 — общий адрес и его соседи — исключены
-	}
-	if b[2] == 0 || b[2] == 255 {
-		b[2] = 1
-	}
-	ip := net.IPv4(127, b[0], b[1], b[2])
+	ip := privateIP(tb)
 	l, err := net.Listen("tcp4", net.JoinHostPort(ip.String(), "0"))
 	if err == nil {
 		return l
@@ -159,4 +149,21 @@ func Listen(tb testing.TB) net.Listener {
 		tb.Fatalf("privateloopback: общий адрес петли не занят: %v", err)
 	}
 	return l
+}
+
+// privateIP — случайный адрес 127.x.y.z, где x ≠ 0: общий 127.0.0.1 (и вся
+// 127.0.0.0/16) исключены по построению.
+func privateIP(tb testing.TB) net.IP {
+	tb.Helper()
+	var b [3]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		tb.Fatalf("privateloopback: случайный адрес петли не выбран: %v", err)
+	}
+	if b[0] == 0 {
+		b[0] = 1 // 127.0.0.0/16 — общий адрес и его соседи — исключены
+	}
+	if b[2] == 0 || b[2] == 255 {
+		b[2] = 1
+	}
+	return net.IPv4(127, b[0], b[1], b[2])
 }

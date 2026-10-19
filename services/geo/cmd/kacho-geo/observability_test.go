@@ -19,21 +19,18 @@ import (
 	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/corelib/servicehost"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/observability/metrics"
 )
 
-// freeAddr резервирует свободный TCP-порт на loopback и отдаёт его адрес
-// (слушатель закрыт — профиль переоткроет). Фиксированный адрес нужен по
-// существу: «порт освобождён» доказывается повторной привязкой к ТОМУ ЖЕ адресу.
+// freeAddr — адрес петли, который профиль займёт сам. Фиксированный адрес нужен
+// по существу: «порт освобождён» доказывается повторной привязкой к ТОМУ ЖЕ
+// адресу. Адрес одолжен (kacho#3331): явная привязка к нему проходит, а ядро не
+// выдаёт его никому другому до конца пробы — прежняя форма («открыл, прочитал,
+// закрыл») отдавала порт соседям, и «порт занят» мог быть чужим слушателем.
 func freeAddr(t *testing.T) string {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("reserve port: %v", err)
-	}
-	addr := l.Addr().String()
-	_ = l.Close()
-	return addr
+	return privateloopback.Lend(t)
 }
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

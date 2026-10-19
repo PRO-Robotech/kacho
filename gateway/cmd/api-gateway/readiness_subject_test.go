@@ -42,6 +42,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/upstreamfailure"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const subjectProbeUser = "usr00000000000003284"
@@ -72,26 +73,27 @@ func (l acceptCounting) Accept() (net.Conn, error) {
 }
 
 // subjectBackend — внутренний слушатель службы доступа на постоянном адресе,
-// который можно остановить и поднять снова (под за сервисом после переката).
+// который сначала лежит, а потом поднимается (под за сервисом после переката).
+// Адрес удержан (kacho#3331): пока служба лежит, подключение отвергается и
+// занять адрес не может никто, а подъём — слушание на том же сокете, без окна.
 type subjectBackend struct {
 	addr     string
+	held     *privateloopback.Held
 	accepted atomic.Int64
 	gs       *grpc.Server
 }
 
 func newSubjectBackend(t *testing.T) *subjectBackend {
 	t.Helper()
-	b := &subjectBackend{addr: stoppedAddr(t)}
+	h := privateloopback.Hold(t)
+	b := &subjectBackend{addr: h.Addr(), held: h}
 	t.Cleanup(b.stop)
 	return b
 }
 
 func (b *subjectBackend) start(t *testing.T) {
 	t.Helper()
-	lis, err := net.Listen("tcp", b.addr)
-	if err != nil {
-		t.Fatalf("listen %s: %v", b.addr, err)
-	}
+	lis := b.held.Listen(t)
 	gs := grpc.NewServer()
 	iamv1.RegisterInternalIAMServiceServer(gs, subjectProbeIAM{})
 	healthpb.RegisterHealthServer(gs, grpchealth.NewServer())
