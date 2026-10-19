@@ -409,6 +409,9 @@ func (stubRepo) Get(context.Context, string) (*domain.Registry, error) {
 func (stubRepo) List(context.Context, registry.ListQuery) ([]*domain.Registry, string, error) {
 	return nil, "", nil
 }
+func (stubRepo) RepositoryCounts(context.Context, []string) (map[string]int32, error) {
+	return map[string]int32{}, nil
+}
 func (stubRepo) Insert(context.Context, *domain.Registry, domain.RegisterIntent) (*domain.Registry, domain.RegisterIntent, error) {
 	return nil, domain.RegisterIntent{}, nil
 }

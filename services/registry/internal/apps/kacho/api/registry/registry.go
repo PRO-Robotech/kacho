@@ -91,6 +91,11 @@ type RegistryReader interface {
 	Get(ctx context.Context, id string) (*domain.Registry, error)
 	// List возвращает реестры project'а (cursor-пагинация; listauthz-фильтр — в handler).
 	List(ctx context.Context, q ListQuery) ([]*domain.Registry, string, error)
+	// RepositoryCounts возвращает число репозиториев каждого из registryIDs ОДНИМ
+	// запросом: репозиторий существует ⟺ есть строка наложения ЛИБО строка регистрации
+	// (тот же предикат, что RepositoryDeclared). Реестра без репозиториев в ответе нет —
+	// его число 0. Пустой registryIDs → пустой ответ без обращения к базе.
+	RepositoryCounts(ctx context.Context, registryIDs []string) (map[string]int32, error)
 }
 
 // RegistryWriter — write-порт таблицы registries. Мутации атомарны на DB-уровне
@@ -375,6 +380,9 @@ func (u *UseCase) Get(ctx context.Context, id string) (*domain.Registry, error) 
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}
+	if err := u.fillRepositoryCounts(ctx, []*domain.Registry{r}); err != nil {
+		return nil, err
+	}
 	return r, nil
 }
 
@@ -394,7 +402,31 @@ func (u *UseCase) List(ctx context.Context, q ListQuery) ([]*domain.Registry, st
 	if err != nil {
 		return nil, "", mapRepoErr(err)
 	}
+	if err := u.fillRepositoryCounts(ctx, items); err != nil {
+		return nil, "", err
+	}
 	return items, next, nil
+}
+
+// fillRepositoryCounts ставит RepositoryCount реестрам страницы ОДНИМ запросом к базе
+// (без запроса на реестр). Число не прочитано → ошибка чтения целиком: ответ с ложным
+// нулём неотличим от пустого реестра. Пустая страница чисел не спрашивает.
+func (u *UseCase) fillRepositoryCounts(ctx context.Context, regs []*domain.Registry) error {
+	if len(regs) == 0 {
+		return nil
+	}
+	ids := make([]string, len(regs))
+	for i, r := range regs {
+		ids[i] = r.ID
+	}
+	counts, err := u.reader.RepositoryCounts(ctx, ids)
+	if err != nil {
+		return mapRepoErr(err)
+	}
+	for _, r := range regs {
+		r.RepositoryCount = counts[r.ID]
+	}
+	return nil
 }
 
 // ListRepositories возвращает объединение overlay ⊔ projection repos namespace (A20,

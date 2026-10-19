@@ -14,7 +14,8 @@ import (
 // ProtoRegistry конвертирует domain.Registry → registryv1.Registry. Единый
 // источник tenant-facing проекции: используется worker'ом (Operation.response) и
 // тонким handler'ом (Get/List). created_at усекается до секунд; endpoint —
-// output-only ("<base>/<id>"); repository_count — проекция из zot (0 до data-plane).
+// output-only ("<base>/<id>"); repository_count — число репозиториев, поставленное
+// чтением Get/List (fillRepositoryCounts); в Operation.response Create — 0, реестр новый.
 func (u *UseCase) ProtoRegistry(r *domain.Registry) *registryv1.Registry {
 	if r == nil {
 		return nil
@@ -27,6 +28,7 @@ func (u *UseCase) ProtoRegistry(r *domain.Registry) *registryv1.Registry {
 		Description:                 r.Description,
 		Labels:                      r.Labels,
 		Endpoint:                    u.EndpointFor(r.ID),
+		RepositoryCount:             r.RepositoryCount,
 		Status:                      registryv1.RegistryStatus(r.Status),
 		DefaultRepositoryVisibility: registryv1.Visibility(r.DefaultVisibility),
 		RegionId:                    r.RegionID,
