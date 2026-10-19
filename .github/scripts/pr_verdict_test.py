@@ -1169,6 +1169,19 @@ def test_a_cancel_whose_fresh_leg_still_runs_is_not_ready() -> None:
     assert v.state == NOT_READY and v.offenders == tuple(sorted(running)), render(v)
 
 
+def test_a_template_shared_by_two_jobs_proves_no_replacement() -> None:
+    """Шаблон, общий двум джобам, не называет джобу: чья нога заменяет отмену, не
+    доказать, и отмена остаётся красной. Инъекция — вторая джоба с тем же
+    шаблоном в настоящем дереве; меняется один факт против наблюдённой картины."""
+    wf = tree_workflows()
+    wf[CI]["jobs"]["twin-build"] = {"name": "build ${{ matrix.project }}", "steps": [],
+                                    "strategy": {"matrix": "${{ fromJSON('[]') }}"}}
+    d = tree_declared(workflows=wf)
+    assert dict(d.templates)["build ${{ matrix.project }}"] is None, d.templates
+    v = decide(_unexpanded_cancelled() + _fresh_legs(d), d, VERDICT)
+    assert v.state == RED and v.offenders == ("build ${{ matrix.project }}",), render(v)
+
+
 def test_the_mutant_that_keeps_unexpanded_cancels_reddens_the_observed_picture() -> None:
     """Мутант «не отставлять шаблонные»: правило снято — наблюдённая картина
     обязана покраснеть. Иначе проба зелёного выше ничего не держит."""
