@@ -387,8 +387,10 @@ func runWithHeadRunsEnv(t *testing.T, runs []headRun, ghJobsTotal int, env []str
 	return s, code, out
 }
 
-// displacedCause — начало строки класса: аннотация провайдера, имя класса, как у
-// ws `ci-read.sh`, и имя процесса — разбор читателя опирается ровно на это.
+// displacedCause — начало строки отказа: аннотация провайдера, имя класса и имя
+// процесса. С ws `ci-read.sh` общее лишь имя класса: вытеснение он выводит сам из
+// прогонов головы, а из аннотаций проверок читает только title стража, — строку
+// свода читает человек в сводке проверки, для него форма и закреплена.
 const displacedCause = "::error::RUN-DISPLACED production-posture:"
 
 // displacedExit — код вытеснения: не 1 (красное решателя и срок), а свой —
