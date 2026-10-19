@@ -422,7 +422,9 @@ func TestAccessKeys_RelyingPartyAndConsoleOriginComeFromTheSharedIdentityNode(t 
 			"config.authn.accessKeys.origins=null",
 			"config.authn.accessKeys.originFromConsole=true",
 		}, tc.sets...)
-		out, err := renderIdentitySubchart(t, chainOf(t, "dev"), sets...)
+		// Значения цепочки — поверх базы зонта, как их получает подчарт при
+		// установке (stackIdentityValues), а не одни профили цепочки.
+		out, err := renderStackSubchart(t, "dev", stackIdentityValues(t, chainOf(t, "dev")), sets...)
 		if err != nil {
 			t.Fatalf("%s: рендер отказал: %v\n%s", tc.name, err, out)
 		}
