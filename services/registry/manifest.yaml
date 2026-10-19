@@ -141,14 +141,14 @@ resources:
           # registry, and the registry is the one anchored to a project.
       - before: v_get
         text: |
-          # RG-1 D-7: анонимный pull PUBLIC-репозитория. Класс `system_class:anonymous`
-          # получает v_get ТОЛЬКО на репозиториях, где оверлей реестра записал явный
-          # кортеж `system_class:anonymous v_get` (visibility=PUBLIC); без этого
-          # кортежа у анонима доступа нет → единый 404. Класс допущен ТОЛЬКО в v_get —
-          # ни в одно отношение записи (аноним — пол только для чтения, B14).
-          # #64 Defect A: v_* выводятся из `owner` (owner-кортеж создателя или
-          # отправителя репозитория), так что владелец полностью управляет своим
-          # репозиторием; класс анонима остаётся ТОЛЬКО в v_get (B14).
+          # RG-1 D-7: `user:*` public-read wildcard — anonymous pull of a PUBLIC repo.
+          # The wildcard grants v_get ONLY on repos that ALSO carry an explicit
+          # `user:* v_get` tuple emitted by the registry overlay (visibility=PUBLIC);
+          # absent that tuple `user:*` has no access → uniform 404. ONLY v_get gains
+          # the wildcard — no write relation does (anon is a read-only floor, B14).
+          # #64 Defect A: v_* derive from `owner` (repo creator/pusher owner-tuple) so
+          # the repo owner fully manages their own repository; `user:*` wildcard stays
+          # on v_get ONLY (anonymous public-read floor, B14).
     relations:
       - name: owner
         definition: '[user, service_account]'
