@@ -18,11 +18,14 @@
 // `VERDICT_*` в объявлении процесса нет (иначе действует не сверенное число) — с
 // инъекцией в обе стороны.
 //
-// ПРЕДМЕТ 2 — ВЫТЕСНЕНИЕ. Прогон процесса с общей группой `concurrency` без
-// отмены провайдер отменяет, пока он ждёт, — заданий у него ноль, и его проверки
-// не появятся. Пары:
+// ПРЕДМЕТ 2 — ВЫТЕСНЕНИЕ. Ждущий прогон процесса в группе `concurrency` без
+// отмены провайдер отменяет, когда в ту же группу встаёт новый, — заданий у
+// него ноль, и его проверки не появятся. Исход — не красное и не срок, а класс
+// RUN-DISPLACED (имя то же, что у ws `scripts/ci-read.sh`, ws#1216) с отдельным
+// кодом и командами повтора (kacho#3267). Пары:
 //
-//	все прогоны процесса на голове отменены без заданий → отказ, названа причина;
+//	все прогоны процесса на голове отменены без заданий → RUN-DISPLACED, код 4, повтор назван;
+//	вытеснены два процесса                               → строка на каждый, выход один;
 //	тот же прогон перезапущен (попытка ждёт)             → ждём и зеленеем;
 //	рядом есть прогон того же процесса с исходом         → не вытеснен;
 //	отменён, но задания заводил                          → не вытеснен (судит решатель);
@@ -342,9 +345,19 @@ func postureRun(id int, status, conclusion string, jobsTotal *int) headRun {
 var ciRunningRun = headRun{ID: 7, Name: "ci", Path: ".github/workflows/ci.yaml",
 	Status: "in_progress", RunAttempt: 1, JobsTotal: headJobs(40)}
 
+// selfRunID — номер прогона самого свода в пробах: окружение задания CI несёт
+// настоящий `GITHUB_RUN_ID`, и проба обязана задать свой, иначе судила бы чужое.
+const selfRunID = "9001"
+
 // runWithHeadRuns — настоящий скрипт: решатель отдаёт коды, перечень прогонов
 // головы — подставной, gh — подставной (отвечает число заданий прогона).
 func runWithHeadRuns(t *testing.T, runs []headRun, ghJobsTotal int, codes ...int) (verdictStubs, int, string) {
+	t.Helper()
+	return runWithHeadRunsEnv(t, runs, ghJobsTotal, []string{"GITHUB_RUN_ID=" + selfRunID}, codes...)
+}
+
+// runWithHeadRunsEnv — то же с добавочным окружением скрипта.
+func runWithHeadRunsEnv(t *testing.T, runs []headRun, ghJobsTotal int, env []string, codes ...int) (verdictStubs, int, string) {
 	t.Helper()
 	s := newVerdictStubs(t, wholePayload, codes...)
 	nowCmd, _ := verdictClocks(t, s.dir)
@@ -362,19 +375,25 @@ func runWithHeadRuns(t *testing.T, runs []headRun, ghJobsTotal int, codes ...int
 		"echo \"$*\" >> %q\necho '{\"total_count\": %d, \"jobs\": []}'\n",
 		filepath.Join(s.dir, "gh-journal"), ghJobsTotal))
 
-	code, out := runUnderProviderShell(t, waitScriptPath(t), s.dir,
-		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"VERDICT_DEADLINE="+strconv.Itoa(10*clockStep),
-		"VERDICT_NOW_CMD="+nowCmd,
-		"VERDICT_RUNS_CMD="+runsCmd,
+	code, out := runUnderProviderShell(t, waitScriptPath(t), s.dir, append([]string{
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"VERDICT_DEADLINE=" + strconv.Itoa(10*clockStep),
+		"VERDICT_NOW_CMD=" + nowCmd,
+		"VERDICT_RUNS_CMD=" + runsCmd,
 		"VERDICT_DISPLACED_PERIOD=0",
-		"VERDICT_FETCH_CMD="+s.fetchCmd,
-		"VERDICT_DECIDE_CMD="+s.decideCmd,
-	)
+		"VERDICT_FETCH_CMD=" + s.fetchCmd,
+		"VERDICT_DECIDE_CMD=" + s.decideCmd,
+	}, env...)...)
 	return s, code, out
 }
 
-const displacedCause = "production-posture вытеснен — нужен перезапуск на голове"
+// displacedCause — начало строки класса: аннотация провайдера, имя класса, как у
+// ws `ci-read.sh`, и имя процесса — разбор читателя опирается ровно на это.
+const displacedCause = "::error::RUN-DISPLACED production-posture:"
+
+// displacedExit — код вытеснения: не 1 (красное решателя и срок), а свой —
+// прогон недействителен, нужен повтор.
+const displacedExit = 4
 
 // TestVerdictWaitRefusesADisplacedRunWithItsCause — прогон posture отменён, не
 // заведя заданий: свод отказывает на первом же «ещё идут», называя причину и
@@ -383,11 +402,14 @@ func TestVerdictWaitRefusesADisplacedRunWithItsCause(t *testing.T) {
 	t.Parallel()
 	s, code, out := runWithHeadRuns(t, []headRun{ciRunningRun, postureRun(42, "completed", "cancelled", headJobs(0))}, 0, 3)
 
-	if code != 1 {
-		t.Errorf("исход %d, ожидался отказ\n%s", code, out)
+	if code != displacedExit {
+		t.Errorf("исход %d, ожидался %d — вытеснение не красное и не срок\n%s", code, displacedExit, out)
 	}
 	if !strings.Contains(out, displacedCause) || !strings.Contains(out, "прогон 42") {
-		t.Errorf("отказ не называет вытеснение и прогон:\n%s", out)
+		t.Errorf("отказ не называет класс RUN-DISPLACED и прогон:\n%s", out)
+	}
+	if !strings.Contains(out, "повтор: gh run rerun 42 -R owner/repo, затем gh run rerun "+selfRunID+" -R owner/repo") {
+		t.Errorf("повтор не назван командами — вытесненный процесс, затем сам свод:\n%s", out)
 	}
 	if strings.Contains(out, "не завершились") {
 		t.Errorf("причиной назван срок, а не вытеснение:\n%s", out)
@@ -405,8 +427,8 @@ func TestVerdictWaitCountsJobsOfACancelledRunThroughTheForge(t *testing.T) {
 	t.Run("заданий ноль — вытеснен", func(t *testing.T) {
 		t.Parallel()
 		s, code, out := runWithHeadRuns(t, []headRun{postureRun(42, "completed", "cancelled", nil)}, 0, 3)
-		if code != 1 || !strings.Contains(out, displacedCause) {
-			t.Errorf("исход %d, ожидался отказ «%s»\n%s", code, displacedCause, out)
+		if code != displacedExit || !strings.Contains(out, displacedCause) {
+			t.Errorf("исход %d, ожидался %d «%s»\n%s", code, displacedExit, displacedCause, out)
 		}
 		journal, _ := os.ReadFile(filepath.Join(s.dir, "gh-journal"))
 		if !strings.Contains(string(journal), "actions/runs/42/jobs") {
@@ -420,6 +442,35 @@ func TestVerdictWaitCountsJobsOfACancelledRunThroughTheForge(t *testing.T) {
 			t.Errorf("исход %d — отменённый на ходу прогон принят за вытесненный\n%s", code, out)
 		}
 	})
+}
+
+// TestVerdictWaitNamesEveryDisplacedProcessOnce — вытеснены два процесса: строка
+// класса на каждый, выход один; номера свода нет в окружении — повтор свода назван
+// словами, а не пустой командой.
+func TestVerdictWaitNamesEveryDisplacedProcessOnce(t *testing.T) {
+	t.Parallel()
+	console := headRun{ID: 50, Name: "console-e2e", Path: ".github/workflows/console-e2e.yml",
+		Status: "completed", Conclusion: "cancelled", RunAttempt: 1, JobsTotal: headJobs(0)}
+	s, code, out := runWithHeadRunsEnv(t, []headRun{postureRun(42, "completed", "cancelled", headJobs(0)), console},
+		0, []string{"GITHUB_RUN_ID="}, 3)
+
+	if code != displacedExit {
+		t.Errorf("исход %d, ожидался %d\n%s", code, displacedExit, out)
+	}
+	for _, want := range []string{displacedCause, "::error::RUN-DISPLACED console-e2e:", "gh run rerun 50 -R owner/repo"} {
+		if got := strings.Count(out, want); got != 1 {
+			t.Errorf("«%s» встретилось %d раз, ожидался 1:\n%s", want, got, out)
+		}
+	}
+	if strings.Contains(out, "gh run rerun  ") || strings.Contains(out, "gh run rerun -R") {
+		t.Errorf("повтор свода назван пустой командой:\n%s", out)
+	}
+	if !strings.Contains(out, "затем перезапуск этого свода") {
+		t.Errorf("повтор свода без номера не назван словами:\n%s", out)
+	}
+	if got := s.polls(t); got != 1 {
+		t.Errorf("заходов %d, ожидался 1", got)
+	}
 }
 
 // TestVerdictWaitKeepsWaitingWhenTheProcessHasALiveRun — законные близнецы: тот же
