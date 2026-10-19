@@ -121,11 +121,15 @@ kaname:
   # после неё честно назовётся расхождением — это верно, а не досадно.
   image:
     repository: docker.io/prorobotech/kaname
-    # Ревизия ствола службы efac3adf — вливание PRO-Robotech/kaname#879 в main
-    # (вложенные правила ролей kaname#874, судья формы kaname#872; kacho#3251).
+    # Ревизия службы 702d4575 — голова сборки волны 15 PRO-Robotech/kaname#918
+    # (запрос kaname#924 в ветку эпика 746; в ней публичный предикат формы
+    # pkg/generatedid kaname#908 и приёмная сторона реестра kaname#909; kacho#3305).
+    # Посаженной ревизии с этим предикатом нет: в голове 746 каталога
+    # pkg/generatedid нет, а ветка задачи 909 образа не публикует, поэтому тег —
+    # `task-918-…` (публикация ветки задачи, kaname#916).
     # Ту же ревизию называет пин модуля службы в go.mod: поднимаются вместе, их
     # согласие держит deploy/outsourced_image_pin_agrees_with_module_pin_test.go.
-    tag: main-efac3adf
+    tag: task-918-702d4575
     pullPolicy: IfNotPresent
   platform:
     domain: api.kacho.cloud

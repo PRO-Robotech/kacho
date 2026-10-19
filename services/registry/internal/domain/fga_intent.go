@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/corelib/authz/proxytuple"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/kaname/pkg/generatedid"
 )
 
 // FGA-register-intent — чистые domain-value-типы transactional-outbox owner-tuple
@@ -19,8 +21,8 @@ import (
 // каждый intent через kaname InternalIAMService.RegisterResource /
 // UnregisterResource по mTLS — идемпотентно, at-least-once, owner-tuple не теряется.
 //
-// Файл — leaf (только stdlib): импортируется и writer-side (emit), и client-side
-// (decode) без import-цикла и без pgx/grpc в контракте.
+// Файл — leaf (stdlib и чистые пакеты без ввода-вывода): импортируется и writer-side
+// (emit), и client-side (decode) без import-цикла и без pgx/grpc в контракте.
 
 // FGAObjectTypeRegistry — FGA object-type namespace-реестра. object-prefix
 // `registry_` РАВЕН имени сервиса kacho-registry, и словарь имён модулей
@@ -279,43 +281,48 @@ func FGASubjectFromPrincipal(principalType, principalID string) string {
 
 // FGASubjectFromID — FGA subject-строка из одного Kachō principal id (data-plane
 // имеет только `sub` из верифицированного JWT, без Principal.Type). Тип выводится по
-// id-prefix — единственному дискриминатору, доступному без обращения к iam: usr_ →
-// user, sva_ → service_account. В схеме ids Kachō id-prefix и Principal.Type
-// согласованы (usr_ всегда type=user), поэтому результат совпадает с
-// control-plane FGASubjectFromPrincipal для тех же principal'ов. Пустой id → ""
-// (невалидный caller — AuthN не должен был его пропустить). Неизвестный prefix
-// трактуется как service_account (docker login сейчас — SA-key only; сохраняет
-// прежнее поведение data-plane heuristic'а).
+// id-prefix — единственному дискриминатору, доступному без обращения к iam: usr →
+// user, sva → service_account. В схеме ids Kachō id-prefix и Principal.Type
+// согласованы (usr всегда type=user), поэтому результат совпадает с
+// control-plane FGASubjectFromPrincipal для тех же principal'ов.
+//
+// "" — субъекта нет, и вызывающий обязан отказать (kacho#3305): пустой id, id не
+// порождённой продуктом формы и id порождённой формы не субъектного вида. Форму
+// судит публичный предикат службы доступа (kaname pkg/generatedid, kaname#908), а
+// не своя копия выражения здесь. Вид внутри формы — ровно тот, каким служба
+// доступа чеканит человека и служебную учётку (`ids.NewID` corelib: префикс и
+// тело без разделителя), и судит его валидатор той же библиотеки: префикс без
+// длины вид не определяет (`sv` + тело на `a…` — тоже порождённая форма).
 func FGASubjectFromID(principalID string) string {
-	switch {
-	case principalID == "":
+	if !generatedid.Matches(principalID) {
 		return ""
-	case strings.HasPrefix(principalID, principalIDPrefixUser):
+	}
+	switch {
+	case ids.IsValid(principalID, principalIDPrefixUser):
 		return FGAObjectRef(FGASubjectTypeUser, principalID)
-	case strings.HasPrefix(principalID, principalIDPrefixServiceAccount):
+	case ids.IsValid(principalID, principalIDPrefixServiceAccount):
 		return FGAObjectRef(FGASubjectTypeServiceAccount, principalID)
 	default:
-		// docker login сейчас — SA-key only (identity-only токен); неизвестный prefix
-		// → service_account (сохраняет прежнее поведение data-plane heuristic'а).
-		return FGAObjectRef(FGASubjectTypeServiceAccount, principalID)
+		return ""
 	}
 }
 
-// FGASubjectForPrincipalID — resolve a verified data-plane principal id to its FGA
-// subject, honoring the configured anonymous principal id (RG-1 D-7). When
-// anonPrincipalID is non-empty AND principalID equals it, the caller is the public
-// anonymous principal and resolves to FGASubjectAnonymousClass
-// ("system_class:anonymous"): a valid anon Bearer thus reads only PUBLIC repos (the
-// publication is a grant to that class) and can NEVER write (a class holds no write
-// verb) — B03 / B14. Every other principalID resolves by id-prefix via
-// FGASubjectFromID.
+// FGASubjectForPrincipalID — FGA-субъект проверенного идентификатора принципала
+// плоскости данных с учётом настроенного анонимного идентификатора (RG-1 D-7). Если
+// anonPrincipalID не пуст И principalID с ним совпадает, вызывающий — публичный
+// аноним, и ответ — FGASubjectAnonymousClass («system_class:anonymous»): действующий
+// анонимный Bearer читает только PUBLIC-репозитории (публикация — грант этому классу)
+// и не пишет НИКОГДА (у класса нет глагола записи) — B03 / B14. Любой другой
+// principalID судит FGASubjectFromID: по форме и виду, а не по префиксу.
 //
-// anonPrincipalID=="" → anonymous pull DISABLED (secure-by-default): a token whose sub
-// happens to equal the anon id resolves as an ordinary principal, never silently
-// gaining the class. The anon principal id is deployment-configured (kaname
-// AnonymousClientID); deploy MUST keep it reserved (no real principal shares it), since
-// then the access service mints a token with sub==anonPrincipalID only on the anonymous
-// flow of its /iam/token shim.
+// anonPrincipalID=="" → анонимный поток ВЫКЛЮЧЕН (secure-by-default): токен, чей sub
+// совпал с анонимным идентификатором, класса молча не получает и судится как любой
+// другой sub — по форме. Анонимный идентификатор не порождённой формы (kaname#908),
+// поэтому ответ — "" (субъекта нет), и вызывающий отказывает 401 до любого Check
+// (kacho#3305), а не сводит его к service_account. Анонимный идентификатор задаёт
+// посадка (kaname AnonymousClientID); посадка ОБЯЗАНА держать его зарезервированным
+// (ни один настоящий принципал его не носит): тогда служба доступа чеканит токен с
+// sub==anonPrincipalID только в анонимном потоке своей прослойки /iam/token.
 func FGASubjectForPrincipalID(principalID, anonPrincipalID string) string {
 	if anonPrincipalID != "" && principalID == anonPrincipalID {
 		return FGASubjectAnonymousClass
