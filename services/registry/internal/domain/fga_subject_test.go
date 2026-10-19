@@ -64,13 +64,14 @@ func TestFGASubjectFromID(t *testing.T) {
 	}
 }
 
-// TestFGASubjectForPrincipalID_Anon — RG-1 D-7: the data-plane resolves the
-// configured anonymous principal id (kaname AnonymousClientID) to the system class
-// FGASubjectAnonymousClass ("system_class:anonymous", приёмка kaname SC-39; подстановка
-// говорящим не бывает); every other id resolves by id-prefix
-// via FGASubjectFromID. Empty anonPrincipalID → anonymous disabled (the token, if
-// any, resolves as an ordinary principal — secure-by-default). This is the single
-// mapping point a VALID anon Bearer becomes the public read-only principal (B03/B14).
+// TestFGASubjectForPrincipalID_Anon — RG-1 D-7: плоскость данных сводит настроенный
+// анонимный идентификатор (kaname AnonymousClientID) к системному классу
+// FGASubjectAnonymousClass («system_class:anonymous», приёмка kaname SC-39; подстановка
+// говорящим не бывает); любой другой идентификатор судит FGASubjectFromID — по форме
+// и виду. Пустой anonPrincipalID → анонимный поток выключен: анонимный идентификатор
+// судится как любой другой и, не будучи порождённой формы, субъекта не даёт ("") —
+// secure-by-default. Это единственная точка, где ДЕЙСТВУЮЩИЙ анонимный Bearer
+// становится публичным принципалом только для чтения (B03/B14).
 func TestFGASubjectForPrincipalID_Anon(t *testing.T) {
 	const anonID = "cid-registry-anon"
 	cases := []struct {
@@ -82,15 +83,15 @@ func TestFGASubjectForPrincipalID_Anon(t *testing.T) {
 		// Configured anon id → класс anonymous (B03 anon pull, B14 anon no-write).
 		{"anon-id-configured-maps-to-the-anonymous-class", anonID, anonID, FGASubjectAnonymousClass},
 		{"anonymous-class-spelling", anonID, anonID, "system_class:anonymous"},
-		// A real SA is unaffected even when anon is enabled (resolves by prefix).
+		// Настоящая учётка не задета и при включённом анониме (судится по форме и виду).
 		{"sa-unaffected-when-anon-enabled", formSA, anonID, "service_account:" + formSA},
 		{"user-unaffected-when-anon-enabled", formUser, anonID, "user:" + formUser},
-		// Anonymous DISABLED (empty anonID): the anon id never silently becomes the
-		// class, and — not being of the generated form — is no principal either:
-		// "" (kacho#3305, refused by the caller), not service_account:<anon id>.
+		// Аноним ВЫКЛЮЧЕН (пустой anonID): анонимный идентификатор молча классом не
+		// становится и, не будучи порождённой формы, принципалом тоже: "" (kacho#3305,
+		// отказ у вызывающего), а не service_account:<анонимный идентификатор>.
 		{"anon-disabled-empty-anonid-no-wildcard", anonID, "", ""},
 		{"empty-id-empty-anonid", "", "", ""},
-		// Anon enabled but a DIFFERENT sub arrives → not the anon principal.
+		// Аноним включён, но пришёл ДРУГОЙ sub → это не анонимный принципал.
 		{"different-sub-not-anon", formUser, anonID, "user:" + formUser},
 		{"different-sub-unknown-form-refused", "sva_other", anonID, ""},
 	}

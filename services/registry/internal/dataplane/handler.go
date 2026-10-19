@@ -34,11 +34,12 @@ type Handler struct {
 	pushGrants PushGrantRecorder
 	realm      string // IAM /token realm для WWW-Authenticate
 	service    string // service-audience для WWW-Authenticate
-	// anonSubjectID — the anonymous principal id (kaname AnonymousClientID, the `sub`
-	// of the anonymous token the /iam/token shim mints) this data-plane resolves to the
-	// system class `system_class:anonymous` (RG-1 D-7; приёмка kaname SC-39). Empty → anon pull DISABLED
-	// (secure-by-default): a token, if any, resolves as an ordinary principal. Set via
-	// WithAnonymousSubject from the composition root.
+	// anonSubjectID — анонимный идентификатор принципала (kaname AnonymousClientID,
+	// `sub` анонимного токена, который чеканит прослойка /iam/token), который эта
+	// плоскость данных сводит к системному классу `system_class:anonymous` (RG-1 D-7;
+	// приёмка kaname SC-39). Пусто → анонимный поток ВЫКЛЮЧЕН (secure-by-default):
+	// такой токен судится по форме, как любой другой sub, и, не будучи порождённой
+	// формы, получает 401 (kacho#3305). Задаётся WithAnonymousSubject из корня сборки.
 	anonSubjectID string
 	logger        *slog.Logger
 }
@@ -81,14 +82,15 @@ func New(verifier TokenVerifier, authz Authorizer, backend Backend, presence Rep
 	}
 }
 
-// WithAnonymousSubject configures the anonymous principal id (kaname
-// AnonymousClientID, the `sub` of the anonymous token the /iam/token shim mints) this
-// data-plane resolves to the system class `system_class:anonymous` — a VALID anon Bearer thus reads
-// only PUBLIC repos and can never write (RG-1 D-7 / B03 / B14).
-// Empty (the default) leaves anonymous pull DISABLED (secure-by-default: an anon token,
-// if any, resolves as an ordinary principal and is denied on PUBLIC-only grants).
-// Returns h for chaining from the composition root. Mirrors the WithClock-style
-// builder used elsewhere in Kachō — keeps the (already wide) New signature stable.
+// WithAnonymousSubject задаёт анонимный идентификатор принципала (kaname
+// AnonymousClientID, `sub` анонимного токена, который чеканит прослойка /iam/token),
+// который эта плоскость данных сводит к системному классу `system_class:anonymous`:
+// ДЕЙСТВУЮЩИЙ анонимный Bearer читает только PUBLIC-репозитории и не пишет никогда
+// (RG-1 D-7 / B03 / B14). Пусто (по умолчанию) — анонимный поток ВЫКЛЮЧЕН
+// (secure-by-default): анонимный токен судится по форме, как любой другой sub, и,
+// не будучи порождённой формы, получает 401 до любого Check (kacho#3305).
+// Возвращает h для цепочки из корня сборки — по образцу построителя WithClock в
+// других службах Kachō: подпись New, и без того широкая, не меняется.
 func (h *Handler) WithAnonymousSubject(anonSubjectID string) *Handler {
 	h.anonSubjectID = anonSubjectID
 	return h

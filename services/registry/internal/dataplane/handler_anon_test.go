@@ -218,12 +218,12 @@ func TestDataplane_RG1_B14_AnonTokenPushNewRepo_403Denied(t *testing.T) {
 		"anon push-new resolves to system_class:anonymous and is checked for v_create (denied)")
 }
 
-// TestDataplane_RG1_AnonDisabled_TokenRefusedByForm — secure-by-default: with
-// anonymous pull DISABLED (WithAnonymousSubject NOT called / empty), a token whose sub
-// equals the anon client id never silently gains the anonymous class, and — the anon
-// id not being of the generated form (kaname#908 forbids it) — it is no principal of
-// any class either: refused before any Check (kacho#3305), not resolved as
-// service_account:<anon id>.
+// TestDataplane_RG1_AnonDisabled_TokenRefusedByForm — secure-by-default: при
+// ВЫКЛЮЧЕННОМ анонимном потоке (WithAnonymousSubject НЕ вызван либо пуст) токен, чей
+// sub равен анонимному идентификатору клиента, молча анонимного класса не получает и,
+// поскольку анонимный идентификатор не порождённой формы (kaname#908 это запрещает),
+// не является принципалом ни одного класса: отказ до любого Check (kacho#3305), а не
+// сведение к service_account:<анонимный идентификатор>.
 func TestDataplane_RG1_AnonDisabled_TokenRefusedByForm(t *testing.T) {
 	az := &subjectAuthz{allow: map[string]bool{
 		"system_class:anonymous v_get " + publicRepoObject: true, // only the anonymous class is granted

@@ -307,21 +307,22 @@ func FGASubjectFromID(principalID string) string {
 	}
 }
 
-// FGASubjectForPrincipalID — resolve a verified data-plane principal id to its FGA
-// subject, honoring the configured anonymous principal id (RG-1 D-7). When
-// anonPrincipalID is non-empty AND principalID equals it, the caller is the public
-// anonymous principal and resolves to FGASubjectAnonymousClass
-// ("system_class:anonymous"): a valid anon Bearer thus reads only PUBLIC repos (the
-// publication is a grant to that class) and can NEVER write (a class holds no write
-// verb) — B03 / B14. Every other principalID resolves by id-prefix via
-// FGASubjectFromID.
+// FGASubjectForPrincipalID — FGA-субъект проверенного идентификатора принципала
+// плоскости данных с учётом настроенного анонимного идентификатора (RG-1 D-7). Если
+// anonPrincipalID не пуст И principalID с ним совпадает, вызывающий — публичный
+// аноним, и ответ — FGASubjectAnonymousClass («system_class:anonymous»): действующий
+// анонимный Bearer читает только PUBLIC-репозитории (публикация — грант этому классу)
+// и не пишет НИКОГДА (у класса нет глагола записи) — B03 / B14. Любой другой
+// principalID судит FGASubjectFromID: по форме и виду, а не по префиксу.
 //
-// anonPrincipalID=="" → anonymous pull DISABLED (secure-by-default): a token whose sub
-// happens to equal the anon id resolves as an ordinary principal, never silently
-// gaining the class. The anon principal id is deployment-configured (kaname
-// AnonymousClientID); deploy MUST keep it reserved (no real principal shares it), since
-// then the access service mints a token with sub==anonPrincipalID only on the anonymous
-// flow of its /iam/token shim.
+// anonPrincipalID=="" → анонимный поток ВЫКЛЮЧЕН (secure-by-default): токен, чей sub
+// совпал с анонимным идентификатором, класса молча не получает и судится как любой
+// другой sub — по форме. Анонимный идентификатор не порождённой формы (kaname#908),
+// поэтому ответ — "" (субъекта нет), и вызывающий отказывает 401 до любого Check
+// (kacho#3305), а не сводит его к service_account. Анонимный идентификатор задаёт
+// посадка (kaname AnonymousClientID); посадка ОБЯЗАНА держать его зарезервированным
+// (ни один настоящий принципал его не носит): тогда служба доступа чеканит токен с
+// sub==anonPrincipalID только в анонимном потоке своей прослойки /iam/token.
 func FGASubjectForPrincipalID(principalID, anonPrincipalID string) string {
 	if anonPrincipalID != "" && principalID == anonPrincipalID {
 		return FGASubjectAnonymousClass
