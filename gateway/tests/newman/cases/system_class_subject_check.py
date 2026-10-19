@@ -232,8 +232,10 @@ def _cleanup(tag, nets, acbs=(), extra=()):
     for n in nets:
         steps += _delete(f"{tag}-cleanup-network-{n}", "/vpc/v1/networks/{{" + tag + f"Net{n}Id}}}}",
                          f"{tag}Net{n}DelOpId", f"{tag}Net{n}Id")
-    steps += _delete(f"{tag}-cleanup-project", "/iam/v1/projects/{{" + tag + "PrjId}}", f"{tag}PrjDelOpId",
-                     f"{tag}PrjId")
+    # Проект — последним и с ожиданием окна доставки снятия регистрации: `done`
+    # удаления сети не означает, что служба доступа уже не числит сеть и её служебную
+    # группу безопасности (kacho#3300, шапка `delete_project_until_released`).
+    steps += delete_project_until_released(f"{tag}-cleanup-project", f"{tag}PrjId", f"{tag}PrjDelOpId")
     return steps
 
 

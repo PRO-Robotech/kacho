@@ -106,20 +106,61 @@ func runWaitScript(t *testing.T, s verdictStubs, attempts int) (code int, output
 // запускать скрипт так же: под другими флагами она измеряла бы не то.
 const providerShellFlags = "-e"
 
+// clockStep — на сколько секунд подставные часы уходят вперёд за один вопрос.
+// Предел скрипта — срок по часам (kacho#3299), и «N заходов» проба задаёт сроком
+// N·clockStep: часы спрашиваются один раз на старте и один раз на заход.
+const clockStep = 20
+
+// verdictClocks кладёт в каталог подставные часы, которые идут вперёд на каждом
+// вопросе, и пустой перечень прогонов головы — вытесненных нет.
+func verdictClocks(t *testing.T, dir string) (nowCmd, runsCmd string) {
+	t.Helper()
+	clock := filepath.Join(dir, "clock")
+	if err := os.WriteFile(clock, []byte("0\n"), 0o600); err != nil {
+		t.Fatalf("не записаны часы: %v", err)
+	}
+	nowCmd = filepath.Join(dir, "now.sh")
+	runsCmd = filepath.Join(dir, "runs.sh")
+	for path, body := range map[string]string{
+		nowCmd: "#!/usr/bin/env bash\nv=$(( $(cat " + clock + ") + " + strconv.Itoa(clockStep) + " ))\n" +
+			"echo $v > " + clock + "\necho $v\n",
+		runsCmd: "#!/usr/bin/env bash\necho '{\"total_count\": 0, \"workflow_runs\": []}'\n",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o700); err != nil {
+			t.Fatalf("не записан дублёр %s: %v", path, err)
+		}
+	}
+	return nowCmd, runsCmd
+}
+
 func runScriptUnderProviderShell(t *testing.T, script string, s verdictStubs, attempts int) (code int, output string) {
+	t.Helper()
+	nowCmd, runsCmd := verdictClocks(t, s.dir)
+	return runUnderProviderShell(t, script, s.dir,
+		"VERDICT_DEADLINE="+strconv.Itoa(attempts*clockStep),
+		"VERDICT_ATTEMPTS="+strconv.Itoa(attempts), // ручка прежней формы (инъекция)
+		"VERDICT_NOW_CMD="+nowCmd,
+		"VERDICT_RUNS_CMD="+runsCmd,
+		"VERDICT_DISPLACED_PERIOD=0",
+		"VERDICT_FETCH_CMD="+s.fetchCmd,
+		"VERDICT_DECIDE_CMD="+s.decideCmd,
+	)
+}
+
+// runUnderProviderShell — скрипт под флагами провайдера в каталоге dir; env
+// дописывается поверх общего окружения и перекрывает его.
+func runUnderProviderShell(t *testing.T, script, dir string, env ...string) (code int, output string) {
 	t.Helper()
 
 	cmd := exec.Command("bash", providerShellFlags, script)
-	cmd.Dir = s.dir
+	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"REPO=owner/repo",
 		"SHA=deadbeef",
 		"SELF=сводный вердикт (все проверки завершились и зелены)",
-		"VERDICT_ATTEMPTS="+strconv.Itoa(attempts),
 		"VERDICT_INTERVAL=0",
-		"VERDICT_FETCH_CMD="+s.fetchCmd,
-		"VERDICT_DECIDE_CMD="+s.decideCmd,
 	)
+	cmd.Env = append(cmd.Env, env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		var ee *exec.ExitError
