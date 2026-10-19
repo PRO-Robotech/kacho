@@ -14,7 +14,7 @@ import {
   type SeededAccessKey,
   type SentAssertion,
 } from "./access-key-seed";
-import { ORIGIN_NOT_ALLOWED, ORIGIN_NOT_IN_LIST } from "./access-key-texts";
+import { ASSERTION_NOT_ACCEPTED, ORIGIN_NOT_ALLOWED, ORIGIN_NOT_IN_LIST } from "./access-key-texts";
 import { newSeed, seedAddress, seedConfirmedHuman, type Seed } from "./ceremony-seed";
 import { test } from "./fixtures";
 
@@ -45,8 +45,6 @@ import { test } from "./fixtures";
  * Ключ, заведённый сценарием, снимается тем же сценарием, в том числе на
  * падении. Ожидания временем нет.
  */
-
-const NOT_ACCEPTED = "access key assertion is not accepted";
 
 /** Тело отказа края — google.rpc.Status. */
 interface Refusal {
@@ -139,7 +137,7 @@ async function unknownKeyRefusal(seed: Seed, testInfo: TestInfo, key: SeededAcce
   const body = JSON.parse(got.text) as Refusal;
   expect({ code: body.code, message: body.message }, "неизвестный ключ: отказ не единый отказ утверждения").toEqual({
     code: 3,
-    message: NOT_ACCEPTED,
+    message: ASSERTION_NOT_ACCEPTED,
   });
   return { status: got.status, body };
 }

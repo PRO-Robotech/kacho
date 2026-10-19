@@ -7,6 +7,7 @@ import {
   EDGE_CREDENTIAL_STATE_UNKNOWN as EDGE_CREDENTIAL_STATE_UNKNOWN_SOURCE,
   type EdgeAnswer,
 } from "../../shared/src/test/edge-answers";
+import { SESSION_NOT_FRESH_TEXT } from "./access-key-texts";
 import { noteSubstituted } from "./ceremony-budget";
 import { CONDITION_NOT_CREATED } from "./mail-receiver";
 
@@ -132,7 +133,7 @@ export const SESSION_NOT_FRESH = laneRefusal(
   "kaname loginlanehttp.writeError → writeRefusal(403, PERMISSION_DENIED, TextSessionNotFresh, SESSION_NOT_FRESH)",
   403,
   7,
-  "re-authentication required: present a credential again",
+  SESSION_NOT_FRESH_TEXT,
   "SESSION_NOT_FRESH",
 );
 
@@ -152,7 +153,7 @@ export const ACCESS_KEY_SESSION_NOT_FRESH: ProducerAnswer = {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     code: 7,
-    message: "re-authentication required: present a credential again",
+    message: SESSION_NOT_FRESH_TEXT,
     details: [
       { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SESSION_NOT_FRESH", domain: REFUSAL_DOMAIN },
     ],
