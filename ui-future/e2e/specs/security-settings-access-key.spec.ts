@@ -3,6 +3,7 @@
 
 import { expect, type Page } from "@playwright/test";
 import { authenticatorWithKey, pageAuthenticator, presentAccessKey } from "./access-key-seed";
+import { LAST_SIGN_IN_METHOD_TEXT } from "./access-key-texts";
 import { noteSubstituted } from "./ceremony-budget";
 import { LANE, codeOutsideWindow, totpCode } from "./ceremony-seed";
 import { ceremonyCensus, test } from "./fixtures";
@@ -484,7 +485,7 @@ test("F8-S7-43 · удаление последнего способа вход�
     const s = await openSecurity(page);
     await deleteKey(page, s, h);
     await expect(
-      s.keys.getByText("last sign-in method cannot be revoked: enrol another sign-in method first", { exact: true }),
+      s.keys.getByText(LAST_SIGN_IN_METHOD_TEXT, { exact: true }),
       "текст службы дословно",
     ).toBeVisible();
     await expect(s.keyDelete(h.keyName), "ключ в таблице").toBeVisible();

@@ -22,6 +22,7 @@ import {
   type Seed,
   type SeededHuman,
 } from "./ceremony-seed";
+import { ASSERTION_NOT_ACCEPTED } from "./access-key-texts";
 import { ceremonyCensus, formatCall, test, type CeremonyCensus } from "./fixtures";
 import { conditionNotCreated } from "./mail-receiver";
 import { ACCESS_KEY_SESSION_NOT_FRESH, FIXTURE_UNMET_PREFIX, fulfillWith } from "./producer-answers";
@@ -65,7 +66,6 @@ import { ACCESS_KEY_SESSION_NOT_FRESH, FIXTURE_UNMET_PREFIX, fulfillWith } from 
  */
 
 const STEP_UP = "/iam/v1/auth/step-up";
-const NOT_ACCEPTED = "access key assertion is not accepted";
 
 const keysOf = (userId: string) => `/iam/v1/users/${userId}/accessKeys`;
 
@@ -211,7 +211,7 @@ async function expectAccepted(h: KeysHuman, testInfo: TestInfo, key: Presentable
 
 async function expectNotAccepted(h: KeysHuman, testInfo: TestInfo, key: PresentableKey, what: string) {
   const got = await present(h, testInfo, key);
-  expect(got.text, `${what}: служба ответила ${got.status} без отказа «ключ не принят»`).toContain(NOT_ACCEPTED);
+  expect(got.text, `${what}: служба ответила ${got.status} без отказа «ключ не принят»`).toContain(ASSERTION_NOT_ACCEPTED);
 }
 
 /** Ключ посева К′ с именем и описанием сценария; П4 не создано — «не выполнилось». */
