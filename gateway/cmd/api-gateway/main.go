@@ -127,18 +127,13 @@ func main() {
 	// `:check`), и на внешний listener они не попадают — это делает HasInternalSuffix
 	// у gRPC-роутера и `isInternalRoute` у REST. Прежняя редакция утверждала
 	// «НЕ регистрируется в restmux»; это неверно и уже вводило в заблуждение.
-	// Это ребро gateway→iam → те же MTLS_IAM_ENABLE creds, что и у iam
-	// backend conns. Fail-fast on misconfig.
-	iamSubjectCreds, err := iamEdgeDialCreds(cfg, cfg.IAMInternalAddr)
-	if err != nil {
-		log.Fatalf("iam subject mTLS creds: %v", err)
-	}
-	iamSubjectClient, err := clients.NewIAMSubjectClient(cfg.IAMInternalAddr, logger, iamSubjectCreds,
-		upstreamFailures.DialOptions("iamInternal")...)
+	// Соединение — `iamInternal` карты бэкендов, то, что опрашивает `/readyz`
+	// (kacho#3284): удостоверение ребра (MTLS_IAM_ENABLE) и учёт причины отказа
+	// на нём ставит dialBackends, своего соединения клиент не заводит.
+	iamSubjectClient, err := subjectClientOf(cfg, backends, logger)
 	if err != nil {
 		log.Fatalf("iam subject client: %v", err)
 	}
-	defer func() { _ = iamSubjectClient.Close() }()
 
 	authInterceptor := middleware.NewAuthInterceptor(
 		// Ручка названа ЗДЕСЬ, а не спрятана за методом конфигурации: место сборки
@@ -1091,11 +1086,13 @@ func main() {
 	// REST-доступ к ним — только для UI / admin-tooling через cluster-internal
 	// REST listener.
 	restAddrs := cfg.BackendAddrs()
-	// The REST-mux is a SEPARATE proxy-path from the gRPC routing — it dials each
-	// backend itself. It threads the SAME per-edge dial creds the gRPC routing /
-	// authz use (mTLS client-cert + per-backend ServerName when the edge is
-	// enabled, else insecure) so backends requiring a verified client-cert do not
-	// reset the UI REST calls. Fail-fast on misconfig — never start half-secured.
+	// Мост ходит к службам соединениями карты `backends` — ОДНИМ на ключ адреса,
+	// тем же, что опрашивает `/readyz` (kacho#3284): прежде он заводил своё на
+	// каждую службу контракта и мультиплексор, и после переката службы «готов»
+	// ничего не говорил о соединении, которым шёл глагол. Соединение, ведущее не
+	// по адресу ключа, — отказ сборки моста. Транспорт ниже — для ключа, которого
+	// в карте нет: те же creds ребра (mTLS client-cert + ServerName при включённом
+	// ребре), так что и свой путь моста не стартует наполовину защищённым.
 	restDialCreds, err := buildBackendDialCreds(cfg)
 	if err != nil {
 		log.Fatalf("rest mux backend dial creds: %v", err)

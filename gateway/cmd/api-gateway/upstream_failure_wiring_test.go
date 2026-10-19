@@ -97,15 +97,20 @@ func TestIdentityBudgetAndStoppedServiceAreDifferentCells(t *testing.T) {
 	}
 }
 
-// Клиент субъекта и базовой полосы набирает службу доступа СВОИМ соединением —
-// и оно обязано нести тот же учёт под тем же соседом.
+// Клиент субъекта и базовой полосы ходит соединением `iamInternal` карты
+// (kacho#3284) — и учёт под тем же соседом обязан видеть его отказ.
 func TestSubjectClientConnectionCarriesTheTally(t *testing.T) {
 	tally := upstreamfailure.NewTally(upstreamKeys(config.Config{}))
-	c, err := clients.NewIAMSubjectClient(stoppedAddr(t), slog.New(slog.DiscardHandler), nil, tally.DialOptions("iamInternal")...)
+	cfg := config.Config{IAMInternalAddr: stoppedAddr(t), ListenAddr: ":0"}
+	backends, closeAll, err := dialBackends(cfg, tally)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = c.Close() }()
+	defer closeAll()
+	c, err := subjectClientOf(cfg, backends, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := c.LookupByExternalID(context.Background(), "ext-1"); err == nil {
 		t.Fatal("вопрос прошёл — условия отказа не создано")
 	}

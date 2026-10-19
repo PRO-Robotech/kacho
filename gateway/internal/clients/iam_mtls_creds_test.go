@@ -1,14 +1,14 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// iam_mtls_creds_test.go — the gateway→iam dials (iam-subject + iam-authorize)
-// accept an injectable transport-credentials dial-option so main.go can hand
-// them the per-edge mTLS creds under KACHO_API_GATEWAY_MTLS_IAM_ENABLE.
+// iam_mtls_creds_test.go — швы удостоверения ребра край→служба доступа:
+// соединение решения о праве принимает внедряемое удостоверение транспорта, и
+// корень подаёт ему mTLS ребра под KACHO_API_GATEWAY_MTLS_IAM_ENABLE.
 //
-// We do not assert handshake behaviour here (that is covered by the cmd bufconn
-// tests against a real TLS server). We assert the *seam* exists: a custom
-// transport-creds dial-option is accepted and the client constructs without a
-// network round-trip (grpc.NewClient is lazy).
+// Рукопожатие здесь не утверждается — его держат bufconn-пробы корня против
+// настоящего TLS-сервера. Здесь утверждается, что шов есть: своё удостоверение
+// транспорта принято, и клиент собирается без сетевого обмена (grpc.NewClient
+// ленив).
 package clients_test
 
 import (
@@ -23,28 +23,32 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
 )
 
-// NewIAMSubjectClient accepts a transport-creds dial-option. nil ⇒
-// insecure default (backward-compat); a non-nil option (mTLS in production) is
-// applied to the dial.
-func TestSECE_IAMSubjectClient_AcceptsTransportCreds(t *testing.T) {
+// Клиент субъекта своего соединения не заводит (kacho#3284): удостоверение
+// ребра несёт соединение `iamInternal` карты бэкендов корня
+// (`buildBackendDialCreds`, mtls_config_test.go). Здесь — шов: соединения нет —
+// отказ сборки, а не клиент, отвечающий отказом на каждом входе.
+func TestIAMSubjectClient_RefusesAnAbsentConnection(t *testing.T) {
 	logger := slog.Default()
 
-	// nil → insecure default (current dev behaviour preserved).
-	c1, err := clients.NewIAMSubjectClient("iam.kacho.svc:9091", logger, nil)
-	require.NoError(t, err)
-	require.NotNil(t, c1)
-	t.Cleanup(func() { _ = c1.Close() })
+	_, err := clients.NewIAMSubjectClient(nil, logger)
+	require.Error(t, err)
 
-	// Explicit transport-creds option (this is where main.go injects mTLS).
-	opt := grpc.WithTransportCredentials(insecure.NewCredentials())
-	c2, err := clients.NewIAMSubjectClient("iam.kacho.svc:9091", logger, opt)
+	empty, err := grpc.NewClient("", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
-	require.NotNil(t, c2)
-	t.Cleanup(func() { _ = c2.Close() })
+	t.Cleanup(func() { _ = empty.Close() })
+	_, err = clients.NewIAMSubjectClient(empty, logger)
+	require.Error(t, err, "соединение без адреса принято")
+
+	conn, err := grpc.NewClient("iam.kacho.svc:9091", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	c, err := clients.NewIAMSubjectClient(conn, logger)
+	require.NoError(t, err)
+	require.NotNil(t, c)
 }
 
-// IAMAuthorizeClientConfig carries an injectable transport-creds
-// dial-option. nil ⇒ insecure default; non-nil ⇒ applied (mTLS in production).
+// IAMAuthorizeClientConfig несёт внедряемое удостоверение транспорта: nil —
+// незащищённое умолчание, не nil — применяется (mTLS в боевой посадке).
 func TestSECE_IAMAuthorizeClient_AcceptsTransportCreds(t *testing.T) {
 	logger := slog.Default()
 

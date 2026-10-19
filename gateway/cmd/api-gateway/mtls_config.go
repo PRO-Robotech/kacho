@@ -193,10 +193,11 @@ func loopbackDialCreds() grpc.DialOption {
 	return grpc.WithTransportCredentials(insecure.NewCredentials())
 }
 
-// iamEdgeDialCreds returns the transport-credentials dial-option for the
-// gateway→iam edge, used by the two standalone iam dials (iam-subject and
-// iam-authorize) that live outside the backends map. Both are the gateway→iam
-// edge and share MTLS_IAM_ENABLE. Fail-fast on misconfig.
+// iamEdgeDialCreds — удостоверение транспорта ребра край→служба доступа для
+// соединения решения о праве (`NewIAMAuthorizeClient`), которое живёт вне карты
+// бэкендов; клиент субъекта ходит соединением `iamInternal` карты (kacho#3284).
+// Ручка та же, что у соединений карты к службе доступа, — MTLS_IAM_ENABLE.
+// Неполная настройка — отказ старта, а не тихий незащищённый откат.
 func iamEdgeDialCreds(cfg config.Config, addr string) (grpc.DialOption, error) {
 	tc, err := cfg.EdgeTLSClient("iam", addr)
 	if err != nil {
