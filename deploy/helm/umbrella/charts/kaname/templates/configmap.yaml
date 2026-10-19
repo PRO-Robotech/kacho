@@ -105,7 +105,7 @@ data:
            блок, было бы принято и не прочитано — поэтому такой рендер отказывает. */}}
       {{- $anonClient := include "kaname.anonymousClientId" . }}
       {{- if and $anonClient (not (or $rt.issuer $laneService)) }}
-      {{- fail (printf "kaname: анонимный субъект докерной полосы объявлен (global.kacho.registry.anonymousSubjectId = %q), а самой полосы нет — ни issuer, ни service. Анонимный токен чеканит полоса /iam/token; объявите адресат полосы (serviceAud зонта) либо снимите anonymousSubjectId." $anonClient) }}
+      {{- fail (printf "kaname: анонимный субъект докерной полосы объявлен (registry.anonymousSubjectId узла платформы в global = %q), а самой полосы нет — ни issuer, ни service. Анонимный токен чеканит полоса /iam/token; объявите адресат полосы (serviceAud зонта) либо снимите anonymousSubjectId." $anonClient) }}
       {{- end }}
       {{- if or $rt.issuer $laneService }}
       # Docker Registry v2 token shim. `service` — адресат, которому полоса чеканит

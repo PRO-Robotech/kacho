@@ -382,8 +382,8 @@ config:
       service: ""
       # Анонимного субъекта (`anonymous-client-id`, приёмка kaname SC-39;
       # REG-PUB-1 Р9 п. 2) здесь НЕТ намеренно: сторона, чеканящая анонимный
-      # токен, включается только единым объявлением
-      # `global.kacho.registry.anonymousSubjectId`, которое тем же рендером
+      # токен, включается только единым объявлением `registry.anonymousSubjectId`
+      # узла платформы в `global`, которое тем же рендером
       # получает и реестр (почему — kaname.anonymousClientId). Ключ
       # `anonymousClientId` в этом узле отказывает рендер.
   repository:

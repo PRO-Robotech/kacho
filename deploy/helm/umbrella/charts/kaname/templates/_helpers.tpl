@@ -141,7 +141,7 @@ REG-PUB-1 Р9 п. 2).
 
 ЧИТАЕТСЯ ТОЛЬКО ИЗ ЕДИНОГО ОБЪЯВЛЕНИЯ — `registry.anonymousSubjectId` узла
 платформы в `global` (тот же узел, что у kaname.laneServiceAud); его же читает
-подчарт registry и кладёт в под реестра `KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID`.
+подчарт registry и кладёт в переменную окружения пода реестра.
 
 Собственной ручки у этой стороны НЕТ, и это не упрощение, а граница
 безопасности. Стороны у значения не симметричны: реестр, узнающий анонима,
@@ -159,7 +159,7 @@ REG-PUB-1 Р9 п. 2).
 {{- define "kaname.anonymousClientId" -}}
 {{- $own := (((.Values.config).apiServer).registryToken).anonymousClientId | default "" -}}
 {{- if $own -}}
-{{- fail (printf "kaname: config.apiServer.registryToken.anonymousClientId=%q задан, а у стороны, чеканящей анонимный токен, собственной ручки нет. Анонимный субъект объявляется ОДИН раз — global.kacho.registry.anonymousSubjectId: оттуда же его получает под реестра, который узнаёт анонима. Чеканка по ручке, которой реестр не видит, отдала бы вызывающему без удостоверения всё, что выдано классу вошедших. Перенесите значение в global.kacho.registry.anonymousSubjectId, а config.apiServer.registryToken.anonymousClientId снимите." $own) -}}
+{{- fail (printf "kaname: config.apiServer.registryToken.anonymousClientId=%q задан, а у стороны, чеканящей анонимный токен, собственной ручки нет. Анонимный субъект объявляется ОДИН раз — global.kacho.registry.anonymousSubjectId: оттуда же его получает под реестра, который узнаёт анонима. Чеканка по ручке, которой реестр не видит, отдала бы вызывающему без удостоверения всё, что выдано классу вошедших. Перенесите значение туда, а config.apiServer.registryToken.anonymousClientId снимите." $own) -}}
 {{- end -}}
 {{- (((.Values.global).kacho).registry).anonymousSubjectId | default "" -}}
 {{- end -}}
