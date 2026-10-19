@@ -192,7 +192,7 @@ func TestRepository_RG1A22_PayloadBounds(t *testing.T) {
 }
 
 // RG-1-B12 — inherited PUBLIC на create (default_visibility=PUBLIC) → visibility=PUBLIC
-// + public-grant "user:* v_get" intent эмитирован (gate-at-default).
+// + public-grant "system_class:anonymous v_get" intent эмитирован (gate-at-default).
 func TestRepository_RG1B12_InheritPublicOnCreate(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPublic)
@@ -202,17 +202,17 @@ func TestRepository_RG1B12_InheritPublicOnCreate(t *testing.T) {
 	done := awaitOpDone(t, ops, op.ID)
 	require.Nil(t, done.Error)
 	require.Equal(t, registryv1.Visibility_PUBLIC, opResponseRepository(t, done.Response).GetVisibility())
-	require.True(t, hasPublicGrant(cfg, domain.FGAEventRegister), "user:* v_get register-intent эмитирован (B12)")
+	require.True(t, hasPublicGrant(cfg, domain.FGAEventRegister), "system_class:anonymous v_get register-intent эмитирован (B12)")
 }
 
-// hasPublicGrant — есть ли public-grant (user:* v_get) intent заданного event-type.
+// hasPublicGrant — есть ли public-grant (system_class:anonymous v_get) intent заданного event-type.
 func hasPublicGrant(cfg *mockRepoConfig, event string) bool {
 	for _, oi := range cfg.allIntents() {
 		if oi.Event != event {
 			continue
 		}
 		for _, tp := range oi.Intent.Tuples {
-			if tp.SubjectID == domain.FGASubjectPublicWildcard && tp.Relation == domain.FGARelationVGet {
+			if tp.SubjectID == domain.FGASubjectAnonymousClass && tp.Relation == domain.FGARelationVGet {
 				return true
 			}
 		}
@@ -279,7 +279,7 @@ func TestRepository_RG1B01B06_VisibilityFlipGovernance(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops, op.ID).Error)
-	require.True(t, hasPublicGrant(cfg, domain.FGAEventRegister), "flip→PUBLIC эмитит user:* register (B01)")
+	require.True(t, hasPublicGrant(cfg, domain.FGAEventRegister), "flip→PUBLIC эмитит system_class:anonymous register (B01)")
 
 	cfg2 := newMockCfg()
 	cfg2.byName["public/img"] = &domain.RepositoryConfig{RegistryID: regID, Name: "public/img", Visibility: domain.VisibilityPublic}
@@ -290,7 +290,7 @@ func TestRepository_RG1B01B06_VisibilityFlipGovernance(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, ops2, op2.ID).Error)
-	require.True(t, hasPublicGrant(cfg2, domain.FGAEventUnregister), "flip→PRIVATE эмитит user:* unregister (B06)")
+	require.True(t, hasPublicGrant(cfg2, domain.FGAEventUnregister), "flip→PRIVATE эмитит system_class:anonymous unregister (B06)")
 }
 
 // RG-1-A13/A14 — DeleteRepository пустого → OK; непустого → FAILED_PRECONDITION

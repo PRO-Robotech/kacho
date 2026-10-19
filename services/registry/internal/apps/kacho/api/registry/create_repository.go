@@ -164,7 +164,7 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 //     становится push/pull-able его создателем; АДДИТИВЕН (не снимает owner-tuple
 //     исходного пушера при adopt пред-существующей проекции, A03 — iam дедуплицирует);
 //   - public-grant (register RepoPublicGrant): при итоговом visibility=PUBLIC
-//     (включая inherited-default B12) — "user:* v_get" для анонимного pull (D-7).
+//     (включая inherited-default B12) — "system_class:anonymous v_get" для анонимного pull (D-7).
 func createRepoIntents(registryID, repository, projectID string, principal operations.Principal, visibility domain.Visibility) []OutboxIntent {
 	subject := domain.FGASubjectFromPrincipal(principal.Type, principal.ID)
 	intents := []OutboxIntent{

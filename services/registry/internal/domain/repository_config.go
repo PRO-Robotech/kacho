@@ -10,7 +10,7 @@ import (
 )
 
 // Visibility — доступность OCI-репозитория (RG-1, D-6). PRIVATE (дефолт, fail-safe)
-// требует per-subject authz; PUBLIC несёт FGA-tuple `user:* v_get` (anonymous pull).
+// требует per-subject authz; PUBLIC несёт FGA-tuple `system_class:anonymous v_get` (anonymous pull).
 // Ширина int32 совпадает с registryv1.Visibility, поэтому конверсии domain↔proto
 // точны (UNSPECIFIED=0, PRIVATE=1, PUBLIC=2).
 type Visibility int32
@@ -19,7 +19,7 @@ type Visibility int32
 const (
 	VisibilityUnspecified Visibility = iota // 0 — не задано клиентом (наследует default_visibility)
 	VisibilityPrivate                       // 1 — приватный (дефолт)
-	VisibilityPublic                        // 2 — публичный (anon-pull через user:* tuple)
+	VisibilityPublic                        // 2 — публичный (anon-pull через кортеж system_class:anonymous)
 )
 
 // Validate проверяет, что visibility — известное НЕ-unspecified значение (для

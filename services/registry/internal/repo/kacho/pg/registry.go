@@ -597,7 +597,7 @@ func applyRepoRegistration(ctx context.Context, tx pgx.Tx, eventType string, int
 // RegisterIntent.Kind/ResourceID: те объявлены полями «для observability, не участвуют
 // в apply» (domain.RegisterIntent) — сделать их несущими значило бы оставить рядом
 // комментарий, противоречащий коду. По этому же признаку мимо проходят интенты
-// public-grant (их единственный tuple — "user:* v_get", привязку не трогает) и интенты
+// public-grant (их единственный tuple — "system_class:anonymous v_get", привязку не трогает) и интенты
 // самого реестра (их объект — registry_registry).
 func repoRegistrationKey(intent domain.RegisterIntent) (registryID, repo string, ok bool) {
 	const objectPrefix = domain.FGAObjectTypeRepository + ":"

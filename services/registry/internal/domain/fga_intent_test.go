@@ -55,3 +55,40 @@ func TestRegisterIntentForRepoPush_NoSubject_NoOwnerTuple(t *testing.T) {
 		t.Fatalf("want exactly the parent-tuple, got %+v", intent.Tuples)
 	}
 }
+
+// TestRepoPublicGrantNamesTheAnonymousClass — кортеж публикации репозитория
+// (регистрация И снятие) называет субъектом класс `system_class:anonymous`, а не
+// подстановку `user:*` (kacho#3287, приёмка kaname
+// anonymous-and-authenticated-are-subject-classes.md, SC-12).
+//
+// Написание закреплено литералом, а не константой пакета: проба ловит правку
+// самой константы. Снятие обязано назвать то же слово, что запись, — иначе оно
+// не встретит записанного и публикация переживёт смену видимости.
+//
+// Законный близнец — кортеж владения первого push: его субъект — конкретный
+// принципал, и эта правка его не касается.
+func TestRepoPublicGrantNamesTheAnonymousClass(t *testing.T) {
+	const (
+		wantSubject = "system_class:anonymous"
+		wantObject  = "registry_repository:regX000000000000000/team/app"
+	)
+	cases := map[string]RegisterIntent{
+		"регистрация": RegisterIntentForRepoPublicGrant("regX000000000000000", "team/app"),
+		"снятие":      UnregisterIntentForRepoPublicGrant("regX000000000000000", "team/app"),
+	}
+	for name, intent := range cases {
+		if len(intent.Tuples) != 1 {
+			t.Fatalf("%s: кортежей %d, ожидался ровно один: %+v", name, len(intent.Tuples), intent.Tuples)
+		}
+		got := intent.Tuples[0]
+		if got.SubjectID != wantSubject || got.Relation != "v_get" || got.Object != wantObject {
+			t.Errorf("%s: кортеж публикации {%q %q %q}; ожидался {%q %q %q}",
+				name, got.SubjectID, got.Relation, got.Object, wantSubject, "v_get", wantObject)
+		}
+	}
+
+	push := RegisterIntentForRepoPush("regX000000000000000", "team/app", "prj-P", "service_account:sva-ci")
+	if push.Tuples[1].SubjectID != "service_account:sva-ci" {
+		t.Errorf("близнец: кортеж владения назвал %q вместо принципала", push.Tuples[1].SubjectID)
+	}
+}

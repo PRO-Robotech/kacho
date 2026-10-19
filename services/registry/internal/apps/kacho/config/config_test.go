@@ -99,7 +99,7 @@ func TestConfig_TokenAcceptance_Defaults(t *testing.T) {
 
 // TestConfig_AnonymousSubject_DefaultDisabled (RG-1 D-7) — anonymous public pull is
 // OFF by default (secure-by-default): KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID unset ⇒
-// empty ⇒ the data-plane resolves no token to the FGA wildcard user:* (anon disabled).
+// empty ⇒ the data-plane resolves no token to the class system_class:anonymous (anon disabled).
 func TestConfig_AnonymousSubject_DefaultDisabled(t *testing.T) {
 	var c Config
 	require.NoError(t, LoadInto(&c, baseEnv()))
@@ -110,7 +110,7 @@ func TestConfig_AnonymousSubject_DefaultDisabled(t *testing.T) {
 
 // TestConfig_AnonymousSubject_Override (RG-1 D-7) — the anon principal id is
 // env-configurable (KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID) and MUST match kaname's
-// AnonymousClientID; the data-plane resolves a token with this sub to user:*.
+// AnonymousClientID; the data-plane resolves a token with this sub to system_class:anonymous.
 func TestConfig_AnonymousSubject_Override(t *testing.T) {
 	env := baseEnv()
 	env["KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID"] = "cid-registry-anon"
