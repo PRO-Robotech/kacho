@@ -15,6 +15,9 @@
 #   stand-ns.sh forward NS            проброс консоли, края и приёмника писем, дверь чтения писем
 #                                     (stand-mailbox-door.py) + файл окружения проб
 #   stand-ns.sh unforward NS          снять проброс
+#   stand-ns.sh reload NS SVC [REF]   перекатить ОДНУ службу своего стенда на образы ревизии
+#                                     REF (умолчание HEAD), не пересоздавая стенд; провенанс
+#                                     каждого пода службы обязан сойтись с REF
 #   stand-ns.sh self-test             проба правил имени, срока и порта (кластера не требует)
 #
 # Зовут его цели `make -C deploy stand-ns-up | stand-ns-down | stand-ns-run | stand-ns-census`.
@@ -104,7 +107,10 @@ WORK_ROOT="${KACHO_STAND_NS_WORKDIR:-$DEPLOY_ROOT/.stand-ns}"
 TTL_HOURS="${STAND_TTL_HOURS:-12}"
 TTL_MAX_HOURS=12
 IMAGE_PREFIX="${STAND_IMAGE_PREFIX:-docker.io/prorobotech}"
-IMAGE_BRANCHES="${STAND_IMAGE_BRANCHES:-1266 main}"
+# Ветки, сборкой которых могли быть опубликованы образы ревизии. Заданы явно —
+# спрашиваются только они; не заданы — выводятся из истории (image_branch_candidates).
+IMAGE_BRANCHES="${STAND_IMAGE_BRANCHES:-}"
+IMAGE_PROBE_MAX="${STAND_IMAGE_PROBE_MAX:-20}"
 UP_TIMEOUT="${STAND_TIMEOUT:-15m}"
 HOST_SUFFIX="kacho.test"
 LABEL_STAND="kacho.io/stand"
@@ -979,39 +985,139 @@ yaml.safe_dump(out, sys.stdout, sort_keys=True)
 PY
 }
 
+# ── ОБРАЗЫ РЕВИЗИИ: ВЕТКА ПУБЛИКАЦИИ СПРАШИВАЕТСЯ У РЕЕСТРА (kacho#3260) ────
+#
+# Тег образа — «<ветка>-<коммит>», и ветку в нём пишет СБОРКА: та, чьей головой
+# коммит был в момент сборки (`push` в main либо ручной запуск docker-build.yml
+# и ui.yml на любой ветке). Прежняя редакция знала две ветки (`1266 main`) и
+# требовала членства коммита в них — коммит ветки запроса образов «не имел», хотя
+# ручной запуск их публиковал (полоса kacho#3259 обходила это веткой-тёзкой и
+# STAND_IMAGE_BRANCHES). Теперь вопрос «опубликован ли» задаётся РЕЕСТРУ, а
+# история клона лишь называет, у каких веток спрашивать.
+
+# image_branch_candidates SHA — ветки, сборка которых могла опубликовать образы
+# SHA, по убыванию правдоподобия и без повторов: ветки origin, чья голова — SHA
+# (ручной запуск собирает голову); местные ветки с той же головой; main; прочие
+# ветки origin, содержащие SHA (голова ушла вперёд после сборки). Заданный
+# STAND_IMAGE_BRANCHES — ровно он.
+image_branch_candidates() {
+  local sha="$1"
+  if [ -n "$IMAGE_BRANCHES" ]; then
+    tr -s ' \t' '\n' <<<"$IMAGE_BRANCHES" | awk 'NF && !seen[$0]++'
+    return 0
+  fi
+  {
+    git -C "$REPO_ROOT" for-each-ref --points-at "$sha" --format='%(refname:lstrip=3)' refs/remotes/origin
+    git -C "$REPO_ROOT" for-each-ref --points-at "$sha" --format='%(refname:lstrip=2)' refs/heads
+    echo main
+    git -C "$REPO_ROOT" for-each-ref --contains "$sha" --format='%(refname:lstrip=3)' refs/remotes/origin
+  } | awk 'NF && $0 != "HEAD" && !seen[$0]++'
+}
+
+# build_hint SHA ОБРАЗ… — команда, которой образы ревизии собираются ТЕМ ЖЕ
+# способом, что у конвейера: ручной запуск сборки на ветке, чья голова — SHA.
+# Семьи образов собирают две сборки, и названа та, чьих образов нет.
+build_hint() {
+  local sha="$1" slug branch img svc=0 ui=0; shift
+  for img; do case "$img" in kacho-ui-future-*) ui=1 ;; *) svc=1 ;; esac; done
+  slug="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z]+://([^@/]+@)?[^/]+/)##; s#\.git$##')"
+  [ -n "$slug" ] || slug="<владелец>/<репозиторий>"
+  branch="$( { git -C "$REPO_ROOT" for-each-ref --points-at "$sha" --format='%(refname:lstrip=3)' refs/remotes/origin
+               git -C "$REPO_ROOT" for-each-ref --points-at "$sha" --format='%(refname:lstrip=2)' refs/heads; } |
+             awk 'NF && $0 != "HEAD" { print; exit }')"
+  [ -n "$branch" ] || branch="<ветка на origin, чья голова — ${sha:0:8}>"
+  warn "собрать тем же способом, что конвейер, — ручным запуском сборки на ветке, чья ГОЛОВА $sha (ветка отправлена на origin):"
+  [ "$svc" -eq 0 ] || warn "  gh workflow run docker-build.yml -R $slug --ref $branch"
+  [ "$ui" -eq 0 ]  || warn "  gh workflow run ui.yml -R $slug --ref $branch"
+  warn "ручной запуск собирает голову ветки в момент запуска; когда сборка завершится — повтори с REF=$sha BRANCH=$branch"
+}
+
+# pick_image_tags SHA ИМЕНА — выбрать ветку публикации и проверить КАЖДЫЙ образ.
+# Ветка — первая кандидатка, под которой образ первого имени лежит в реестре.
+# Итог — в PICKED_TAGS («образ<TAB>тег» по строке) и IMAGE_BRANCH; функция зовётся
+# без подоболочки, иначе итог умер бы вместе с ней.
+#   0 — ветка выбрана, каждый образ найден;
+#   1 — образов ревизии в реестре нет (ни под одной кандидаткой, либо части нет
+#       под выбранной) — напечатана команда сборки;
+#   2 — не выполнилось: реестр не ответил либо тег не выведен. Это НЕ «образа нет».
+PICKED_TAGS="" IMAGE_BRANCH=""
+pick_image_tags() {
+  local sha="$1" names="$2" first branch tags tag img rc probed=0 tried="" missing=""
+  PICKED_TAGS="" IMAGE_BRANCH=""
+  first="$(head -1 <<<"$names")"
+  [ -n "$first" ] || { warn "образов частей дерева в цепочке ноль — выбирать ветку не для чего"; return 2; }
+  while IFS= read -r branch; do
+    if [ "$probed" -ge "$IMAGE_PROBE_MAX" ]; then
+      warn "кандидаток больше STAND_IMAGE_PROBE_MAX=$IMAGE_PROBE_MAX — остальные не спрошены; назови ветку явно: BRANCH=<ветка>"
+      break
+    fi
+    probed=$((probed + 1)); tried="$tried $branch"
+    tags="$(bash "$HERE/gen-managed-image-pins.sh" --tag-of "$(tr '\n' ',' <<<"$names" | sed 's/,$//')" --ref "$sha" --branch "$branch")" ||
+      { warn "тег образов для ветки «$branch» не выведен (выше)"; return 2; }
+    tag="$(awk -F'\t' -v i="$first" '$1 == i { print $2; exit }' <<<"$tags")"
+    reachable "$IMAGE_PREFIX/$first" "$tag"; rc=$?
+    case "$rc" in
+      0) IMAGE_BRANCH="$branch"; break ;;
+      1) ;;
+      *) warn "реестр не ответил о $IMAGE_PREFIX/$first:$tag — «не ответил» не равно «образа нет»"; return 2 ;;
+    esac
+  done < <(image_branch_candidates "$sha")
+  if [ -z "$IMAGE_BRANCH" ]; then
+    warn "образа $first ревизии $sha нет в реестре ни под одной веткой-кандидаткой (спрошено $probed:$tried)"
+    # shellcheck disable=SC2086 # имена — по строке, дробление и нужно
+    build_hint "$sha" $names
+    return 1
+  fi
+  while IFS=$'\t' read -r img tag; do
+    [ -n "$img" ] || continue
+    reachable "$IMAGE_PREFIX/$img" "$tag"; rc=$?
+    case "$rc" in
+      0) ;;
+      1) missing="$missing $img"; warn "образ $IMAGE_PREFIX/$img:$tag в реестре НЕ найден — стенд ушёл бы в ImagePullBackOff" ;;
+      *) warn "реестр не ответил о $IMAGE_PREFIX/$img:$tag — «не ответил» не равно «образа нет»"; return 2 ;;
+    esac
+  done <<<"$tags"
+  if [ -n "$missing" ]; then
+    # shellcheck disable=SC2086
+    build_hint "$sha" $missing
+    return 1
+  fi
+  PICKED_TAGS="$tags"
+}
+
 images_overlay() {
   local sha="$1" out="$2"; shift 2
-  local names branch tags refs="" img tag
+  local names refs="" img tag
   names="$("$STAND_NS_BIN" images -list "$@")" || return 2
-  for branch in $IMAGE_BRANCHES; do
-    if tags="$(bash "$HERE/gen-managed-image-pins.sh" --tag-of "$(tr '\n' ',' <<<"$names")" --ref "$sha" --branch "$branch" 2>/dev/null)"; then
-      IMAGE_BRANCH="$branch"; break
-    fi
-    tags=""
-  done
-  [ -n "$tags" ] || { warn "коммит $sha не входит ни в одну из веток публикации ($IMAGE_BRANCHES) — образов этой ревизии нет"; return 2; }
+  pick_image_tags "$sha" "$names" || return $?
   while IFS=$'\t' read -r img tag; do
     [ -n "$img" ] || continue
     refs="$refs $img=$IMAGE_PREFIX/$img:$tag"
-    reachable "$IMAGE_PREFIX/$img" "$tag" || { warn "образ $IMAGE_PREFIX/$img:$tag в реестре НЕ найден — стенд ушёл бы в ImagePullBackOff"; return 2; }
-  done <<<"$tags"
-  log "образы ревизии $sha (ветка публикации $IMAGE_BRANCH): $(wc -l <<<"$tags") частей дерева, каждая найдена в реестре"
+  done <<<"$PICKED_TAGS"
+  log "образы ревизии $sha (ветка публикации $IMAGE_BRANCH): $(wc -l <<<"$PICKED_TAGS") частей дерева, каждая найдена в реестре"
   "$STAND_NS_BIN" images -refs "$refs" "$@" >"$out"
 }
 
-# reachable REPO TAG — манифест образа отвечает. Проверяется только docker.io:
-# у прочих реестров вопрос задаёт сам кластер при подъёме, и это печатается.
+# reachable REPO TAG — манифест образа в реестре: 0 — есть, 1 — реестр ответил
+# «нет такого» (404), 2 — ответа нет (сеть, отказ в учётке, предел частоты):
+# «не ответил» не равно «нет». Проверяется только docker.io: у прочих реестров
+# вопрос задаёт сам кластер при подъёме, и это печатается.
 reachable() {
   local repo="$1" tag="$2" path tok code
   case "$repo" in
     docker.io/*) path="${repo#docker.io/}" ;;
     *) warn "досягаемость $repo:$tag НЕ проверена (не docker.io) — ответит кластер"; return 0 ;;
   esac
-  tok="$(curl -fsS --max-time 20 "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$path:pull" | jq -r .token)" || return 1
+  tok="$(curl -fsS --max-time 20 "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$path:pull" | jq -r .token)" || return 2
+  [ -n "$tok" ] && [ "$tok" != null ] || return 2
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -I -H "Authorization: Bearer $tok" \
     -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json' \
     "https://registry-1.docker.io/v2/$path/manifests/$tag")"
-  [ "$code" = 200 ]
+  case "$code" in
+    200) return 0 ;;
+    404) return 1 ;;
+    *)   return 2 ;;
+  esac
 }
 
 # ref_guard SHA — образы ревизии SHA вправе исполнять чарт рабочей копии, только
@@ -1374,6 +1480,128 @@ cmd_unforward() {
   log "проброс $ns снят"
 }
 
+# ── ПЕРЕКАТКА ОДНОЙ СЛУЖБЫ (kacho#3260) ──────────────────────────────────────
+#
+# Правка ветки запроса чаще всего меняет код ОДНОЙ службы, а пересоздание стенда
+# стоит подъёма целиком (посев, администратор облака, гейт посадки). Перекатка
+# меняет образ ровно у тех контейнеров своего стенда, чей образ — образ этой
+# службы (включая init-контейнер миграций: у служб он того же образа), ждёт
+# раскатки и доказывает провенанс КАЖДОГО пода службы против новой ревизии.
+#
+# Границы, названные вслух:
+#   * чарт не перерисовывается: менялся между ревизией стенда и новой ревизией
+#     чарт (deploy/helm, `<часть>/deploy/` — шаблоны, values, Chart) — отказ,
+#     перекатке подлежит только образ, а стенд с новым образом и старым чартом
+#     исполнял бы смесь; подними стенд заново (`stand-ns-up` поверх своего
+#     пространства перекатывает релиз);
+#   * образ, приезжающий пином (часть с вынесенными исходниками), не перекатывается:
+#     его собирает конвейер своего репозитория;
+#   * контейнеры выбираются по ИМЕНИ ОБРАЗА (последний сегмент без тега), а не по
+#     имени развёртывания: рукописная цепочка «служба → развёртывание» уже
+#     расходилась с чартом (kacho#2122).
+
+# reload_targets ОБРАЗ — по JSON рабочих нагрузок на входе печатает
+# «вид/имя<TAB>контейнер» каждого контейнера (и init-контейнера), чей образ
+# называется ровно ОБРАЗ. Сравнение — по имени целиком: `kacho-vpc-extras` и
+# `kacho-ui-future-vpc` образом `kacho-vpc` не являются.
+reload_targets() {
+  jq -r --arg img "$1" '
+    def name_of: sub("@.*$"; "") | split("/") | last | sub(":.*$"; "");
+    .items[] | . as $w
+    | ((($w.spec.template.spec.initContainers // []) + ($w.spec.template.spec.containers // []))[])
+    | select((.image | name_of) == $img)
+    | "\($w.kind | ascii_downcase)/\($w.metadata.name)\t\(.name)"'
+}
+
+# reload_chart_changed OLD NEW — 0: чарт между ревизиями менялся (пути напечатаны),
+# 1: не менялся, 2: сравнить не удалось. Предмет — то, что рисует манифест:
+# зонтик целиком и `deploy/` каждой части (шаблоны, values, Chart).
+reload_chart_changed() {
+  local out
+  out="$(git -C "$REPO_ROOT" diff --name-only "$1" "$2" -- 'deploy/helm' \
+    ':(glob)**/deploy/templates/**' ':(glob)**/deploy/values*.yaml' \
+    ':(glob)**/deploy/Chart.yaml' ':(glob)**/deploy/Chart.lock' 2>&1)" || { printf '%s\n' "$out" >&2; return 2; }
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
+  return 0
+}
+
+# normalize_image REF — ссылка без умолчаний реестра (их дописывает containerd).
+normalize_image() { local r="${1#docker.io/}"; r="${r#index.docker.io/}"; printf '%s' "${r#library/}"; }
+
+cmd_reload() {
+  local ns="$1" svc="${2:-}" ref="${3:-HEAD}" sha img state was js targets t c kinds
+  local -a args
+  ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу t<номер>-<коротко>; пространство kacho перекатка не трогает" 2
+  [ -n "$svc" ] || die "reload: служба не названа (SVC=<служба>)" 2
+  sha="$(git -C "$REPO_ROOT" rev-parse --verify "${ref}^{commit}" 2>/dev/null)" || die "ревизия «$ref» не разрешается в коммит" 2
+  # shellcheck source=deploy/scripts/lib/product-names.sh
+  . "$HERE/lib/product-names.sh"
+  img="$(product_image_name "$svc")" || die "имя образа службы «$svc» не прочитано (выше)" 2
+  product_pins_load >/dev/null || die "ведомость пинов не прочитана — приезжает ли $img пином, неизвестно" 2
+  if product_image_is_pinned "$img"; then
+    die "образ $img приезжает пином: исходников в этом дереве нет, собирает его конвейер своего репозитория — перекатывать нечего" 2
+  fi
+  need_tools; guard_context
+  state="$(ns_state "$ns")" || die "состояние пространства $ns НЕ ПРОЧИТАНО — кластер не ответил" 2
+  [ "$state" = test ] || die "пространство $ns — «$state», а не стенд проб: перекатывать нечего либо не вправе" 2
+  was="$(kubectl get namespace "$ns" -o json --request-timeout=30s | jq -r '.metadata.annotations["kacho.io/ref"] // ""')"
+  [ -n "$was" ] || die "у пространства $ns нет kacho.io/ref — ревизия стенда неизвестна, сравнивать чарт не с чем" 2
+  local crc=0 changed
+  changed="$(reload_chart_changed "$was" "$sha")" || crc=$?
+  case "$crc" in
+    1) ;;
+    0) die "между ревизией стенда $was и $sha менялся чарт — перекатка образа его не применит:
+$changed
+подними стенд заново: make -C deploy stand-ns-up NS=$ns REF=$sha" 2 ;;
+    *) die "чарт ревизий $was и $sha не сравнён (выше) — «не сравнил» не равно «не менялся»" 2 ;;
+  esac
+  pick_image_tags "$sha" "$img" || die "образа $img ревизии $sha нет (выше) — перекатывать не на что" 2
+  local tag ref_new
+  tag="$(awk -F'\t' -v i="$img" '$1 == i { print $2; exit }' <<<"$PICKED_TAGS")"
+  ref_new="$IMAGE_PREFIX/$img:$tag"
+
+  js="$(kubectl -n "$ns" get deployment,statefulset,daemonset -o json --request-timeout=30s)" ||
+    die "рабочие нагрузки $ns не прочитаны — кластер не ответил" 2
+  targets="$(reload_targets "$img" <<<"$js")" || die "рабочие нагрузки $ns не разобраны" 2
+  [ -n "$targets" ] || die "в $ns нет контейнера с образом $img — служба «$svc» на стенде не развёрнута" 2
+  kinds="$(cut -f1 <<<"$targets" | sort -u)"
+  log "перекатка $svc в $ns: $was → $sha, образ $ref_new (ветка публикации $IMAGE_BRANCH); контейнеров $(wc -l <<<"$targets") в нагрузках: $(tr '\n' ' ' <<<"$kinds")"
+
+  stand_nodes "перекатка $svc"
+  for t in $kinds; do
+    args=()
+    while IFS=$'\t' read -r _ c; do args+=("$c=$ref_new"); done < <(awk -F'\t' -v t="$t" '$1 == t' <<<"$targets")
+    kubectl -n "$ns" set image "$t" "${args[@]}" >/dev/null || die "образ $t не заменён" 1
+    kubectl -n "$ns" annotate "$t" --overwrite "kacho.io/ref=$sha" >/dev/null || die "ревизия $t не записана" 1
+  done
+  for t in $kinds; do
+    kubectl -n "$ns" rollout status "$t" --timeout=5m || die "$t не раскатился за 5 мин" 1
+  done
+
+  # Провенанс — у работающих контейнеров, файлом образа (stand-provenance.sh,
+  # шапка): ссылка пода говорит, ЧТО просили, файл — из чего собрано.
+  local pods p cname cimg rev agree=0 bad=0 stale=0
+  pods="$(kubectl -n "$ns" get pods -o json --request-timeout=30s | jq -r --arg img "$img" '
+    def name_of: sub("@.*$"; "") | split("/") | last | sub(":.*$"; "");
+    .items[] | select(.status.phase == "Running" and .metadata.deletionTimestamp == null) | . as $p
+    | .status.containerStatuses[]? | select((.image | name_of) == $img)
+    | "\($p.metadata.name)\t\(.name)\t\(.image)"')" || die "поды $ns не прочитаны" 1
+  while IFS=$'\t' read -r p cname cimg; do
+    [ -n "$p" ] || continue
+    if [ "$(normalize_image "$cimg")" != "$(normalize_image "$ref_new")" ]; then
+      stale=$((stale + 1)); warn "под $p/$cname исполняет $cimg, а не $ref_new"; continue
+    fi
+    rev="$(kubectl -n "$ns" exec "$p" -c "$cname" --request-timeout=30s -- cat /etc/kacho/image-revision 2>/dev/null | tr -d '\r\n')"
+    if [ "${rev%-dirty}" = "$sha" ]; then agree=$((agree + 1))
+    else bad=$((bad + 1)); warn "под $p/$cname: ревизия «${rev:-не прочитана}», ждали $sha"; fi
+  done <<<"$pods"
+  log "провенанс $svc: контейнеров с $img — сходится $agree, расходится $bad, на прежнем образе $stale"
+  { [ "$agree" -gt 0 ] && [ "$bad" -eq 0 ] && [ "$stale" -eq 0 ]; } ||
+    die "провенанс перекатки $svc не сошёлся с $sha" 3
+  log "служба $svc в $ns перекачена на $sha; прочие части стенда не тронуты"
+}
+
 # ── СНЯТИЕ ───────────────────────────────────────────────────────────────────
 
 # leftovers NS — помеченные объекты стенда ВНЕ его пространства (издатели CA,
@@ -1465,6 +1693,10 @@ cmd_census() {
   fi
 }
 
+# Подключённый (`. stand-ns.sh`) — только определения: доказательство инъекцией
+# (stand-pr-images-inject.sh) зовёт функции напрямую, без кластера.
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
+
 case "${1:-}" in
   up)        shift; [ -n "${1:-}" ] || die "up: не названо пространство (NS=t<задача>-<коротко>)" 2; cmd_up "$@" ;;
   run)       shift; [ -n "${1:-}" ] || die "run: не названо пространство" 2; cmd_run "$@" ;;
@@ -1472,6 +1704,7 @@ case "${1:-}" in
   census)    shift; cmd_census "$@" ;;
   forward)   shift; [ -n "${1:-}" ] || die "forward: не названо пространство" 2; cmd_forward "$1" ;;
   unforward) shift; [ -n "${1:-}" ] || die "unforward: не названо пространство" 2; cmd_unforward "$1" ;;
+  reload)    shift; [ -n "${1:-}" ] || die "reload: не названо пространство" 2; cmd_reload "$@" ;;
   self-test) self_test ;;
-  *) die "режим не назван: up | down | run | census | forward | unforward | self-test" 2 ;;
+  *) die "режим не назван: up | down | run | census | forward | unforward | reload | self-test" 2 ;;
 esac
