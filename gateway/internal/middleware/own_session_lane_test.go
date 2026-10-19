@@ -605,6 +605,11 @@ func TestOwnSessionLane_F4_F5_RegistrationAndRecoveryFollowTheFormVerbRules(t *t
 // носитель — отказ F4d-22 на крае, ретранслировано 0; «сессии нет» (носитель
 // снятой сессии) — ретрансляция без личности и без гашения носителя;
 // недоступность вопросов края — тот же исход, что у входа паролем.
+//
+// Отказ F4d-22 сверяется на каждом глаголе ключа ДОСЛОВНО — телом-литералом
+// приёмки KA1 Р2, а не только кодом и не парой с входом паролем: подмена текста
+// у общего производителя прошла бы пару незамеченной (оба плеча изменились бы
+// одинаково), а подмена на одном глаголе — проверку кода.
 func TestOwnSessionLane_F13_28_AccessKeyVerbsBehaveLikeTheLoginVerb(t *testing.T) {
 	verbs := []string{loginLaneWant["access-key-begin"], loginLaneWant["access-key-login"]}
 	type outcome struct {
@@ -614,7 +619,7 @@ func TestOwnSessionLane_F13_28_AccessKeyVerbsBehaveLikeTheLoginVerb(t *testing.T
 	}
 	// run — исход одного запроса на свежей полосе с дублёром службы, считающим
 	// ретрансляции.
-	run := func(reader *fakeHumanSession, cut *fakeCutoff, path, carrier string) outcome {
+	run := func(reader *fakeHumanSession, cut *fakeCutoff, path, carrier string) (outcome, string) {
 		a := ownLane(t, reader, cut)
 		relay := &countingNext{}
 		mux := http.NewServeMux()
@@ -625,7 +630,7 @@ func TestOwnSessionLane_F13_28_AccessKeyVerbsBehaveLikeTheLoginVerb(t *testing.T
 		if relay.served > 0 && relay.lastReq.Header.Get(principalmeta.HeaderPrincipalID) != "" && !reader.found {
 			t.Errorf("%s: на «сессии нет» полоса выставила личность", path)
 		}
-		return outcome{code: rec.Code, relayed: relay.served, ended: ourCarrierEnded(rec.Result())}
+		return outcome{code: rec.Code, relayed: relay.served, ended: ourCarrierEnded(rec.Result())}, rec.Body.String()
 	}
 	cases := []struct {
 		name   string
@@ -642,18 +647,43 @@ func TestOwnSessionLane_F13_28_AccessKeyVerbsBehaveLikeTheLoginVerb(t *testing.T
 		{"отсечка недоступна", func() *fakeHumanSession { return &fakeHumanSession{found: true, sess: liveOwnSession()} },
 			func() *fakeCutoff { return &fakeCutoff{err: errors.New("unreachable")} }, outcome{http.StatusOK, 1, false}},
 	}
+	var refusalsVerbatim int
 	for _, c := range cases {
-		pair := run(c.reader(), c.cut(), LoginLanePathLogin, "s1")
+		pair, pairBody := run(c.reader(), c.cut(), LoginLanePathLogin, "s1")
 		// Положительный контроль: исход входа паролем — тот, что объявлен; иначе
 		// пара сходилась бы на полосе, поведение которой поменялось целиком.
 		if pair != c.want {
 			t.Fatalf("%s: вход паролем дал %+v, ожидалось %+v — пара сверяется с неизвестным", c.name, pair, c.want)
 		}
+		refused := c.want.code == http.StatusUnauthorized
+		// Положительный контроль текста: эталон литерала совпадает с отказом входа
+		// паролем — иначе сверка глаголов шла бы с текстом, которого край не пишет.
+		if refused && pairBody != f13RefusalBodyF4d22 {
+			t.Fatalf("%s: вход паролем отказал телом %q, литерал F4d-22 — %q: эталон сверки неверен", c.name, pairBody, f13RefusalBodyF4d22)
+		}
 		for _, p := range verbs {
-			if got := run(c.reader(), c.cut(), p, "s1"); got != pair {
+			got, body := run(c.reader(), c.cut(), p, "s1")
+			if got != pair {
 				t.Errorf("%s: %s дал %+v, вход паролем на том же дублёре и носителе — %+v (Ф13-28: полосы входа ведут себя одинаково)", c.name, p, got, pair)
 			}
+			if !refused {
+				continue
+			}
+			if body != f13RefusalBodyF4d22 {
+				t.Errorf("%s: %s отказал телом %q, F4d-22 обязан нести дословно %q (KA1 Р2)", c.name, p, body, f13RefusalBodyF4d22)
+				continue
+			}
+			refusalsVerbatim++
 		}
 	}
-	t.Logf("перепись: глаголов входа ключом %d · исходов, сверенных парой с входом паролем, %d", len(verbs), len(cases))
+	if refusalsVerbatim != len(verbs) {
+		t.Errorf("дословно сверено отказов F4d-22 на глаголах ключа %d, ожидалось %d — по одному на глагол", refusalsVerbatim, len(verbs))
+	}
+	t.Logf("перепись: глаголов входа ключом %d · исходов, сверенных парой с входом паролем, %d · отказов F4d-22, сверенных дословно, %d",
+		len(verbs), len(cases), refusalsVerbatim)
 }
+
+// f13RefusalBodyF4d22 — тело отказа F4d-22 дословно, литералом приёмки KA1 Р2:
+// сверка с литералом, а не с выводом производителя `authnrefusal`, ловит и
+// подмену у самого производителя.
+const f13RefusalBodyF4d22 = `{"code":16,"message":"authentication failed","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"AUTHN_REQUIRED","domain":"kaname.cloud.iam.v1"}]}`
