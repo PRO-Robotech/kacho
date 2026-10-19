@@ -62,8 +62,15 @@ const latentMarker = "# kacho:latent"
 // объект-контейнер (где). Отношение, чей userset состоит только из них, — это
 // выдача, её материализует реконсайлер из привязок, и производителя в очереди
 // намерений у неё нет by construction.
+//
+// `system_class` — класс принципалов (`system_class:anonymous`,
+// `system_class:authenticated`, kaname#829): тоже субъект. Отношение вида
+// `public_reader: [system_class]` у `registry_registry` пишет разворачивание
+// выдачи роли классу в kaname (REG-PUB-1, решение Р1 п. 4), точки эмиссии в
+// этом дереве у него нет.
 var subjectUsersets = map[string]struct{}{
 	"user": {}, "service_account": {}, "group#member": {}, "user:*": {},
+	"system_class": {},
 }
 
 var (
