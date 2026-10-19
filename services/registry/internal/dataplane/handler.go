@@ -37,7 +37,7 @@ type Handler struct {
 	// anonSubjectID — идентификатор анонимного принципала (`sub` анонимного токена
 	// полосы `/iam/token`, kaname AnonymousClientID), который плоскость данных
 	// переводит в класс `system_class:anonymous` (RG-1 D-7; приёмка kaname SC-39).
-	// Пусто — анонимный поток выключен; чем это безопасно и при каком условии —
+	// Пусто — анонимный поток выключен; условие, при котором стороны сходятся, —
 	// WithAnonymousSubject. Задаётся из композиционного корня.
 	anonSubjectID string
 	logger        *slog.Logger
@@ -86,12 +86,10 @@ func New(verifier TokenVerifier, authz Authorizer, backend Backend, presence Rep
 // переводит в класс `system_class:anonymous`. Действительный анонимный токен
 // читает ровно выданное классу — поштучную публикацию (RG-1 D-7) и реестры,
 // открытые выдачей роли (REG-PUB-1), — и не пишет никогда (B03 / B14).
-// Пусто (умолчание) — анонимный поток выключен. Безопасно это только при
-// выключенной чеканке: анонимный токен, если служба доступа его всё же выдала,
-// читается как обычный принципал вида service_account и получает выданное классу
-// `system_class:authenticated`. Поэтому чеканка включается только тем же
-// объявлением, что доезжает сюда (`global.kacho.registry.anonymousSubjectId`,
-// у службы доступа своей ручки нет — kaname.anonymousClientId).
+// Пусто (умолчание) — анонимный поток выключен. Стороны значения не
+// симметричны: чеканка анонимного токена включается лишь единым объявлением
+// (`global.kacho.registry.anonymousSubjectId`), которое доезжает и сюда; у службы
+// доступа своей ручки нет. Почему — kaname.anonymousClientId.
 // Возвращает h для цепочки из композиционного корня: сигнатура New и так широка.
 func (h *Handler) WithAnonymousSubject(anonSubjectID string) *Handler {
 	h.anonSubjectID = anonSubjectID
