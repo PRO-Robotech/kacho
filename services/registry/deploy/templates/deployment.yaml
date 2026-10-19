@@ -231,6 +231,13 @@ spec:
             # рендер с текстом, называющим обе величины.
             - name: KACHO_REGISTRY_SERVICE_AUD
               value: {{ include "registry.laneServiceAud" . | quote }}
+            # Анонимный субъект — ОДНО объявление на обе стороны (см.
+            # registry.anonymousSubjectId). Не объявлено — переменной нет:
+            # поток выключен, а не включён пустым значением.
+            {{- with include "registry.anonymousSubjectId" . }}
+            - name: KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID
+              value: {{ . | quote }}
+            {{- end }}
             - name: KACHO_REGISTRY_ENDPOINT_BASE
               value: "{{ .Values.endpointBase }}"
             {{- if or .Values.mtls.enable (and .Values.service.dataplaneLB.enabled .Values.service.dataplaneLB.tlsSidecar.enabled) }}

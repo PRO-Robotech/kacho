@@ -456,6 +456,21 @@ tokenRealm: "https://registry.in-cloud.io/iam/token"
 # и его, и единый источник, но по-разному, — отказ рендера с обеими величинами;
 # не объявить ни того, ни другого — тоже отказ: полоса без имени не работает.
 serviceAud: ""
+# ANONYMOUS_SUBJECT_ID — идентификатор анонимного принципала плоскости данных
+# (`KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID`): `sub` анонимного токена, который
+# чеканит полоса `/iam/token` службы доступа. Реестр переводит его в класс
+# `system_class:anonymous` и читает выданное этому классу (REG-PUB-1 Р9 п. 2).
+#
+# ПУСТО НАМЕРЕННО: у значения ДВЕ стороны — служба доступа чеканит его в `sub`
+# (`api-server.registry-token.anonymous-client-id`), реестр по нему узнаёт
+# анонима, — и объявление у них ОДНО: `global.kacho.registry.anonymousSubjectId`
+# в значениях зонта (см. registry.anonymousSubjectId). Ключ ниже — для ОДИНОЧНОЙ
+# установки чарта: он включает только узнающую сторону, безвредную без
+# чеканящей (у службы доступа своей ручки нет — kaname.anonymousClientId);
+# задать и его, и единый источник, но по-разному, — отказ рендера с обеими
+# величинами. Не задано нигде — переменной в поде нет, поток выключен. Форму
+# порождённого идентификатора отвергает страж старта процесса.
+anonymousSubjectId: ""
 # ENDPOINT_BASE — tenant-facing base OCI endpoint namespace (Registry.endpoint =
 # "<base>/<id>"). Протекает в UI (колонка Endpoint реестра) → docker pull/push host.
 endpointBase: "registry.in-cloud.io"

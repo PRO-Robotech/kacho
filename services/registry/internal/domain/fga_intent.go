@@ -301,21 +301,21 @@ func FGASubjectFromID(principalID string) string {
 	}
 }
 
-// FGASubjectForPrincipalID — resolve a verified data-plane principal id to its FGA
-// subject, honoring the configured anonymous principal id (RG-1 D-7). When
-// anonPrincipalID is non-empty AND principalID equals it, the caller is the public
-// anonymous principal and resolves to FGASubjectAnonymousClass
-// ("system_class:anonymous"): a valid anon Bearer thus reads only PUBLIC repos (the
-// publication is a grant to that class) and can NEVER write (a class holds no write
-// verb) — B03 / B14. Every other principalID resolves by id-prefix via
-// FGASubjectFromID.
+// FGASubjectForPrincipalID — FGA-субъект проверенного `sub` плоскости данных с
+// учётом объявленного анонимного принципала (RG-1 D-7). Непустой anonPrincipalID,
+// равный principalID, — вызывающий без удостоверения: субъект — класс
+// FGASubjectAnonymousClass (`system_class:anonymous`), он читает ровно выданное
+// классу и не пишет никогда (у класса нет глагола записи) — B03 / B14. Прочие
+// principalID разбираются по префиксу через FGASubjectFromID.
 //
-// anonPrincipalID=="" → anonymous pull DISABLED (secure-by-default): a token whose sub
-// happens to equal the anon id resolves as an ordinary principal, never silently
-// gaining the class. The anon principal id is deployment-configured (kaname
-// AnonymousClientID); deploy MUST keep it reserved (no real principal shares it), since
-// then the access service mints a token with sub==anonPrincipalID only on the anonymous
-// flow of its /iam/token shim.
+// anonPrincipalID == "" — анонимный поток выключен: `sub`, совпавший с
+// анонимным идентификатором, класса анонима не получает. Стороны значения не
+// симметричны: чеканка анонимного токена включается лишь единым объявлением
+// (`global.kacho.registry.anonymousSubjectId`), которое доезжает и сюда; своей
+// ручки у службы доступа нет. Почему — kaname.anonymousClientId. Идентификатор объявляет
+// посадка и держит его зарезервированным (ни у одного настоящего принципала его
+// нет): тогда токен с таким `sub` служба доступа чеканит только в анонимном
+// потоке полосы `/iam/token`.
 func FGASubjectForPrincipalID(principalID, anonPrincipalID string) string {
 	if anonPrincipalID != "" && principalID == anonPrincipalID {
 		return FGASubjectAnonymousClass

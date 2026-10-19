@@ -13,6 +13,17 @@
 | Control-plane authz | `cases/registry-authz.py` | 9 | all executed | 0 | **GREEN on fe3455** (3 viewer-tier cases fixture-gated → console-only SKIP, no green assertion) |
 | Data-plane OCI proxy + token-exchange | `scripts/dataplane-e2e.sh` | full handshake→push→pull→delete flow | all hard assertions | 0 | **ALL hard assertions GREEN on fe3455** |
 
+## Known failing — красные до доставки (REG-PUB-1, kacho#3274)
+
+Коллекция REG-PUB-1 заведена ДО того, как стенд несёт её предмет, — это красные пробы
+строгого TDD, а не дефект продукта. До снятия предусловия шаги посева называют отказ сами
+(«условие сценария не создано»), а не роняют сценарий чужим текстом.
+
+| Case id | Причина красноты | Предмет и снятие |
+|---|---|---|
+| `REG-PUB-1-02`, `REG-PUB-1-03`, `REG-PUB-1-11`, `REG-PUB-1-12`, `REG-PUB-1-30`, `REG-PUB-1-31` | роли `registry.public.read` нет в каталоге, пока PR kacho#3279 (`PRO-Robotech/kacho#3251`) не влит в ветку эпика | `PRO-Robotech/kacho#3274`. Снимается-когда: a run of `REG-PUB-1-02` reports zero failed assertions. |
+| `REG-PUB-1-13`, `REG-PUB-1-14`, `REG-PUB-1-20`, `REG-PUB-1-21`, `REG-PUB-1-22`, `REG-PUB-1-23`, `REG-PUB-1-24`, `REG-PUB-1-25`, `REG-PUB-1-26`, `REG-PUB-1-27`, `REG-PUB-1-17` | анонимного потока плоскости данных нет: значение `global.kacho.registry.anonymousSubjectId` не задано, а образ службы доступа по пину не несёт ручки анонимного токена (kaname#871); подъём пина и тега — стадия S4 | `PRO-Robotech/kacho#3274`. Снимается-когда: a run of `REG-PUB-1-20` reports zero failed assertions. |
+
 ## ЗАКРЫТО 2026-08-01 — was «known failing» (RG-1 repository-overlay, prod-mode umbrella 2026-07-22)
 
 **Обе названные первопричины на этой ревизии устранены в коде.** Ниже — исторический
