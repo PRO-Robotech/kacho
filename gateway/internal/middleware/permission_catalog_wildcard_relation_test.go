@@ -3,8 +3,8 @@
 
 package middleware_test
 
-// permission_catalog_wildcard_relation_test.go — a relation that a wildcard tuple
-// satisfies narrows NOTHING, and every catalog row standing on one has to say why.
+// permission_catalog_wildcard_relation_test.go — отношение, выполнимое кортежем
+// «каждому», НЕ СУЖАЕТ НИЧЕГО, и всякая строка каталога на нём обязана сказать почему.
 //
 // Модель прав позволяет выдать отношение каждому: подстановкой `user:*` либо, с
 // PRO-Robotech/kaname#829, системным классом `system_class:authenticated`. Бутстрап
@@ -12,19 +12,20 @@ package middleware_test
 // чтобы ГЛОБАЛЬНЫЙ СПРАВОЧНИК (регионы, зоны, типы дисков, которые арендатор
 // читает до любого размещения) читал всякий вошедший. Для этих данных так и задумано.
 //
-// The consequence is that a catalog row asking for `viewer` on `cluster` means
-// "authenticated", not "authorized". It costs a round-trip, reads in the catalog
-// exactly like a row that narrows, and admits every tenant. Rows for tenant data
-// carrying that shape returned other tenants' data to anyone with a token.
+// Следствие: строка каталога, спрашивающая `viewer` на `cluster`, означает
+// «аутентифицирован», а не «авторизован». Она стоит обращения к службе доступа,
+// в каталоге читается точь-в-точь как сужающая и пропускает всякого арендатора.
+// Строки арендаторских данных такой формы отдавали чужие данные любому с токеном.
 //
-// So the gate is not "no wildcard-satisfiable relations". It is: ENUMERATE every
-// row standing on one, and require each to be named here with a reason. The named
-// list is the whole point — an unnamed row fails the build, and a named row that
-// no longer qualifies fails it too, so the list cannot rot into a comment.
+// Поэтому гейт — не «отношений, выполнимых каждым, нет», а: ПЕРЕЧИСЛИТЬ всякую
+// строку на таком отношении и потребовать, чтобы каждая была названа здесь с
+// причиной. Названный перечень и есть предмет: неназванная строка роняет сборку,
+// и названная, переставшая подходить, роняет её тоже, — перечень не истлеет в
+// комментарий.
 //
-// The set of wildcard-satisfiable relations is COMPUTED FROM THE MODEL, not
-// listed: the day someone adds `user:*` or `system_class` to another relation, every catalog row
-// resting on it appears here without anyone remembering to update a literal.
+// Множество отношений, выполнимых каждым, ВЫЧИСЛЯЕТСЯ ИЗ МОДЕЛИ, а не выписано: в
+// день, когда к другому отношению добавят `user:*` либо `system_class`, всякая
+// строка каталога на нём появится здесь без того, чтобы кто-то вспомнил о литерале.
 //
 // Класс и подстановка при этом судятся по-разному (kacho#3251, REG-PUB-1):
 // кортеж класса рождается только выдачей и лежит на объекте выдачи, поэтому
@@ -49,17 +50,17 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
-// referenceCatalogueRPCs — the RPCs whose response IS the global reference
-// catalogue, and which therefore MAY stand on a wildcard-satisfiable relation.
+// referenceCatalogueRPCs — методы, ответ которых И ЕСТЬ глобальный справочник и
+// которые поэтому ВПРАВЕ стоять на отношении, выполнимом каждым.
 //
-// The justification each one has to meet: the response is admin-curated platform
-// topology or platform inventory, identical for every tenant, containing no
-// tenant-owned row and no infrastructure detail. A tenant cannot place a machine
-// or a volume without reading it, and it holds nothing that one tenant learning
-// would tell them anything about another.
+// Обоснование, которому обязан отвечать каждый: ответ — администрируемая
+// платформой топология либо инвентарь платформы, одинаковый для всех арендаторов,
+// без арендаторской строки и без инфраструктурных подробностей. Арендатор не
+// разместит машину или том, не прочитав его, и в нём нет ничего, что сказало бы
+// одному арендатору хоть что-то о другом.
 //
-// Anything else — bindings, attachments, interfaces, authorization answers — is
-// tenant data, however read-only it looks.
+// Всё прочее — привязки, подключения, интерфейсы, ответы авторизации — данные
+// арендатора, сколь бы «только для чтения» они ни выглядели.
 func referenceCatalogueRPCs() map[string]string {
 	// НЕ ПУСТО — И ЭТО РЕШЕНИЕ, А НЕ ПРОБЕЛ (#893/#895).
 	//
@@ -98,7 +99,7 @@ func referenceCatalogueRPCs() map[string]string {
 	}
 }
 
-// typeRelation is one (object type, relation) pair of the authorization model.
+// typeRelation — пара (тип объекта, отношение) модели прав.
 type typeRelation struct{ Type, Relation string }
 
 // catalogRow — строка каталога в том виде, в каком её судит гейт: отношение на
@@ -141,7 +142,7 @@ func fixedObjectTypes(rows []catalogRow) map[string]struct{} {
 	return out
 }
 
-// TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues is the gate.
+// TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues — сам гейт.
 //
 // ЧТО СЧИТАЕТСЯ «НЕ СУЖАЕТ НИЧЕГО» (kacho#3251, REG-PUB-1). Субъектов «каждый» в
 // модели два вида, и модель их различает:
@@ -159,9 +160,9 @@ func fixedObjectTypes(rows []catalogRow) map[string]struct{} {
 func TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues(t *testing.T) {
 	m := loadEveryoneModel(t)
 
-	// Anti-vacuum. If the model parse silently produced nothing, every assertion
-	// below would pass while checking nothing at all — the exact failure mode this
-	// gate exists to catch elsewhere.
+	// Против пустоты. Если разбор модели молча не дал ничего, каждое утверждение
+	// ниже прошло бы, не проверив ничего, — ровно тот отказ, ради поимки которого
+	// гейт существует в других местах.
 	require.NotEmpty(t, m.sat, "no wildcard-satisfiable relation found — the model parse is broken, not the model")
 	require.Contains(t, m.sat, typeRelation{"cluster", "viewer"},
 		"cluster#viewer is granted to system_class:authenticated by the cluster bootstrap; a parse that misses it misses everything")
@@ -231,8 +232,8 @@ func judgeRows(m everyoneModel, rows []catalogRow, fixed map[string]struct{}) (s
 }
 
 var (
-	// A DSL comment is a `#` at the start of a line or after whitespace. A `#`
-	// glued to a word is a userset (`group#member`) and is part of the expression.
+	// Комментарий DSL — `#` в начале строки либо после пробела. `#`, приклеенный
+	// к слову, — это набор пользователей (`group#member`), часть выражения.
 	fgaCommentRe  = regexp.MustCompile(`(^|\s)#.*$`)
 	fgaTypeRe     = regexp.MustCompile(`^type\s+(\w+)$`)
 	fgaDefineRe   = regexp.MustCompile(`^define\s+([\w]+)\s*:\s*(.+)$`)
@@ -310,7 +311,7 @@ func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 	return loadEveryoneModel(t).sat
 }
 
-// loadEveryoneModel reads the canonical authorization model and parses it.
+// loadEveryoneModel читает каноническую модель прав и разбирает её.
 //
 // ГДЕ ЛЕЖИТ МОДЕЛЬ. Не под `proto/` этого дерева: решением владельца (kacho#2616,
 // исход C, 2026-09-13) контракты службы доступа уехали в её репозиторий и
@@ -336,20 +337,21 @@ func readCanonicalModel(t *testing.T) string {
 	return string(raw)
 }
 
-// parseEveryoneModel returns every (type, relation) a `<subject>:*` tuple or a
-// system class tuple (`system_class:<имя>`) can satisfy — directly, or through a
-// computed userset / tuple-to-userset that reaches one — and, for the class, on
-// which object types the class tuple has to sit.
+// parseEveryoneModel возвращает каждую пару (тип, отношение), которую может
+// выполнить кортеж `<subject>:*` либо кортеж системного класса
+// (`system_class:<имя>`), — прямо или через вычисляемый набор пользователей либо
+// переход по кортежу, доходящий до такого, — а для класса ещё и то, на объектах
+// каких типов кортеж класса обязан лежать.
 //
-// Over-approximation is the safe direction here: a pair listed that turns out not
-// to be reachable only forces a catalog row to be named and justified; a pair
-// MISSED lets an unnarrowed row through unnoticed.
+// Избыточность здесь — безопасная сторона: лишняя пара, оказавшаяся
+// недостижимой, лишь заставит назвать и обосновать строку каталога; ПРОПУЩЕННАЯ
+// пара незаметно пропустит несужающую строку.
 func parseEveryoneModel(t *testing.T, raw string) everyoneModel {
 	t.Helper()
 
-	// type -> relation -> expression
+	// тип -> отношение -> выражение
 	types := map[string]map[string]string{}
-	// type -> relation -> assignable types (the bracket list), for `X from Y`.
+	// тип -> отношение -> назначаемые типы (перечень в скобках), для `X from Y`.
 	assignable := map[string]map[string][]string{}
 
 	var cur string
@@ -375,7 +377,7 @@ func parseEveryoneModel(t *testing.T, raw string) everyoneModel {
 		types[cur][rel] = expr
 		if br := fgaBracketRe.FindStringSubmatch(expr); br != nil {
 			for _, tok := range strings.Split(br[1], ",") {
-				// "group#member" -> "group"; "user with mfa_fresh" -> "user".
+				// Элемент перечня: "group#member" -> "group"; "user with mfa_fresh" -> "user".
 				tok = strings.TrimSpace(tok)
 				tok = strings.SplitN(tok, "#", 2)[0]
 				tok = strings.Fields(tok)[0]
@@ -418,9 +420,9 @@ func parseEveryoneModel(t *testing.T, raw string) everyoneModel {
 		}
 	}
 
-	// Closure over `or <rel>` (same object) and `or <rel> from <pointer>` (the
-	// relation on whatever object the pointer holds). The class anchor travels
-	// with the relation: through `from` it is the PARENT's object that carries it.
+	// Замыкание по `or <rel>` (тот же объект) и `or <rel> from <pointer>`
+	// (отношение на объекте, который держит указатель). Якорь класса едет вместе
+	// с отношением: через `from` его несёт объект РОДИТЕЛЯ.
 	for changed := true; changed; {
 		changed = false
 		for typ, rels := range types {
@@ -486,6 +488,6 @@ func repoRootForWildcardGate(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok, "runtime.Caller failed")
-	// .../gateway/internal/middleware/<file> -> repo root
+	// .../gateway/internal/middleware/<file> -> корень репозитория
 	return filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
 }
