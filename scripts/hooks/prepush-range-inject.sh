@@ -47,8 +47,8 @@ GROUPS_SH="$HERE/prepush-groups.sh"
 RANGE="$HERE/prepush-range.sh"
 [ -f "$HOOK" ]   || { echo "хука нет: $HOOK" >&2; exit 2; }
 [ -f "$GROUPS_SH" ] || { echo "производителя групп нет: $GROUPS_SH" >&2; exit 2; }
-for f in "$HERE/attribution-rule.sh" "$HERE/prepush-attribution.sh"; do
-    [ -f "$f" ] || { echo "стража атрибуции нет: $f — хук без него отказывает всякой отправке" >&2; exit 2; }
+for f in "$HERE/attribution-rule.sh" "$HERE/prepush-attribution.sh" "$HERE/prepush-added-files.sh"; do
+    [ -f "$f" ] || { echo "стража атрибуции либо новых blob'ов нет: $f — хук без него отказывает всякой отправке" >&2; exit 2; }
 done
 
 tmp="$(mktemp -d)"
@@ -153,7 +153,7 @@ make_broken_range() {
 install_hooks() { # $1 — производитель базы (путь) либо «-»; $2 — хук (умолчание: настоящий)
     cp "${2:-$HOOK}" "$repo/scripts/hooks/pre-push"
     cp "$GROUPS_SH" "$repo/scripts/hooks/prepush-groups.sh"
-    cp "$HERE/attribution-rule.sh" "$HERE/prepush-attribution.sh" "$repo/scripts/hooks/"
+    cp "$HERE/attribution-rule.sh" "$HERE/prepush-attribution.sh" "$HERE/prepush-added-files.sh" "$repo/scripts/hooks/"
     rm -f "$repo/scripts/hooks/prepush-range.sh"
     [ "$1" = "-" ] || cp "$1" "$repo/scripts/hooks/prepush-range.sh"
     chmod +x "$repo/scripts/hooks"/*.sh "$repo/scripts/hooks/pre-push" 2> /dev/null || true
@@ -383,7 +383,7 @@ subject_fixture() { # $1 — хук, который кладётся в дере
     s init -q -b main
     cp "$1" "$subj/scripts/hooks/pre-push"
     cp "$GROUPS_SH" "$subj/scripts/hooks/prepush-groups.sh"
-    cp "$HERE/attribution-rule.sh" "$HERE/prepush-attribution.sh" "$subj/scripts/hooks/"
+    cp "$HERE/attribution-rule.sh" "$HERE/prepush-attribution.sh" "$HERE/prepush-added-files.sh" "$subj/scripts/hooks/"
     [ -f "$RANGE" ] && cp "$RANGE" "$subj/scripts/hooks/prepush-range.sh"
     chmod +x "$subj/scripts/hooks/pre-push" "$subj/scripts/hooks"/*.sh 2> /dev/null || true
 
@@ -944,7 +944,7 @@ cp "$repo/scripts/ci-local.sh" "$ep/scripts/ci-local.sh"
 ep_install() { # $1 — производитель диапазона
     cp "$HOOK" "$ep/scripts/hooks/pre-push"
     cp "$GROUPS_SH" "$ep/scripts/hooks/prepush-groups.sh"
-    cp "$HERE/attribution-rule.sh" "$HERE/prepush-attribution.sh" "$ep/scripts/hooks/"
+    cp "$HERE/attribution-rule.sh" "$HERE/prepush-attribution.sh" "$HERE/prepush-added-files.sh" "$ep/scripts/hooks/"
     cp "$1" "$ep/scripts/hooks/prepush-range.sh"
     chmod +x "$ep/scripts/hooks"/*.sh "$ep/scripts/hooks/pre-push" "$ep/scripts/ci-local.sh"
 }

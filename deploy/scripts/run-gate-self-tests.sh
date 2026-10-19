@@ -152,6 +152,7 @@ deploy/scripts/repo_tree.py
 deploy/scripts/run-injection-proofs.sh
 deploy/scripts/stand-mailbox-door.py
 deploy/scripts/stand-provenance.sh
+deploy/scripts/stand_owner.py
 deploy/tests/helm/ceremony-ingress-audit.py
 deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/console-serves-identity-flows-test.sh
