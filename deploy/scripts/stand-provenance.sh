@@ -125,6 +125,15 @@ EXEC_TIMEOUT="${KACHO_PROVENANCE_EXEC_TIMEOUT:-20}"
 EXPECT=""
 EXPECT_GIVEN=0
 
+# ПИН, ПЕРЕОПРЕДЕЛЁННЫЙ ВЫЗЫВАЮЩИМ (kacho#3312). Стенд, поставивший вынесенную часть
+# образом её ВЕТКИ (`stand-ns.sh`, STAND_KANAME_BRANCH), объявляет для неё другую
+# ссылку, чем профили: `--pin ИМЯ=ССЫЛКА` заменяет объявленное профилями для этого
+# образа, `--pin-revision ИМЯ=SHA40` сверх ссылки требует, чтобы ревизия из ФАЙЛА
+# образа была этой головой ветки (тег подвижен — ссылка содержимого не доказывает,
+# ревизия в образе доказывает). Клеймо вместо файла, иная ревизия — расхождение
+# (код 3); ни одного работающего контейнера образа — не осмотрено (код 1).
+declare -A PIN_OVERRIDE=() PIN_REVISION=()
+
 # REVISION_PATH — путь величины внутри образа. Объявлен ОДИН раз и здесь;
 # Dockerfile'ы пишут этот же путь, и что все они его пишут, держит
 # deploy/stand_provenance_declaration_test.go.
@@ -147,6 +156,14 @@ while [ $# -gt 0 ]; do
     # его здесь — и `--expect "$(…)"` с пустой подстановкой выглядел бы опечаткой
     # вызова, тогда как это исчезнувшая предпосылка, и назвать её обязан отчёт.
     --expect)    EXPECT="${2-}"; EXPECT_GIVEN=1; shift 2 ;;
+    --pin)
+      v="${2-}"
+      [[ "$v" =~ ^[^=]+=.+$ ]] || { echo "--pin ждёт ИМЯ=ССЫЛКА, дано «$v»" >&2; exit 2; }
+      PIN_OVERRIDE["${v%%=*}"]="${v#*=}"; shift 2 ;;
+    --pin-revision)
+      v="${2-}"
+      [[ "$v" =~ ^[^=]+=[0-9a-f]{40}$ ]] || { echo "--pin-revision ждёт ИМЯ=SHA40, дано «$v»" >&2; exit 2; }
+      PIN_REVISION["${v%%=*}"]="${v#*=}"; shift 2 ;;
     --self-test) MODE="self-test"; shift ;;
     -h|--help)   usage; exit 0 ;;
     *) echo "неизвестный аргумент: $1" >&2; usage >&2; exit 2 ;;
@@ -196,6 +213,24 @@ product_pins_load || {
   echo "       Это «не выполнилось», а не «пин разошёлся»." >&2
   exit 2
 }
+# Переопределить можно лишь пин части, которая пином и приезжает: иначе вопрос
+# ушёл бы в сверку с ревизией прогона, и переопределение молча ничего не значило бы.
+for _n in "${!PIN_OVERRIDE[@]}" "${!PIN_REVISION[@]}"; do
+  product_image_is_pinned "$_n" || {
+    echo "ОТКАЗ: «$_n» пином не приезжает — переопределять у него нечего (--pin, --pin-revision)." >&2
+    exit 2
+  }
+done
+[ "${#PIN_REVISION[@]}" -eq 0 ] || [ "$EXPECT_GIVEN" -eq 1 ] || {
+  echo "ОТКАЗ: --pin-revision без --expect — сверка пинов идёт лишь при ожидании, ревизия ветки не сверялась бы." >&2
+  exit 2
+}
+for _n in "${!PIN_REVISION[@]}"; do
+  [ -n "${PIN_OVERRIDE[$_n]+set}" ] || {
+    echo "ОТКАЗ: --pin-revision $_n без --pin $_n — ревизия ветки сверяется лишь со ссылкой ветки." >&2
+    exit 2
+  }
+done
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ЯДРО
@@ -380,7 +415,8 @@ report() {
   # Второй вид нашего контейнера считается ОТДЕЛЬНО, а не подмешивается к первому:
   # сложи их — и «пин сошёлся» стало бы неотличимо от «ревизия сошлась», то есть
   # перепись перестала бы отвечать на вопрос, из-за которого она заведена.
-  local pinned=0 pin_ok=0 pin_bad=0 pin_undeclared=0 pin_narrowed=0
+  local pinned=0 pin_ok=0 pin_bad=0 pin_undeclared=0 pin_narrowed=0 pin_rev_ok=0
+  local -A pin_rev_seen=()
   local prev_key="" pod name image imageid key rev
   # Сортировка по ключу (контейнер, образ, идентификатор): реплики одного
   # развёртывания несут ОДИН образ, и спрашивать каждую значило бы платить
@@ -435,6 +471,7 @@ report() {
           local declared want got matched narrowed wn
           local -a refs=()
           declared="$(product_pin_refs "$imgname" | tr '\n' ' ')"
+          [ -z "${PIN_OVERRIDE[$imgname]+set}" ] || declared="${PIN_OVERRIDE[$imgname]}"
           if [ -z "${declared// /}" ]; then
             # ПУСТОЙ ПЕРЕЧЕНЬ НЕ ЕСТЬ НИ ВСЕРАЗРЕШЕНИЕ, НИ НАХОДКА: сверять было
             # НЕ С ЧЕМ. Объяви это расхождением — и отметка встала бы от нашей же
@@ -458,6 +495,23 @@ report() {
                 *) if [ "$got" = "${wn##*/}" ]; then matched="$want"; narrowed=1; break; fi ;;
               esac
             done
+            local want_rev="${PIN_REVISION[$imgname]-}"
+            if [ -n "$matched" ] && [ -n "$want_rev" ]; then
+              pin_rev_seen[$imgname]=1
+              if [ "$src" != "файл" ]; then
+                matched=""
+                printf "    ↳ РЕВИЗИЯ ВЕТКИ НЕ ПРОЧИТАНА ФАЙЛОМ: %s несёт ревизию только клеймом — клеймо могло быть унаследовано, голову ветки %s оно не доказывает\n" \
+                  "$image" "$want_rev"
+              elif [ "$(commit_of "$rev")" != "$want_rev" ]; then
+                matched=""
+                printf "    ↳ РАСХОЖДЕНИЕ РЕВИЗИИ ВЕТКИ: %s несёт %s, а голова ветки — %s\n" \
+                  "$image" "$(commit_of "$rev")" "$want_rev"
+              else
+                pin_rev_ok=$((pin_rev_ok + 1))
+                printf "    ↳ ревизия образа ветки сходится с головой %s (файлом)\n" "$want_rev"
+              fi
+              [ -n "$matched" ] || { pin_bad=$((pin_bad + 1)); continue; }
+            fi
             if [ -n "$matched" ]; then
               pin_ok=$((pin_ok + 1))
               if [ "$narrowed" -eq 1 ]; then
@@ -513,6 +567,18 @@ report() {
     # второго обхода здесь нет намеренно.
     echo "пином приезжает $pinned — совпадает с объявленным у $pin_ok, РАСХОДИТСЯ у $pin_bad, пин не объявлен у $pin_undeclared (сверено по имени и тегу у $pin_narrowed)"
     echo "объявленное прочитано так: $(product_pins_census)"
+    local _n
+    for _n in "${!PIN_OVERRIDE[@]}"; do
+      echo "пин $_n ПЕРЕОПРЕДЕЛЁН вызывающим: ${PIN_OVERRIDE[$_n]}${PIN_REVISION[$_n]:+, ревизия ветки ${PIN_REVISION[$_n]}}"
+    done
+    if [ "${#PIN_REVISION[@]}" -gt 0 ]; then
+      echo "ревизия образа ветки сходится у $pin_rev_ok"
+      for _n in "${!PIN_REVISION[@]}"; do
+        [ -n "${pin_rev_seen[$_n]+set}" ] && continue
+        pin_undeclared=$((pin_undeclared + 1))
+        echo "ВЕТКА НЕ ОСМОТРЕНА: работающего контейнера $_n со ссылкой ${PIN_OVERRIDE[$_n]} нет — ревизию ветки сверить не с чем"
+      done
+    fi
     if [ "$dirty" -gt 0 ]; then
       echo "ГРАНИЦА: у $dirty совпадений хоть одна сторона помечена -dirty — равенство коммитов равенства СОДЕРЖИМОГО не доказывает"
     fi
@@ -901,6 +967,65 @@ STUB
   else
     bad "код $rc; вывод: $out"
   fi
+
+  # ОСИ ОБРАЗА ВЕТКИ ВЫНЕСЕННОЙ ЧАСТИ (kacho#3312): стенд поставил часть образом её
+  # ветки — сверка идёт со ссылкой ветки и с головой ветки по ФАЙЛУ образа.
+  local branch_ref="${pinned_ref%:*}:task-918-702d4575" branch_rev="702d4575c0ffee00112233445566778899aabbcc"
+  branch_fixture() {
+    fixture_tree_and_pin "$1"
+    printf '%s\n' "$2" > "$work/exec.$pinned_image"
+    PIN_OVERRIDE=(["$pinned_image"]="$branch_ref"); PIN_REVISION=(["$pinned_image"]="$branch_rev")
+  }
+
+  echo "23. КОНТРОЛЬ: ссылка ветки и голова ветки в файле образа — код 0, пин профиля не судится"
+  branch_fixture "$branch_ref" "$branch_rev"
+  out="$(report kacho)"; rc=$?
+  if [ "$rc" -eq 0 ] && [[ "$out" == *"ревизия образа ветки сходится у 1"* ]] && [[ "$out" == *"ПЕРЕОПРЕДЕЛЁН"* ]] \
+     && [[ "$out" == *"совпадает с объявленным у 1"* ]]; then
+    ok "образ ветки сошёлся и ссылкой, и ревизией из файла"
+  else
+    bad "код $rc; вывод: $out"
+  fi
+
+  echo "24. ВНЕСЁН ДЕФЕКТ: стенд исполняет ПИН профиля, хотя объявлена ветка — код 3"
+  branch_fixture "$pinned_ref" "$branch_rev"
+  out="$(report kacho)"; rc=$?
+  if [ "$rc" -eq 3 ] && [[ "$out" == *"РАСХОЖДЕНИЕ С ПИНОМ"* ]] && [[ "$out" == *"ВЕТКА НЕ ОСМОТРЕНА"* ]]; then
+    ok "откат на пин назван расхождением"
+  else
+    bad "код $rc; вывод: $out"
+  fi
+
+  echo "25. ВНЕСЁН ДЕФЕКТ: ссылка ветки верна, ревизия в файле образа — не голова ветки — код 3"
+  branch_fixture "$branch_ref" "$rev40"
+  out="$(report kacho)"; rc=$?
+  if [ "$rc" -eq 3 ] && [[ "$out" == *"РАСХОЖДЕНИЕ РЕВИЗИИ ВЕТКИ"* ]] && [[ "$out" == *"$branch_rev"* ]]; then
+    ok "подвижный тег с чужим содержимым пойман ревизией образа"
+  else
+    bad "код $rc; вывод: $out"
+  fi
+
+  echo "26. ЗАКОННЫЙ БЛИЗНЕЦ ДЕФЕКТА: ревизия ветки лишь клеймом — код 3, клеймо головы не доказывает"
+  branch_fixture "$branch_ref" "$branch_rev"
+  rm -f "$work/exec.$pinned_image"
+  printf 'sha256:fff %s\n' "$branch_rev" > "$work/labels.tsv"
+  out="$(report kacho)"; rc=$?
+  if [ "$rc" -eq 3 ] && [[ "$out" == *"НЕ ПРОЧИТАНА ФАЙЛОМ"* ]]; then
+    ok "клеймо вместо файла — расхождение, а не «сошлось»"
+  else
+    bad "код $rc; вывод: $out"
+  fi
+
+  echo "27. ГРАНИЦА: ревизия образа ветки не установлена вовсе — код 1, «не осмотрена»"
+  branch_fixture "$branch_ref" "$branch_rev"
+  rm -f "$work/exec.$pinned_image" "$work/labels.tsv"
+  out="$(report kacho)"; rc=$?
+  if [ "$rc" -eq 1 ] && [[ "$out" == *"ВЕТКА НЕ ОСМОТРЕНА"* ]] && [[ "$out" == *"НЕ установлена у 1"* ]]; then
+    ok "нечитаемая ревизия ветки — не «сошлось»"
+  else
+    bad "код $rc; вывод: $out"
+  fi
+  PIN_OVERRIDE=(); PIN_REVISION=()
 
   PATH="$saved_path"
   echo "итог самопроверки: прошло $pass, провалено $fail"
