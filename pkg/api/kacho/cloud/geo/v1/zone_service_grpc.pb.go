@@ -57,11 +57,17 @@ type ZoneServiceClient interface {
 	// Creates a zone in an existing region. A missing region is refused in
 	// Operation.error (FAILED_PRECONDITION "Zone <id> violates a reference
 	// constraint"). Same gate as InternalZoneService.Create.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Create(ctx context.Context, in *CreatePublicZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates a zone (status only on this surface). Same gate as
 	// InternalZoneService.Update.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Update(ctx context.Context, in *UpdatePublicZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes a zone. Same gate as InternalZoneService.Delete.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Delete(ctx context.Context, in *DeleteZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
@@ -150,11 +156,17 @@ type ZoneServiceServer interface {
 	// Creates a zone in an existing region. A missing region is refused in
 	// Operation.error (FAILED_PRECONDITION "Zone <id> violates a reference
 	// constraint"). Same gate as InternalZoneService.Create.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Create(context.Context, *CreatePublicZoneRequest) (*operation.Operation, error)
 	// Updates a zone (status only on this surface). Same gate as
 	// InternalZoneService.Update.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Update(context.Context, *UpdatePublicZoneRequest) (*operation.Operation, error)
 	// Deletes a zone. Same gate as InternalZoneService.Delete.
+	// Пол подтверждения — `required_acr_min = "1"`: рутинная мутация каталога
+	// кластера, а не выдача права (приёмка ADM-1 geo).
 	Delete(context.Context, *DeleteZoneRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedZoneServiceServer()
 }
