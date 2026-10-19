@@ -191,7 +191,7 @@ kaname:
     # `kaname.image`.
     # Действующее переопределение — values.fe3455-prod.yaml (тот же тег, слой ПОСЛЕ
     # этого файла).
-    tag: task-918-702d4575
+    tag: 746-a490918c
     pullPolicy: IfNotPresent
 kacho-nlb:
   enabled: true

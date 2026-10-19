@@ -86,8 +86,8 @@ func TestRepoConfig_RG1_OutboxEmissionInTx(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before+2, countAllOutbox(t, pool), "2 outbox-строки эмитированы атомарно с INSERT")
 
-	// public-grant строка несёт user:* v_get tuple.
-	require.True(t, outboxHasWildcardVGet(t, pool, regID, "pub/img"), "user:* v_get intent записан")
+	// public-grant строка несёт system_class:anonymous v_get tuple.
+	require.True(t, outboxHasPublicationVGet(t, pool, regID, "pub/img"), "system_class:anonymous v_get intent записан")
 }
 
 // countAllOutbox — число всех строк registry_outbox (RG-1 overlay outbox-эмиссия).
@@ -99,13 +99,13 @@ func countAllOutbox(t *testing.T, pool *pgxpool.Pool) int {
 	return n
 }
 
-// outboxHasWildcardVGet — есть ли в outbox intent с "user:* v_get registry_repository:<reg>/<repo>".
-func outboxHasWildcardVGet(t *testing.T, pool *pgxpool.Pool, regID, repo string) bool {
+// outboxHasPublicationVGet — есть ли в outbox intent с "system_class:anonymous v_get registry_repository:<reg>/<repo>".
+func outboxHasPublicationVGet(t *testing.T, pool *pgxpool.Pool, regID, repo string) bool {
 	t.Helper()
 	var n int
 	require.NoError(t, pool.QueryRow(context.Background(),
 		`SELECT count(*) FROM kacho_registry.registry_outbox
-		 WHERE payload::text LIKE '%user:*%' AND payload::text LIKE '%v_get%'
+		 WHERE payload::text LIKE '%system_class:anonymous%' AND payload::text LIKE '%v_get%'
 		   AND resource_id = $1`, regID+"/"+repo).Scan(&n))
 	return n > 0
 }

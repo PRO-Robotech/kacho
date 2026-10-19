@@ -46,6 +46,19 @@
 # а не молчание: значит форма записи пробе неизвестна, и всё, что ею записано,
 # стоит вне наблюдения. Пустой обход — отказ.
 #
+# ─────────────────────────────────────────────────────────────────────────────
+# ИМЯ АДРЕСА НА ФРОНТЕ ПОД ТРАНСПОРТОМ (kacho#3315)
+#
+# Лист фронта несёт в SAN только DNS-имена Service, поэтому адрес
+# `https://127.0.0.1:<порт>` проверку имени не проходит и newman отдаёт
+# `errored` — ни красного, ни зелёного. Прогонщик обязан строить адрес от имени
+# из SAN листа (`own-front-tls-name.py`), пинить его на петлю
+# (`lib/pin-resolve.cjs`) и проверять цепочку по УЦ посадки
+# (`--ssl-extra-ca-certs`). Столбец адреса поэтому трёхзначный: ИМЯ — от имени
+# из SAN, с пином и УЦ; IP — на петлю по адресу (верно лишь открытым текстом);
+# НЕТ — не инъектирован. Лист фронта не называет Service в SAN — адрес НЕТ:
+# это «условие не создано», а не откат на IP.
+#
 # Самопроверка: `--self-test` (синтетический прогонщик, решающий по СТАРОМУ
 # правилу, обязан быть найден; законный близнец обязан молчать).
 set -uo pipefail
@@ -68,6 +81,33 @@ done
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# ЛИСТЫ ПОСАДКИ — настоящие, выпущенные здесь же: помощник имени разбирает их
+# openssl, и подделка текстом разбора не прошла бы. yes — лист называет Service
+# фронта в SAN, no — лист пространства есть, но о другом Service.
+mk_leaf_secrets() {
+  local d="$WORK/pki"; mkdir -p "$d"
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 \
+    -subj /CN=probe-ca -keyout "$d/ca.key" -out "$d/ca.crt" >/dev/null 2>&1 || return 1
+  local which san
+  for which in yes no; do
+    case "$which" in
+      yes) san="DNS:kaname-internal.kacho.svc.cluster.local,DNS:kaname-internal.kacho.svc,DNS:kaname-internal.kacho" ;;
+      no)  san="DNS:other.kacho.svc" ;;
+    esac
+    openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -subj /CN=leaf \
+      -keyout "$d/$which.key" -out "$d/$which.csr" >/dev/null 2>&1 || return 1
+    openssl x509 -req -in "$d/$which.csr" -CA "$d/ca.crt" -CAkey "$d/ca.key" -CAcreateserial -days 1 \
+      -extfile <(printf 'subjectAltName=%s\n' "$san") -out "$d/$which.crt" >/dev/null 2>&1 || return 1
+    python3 - "$d/$which.crt" "$d/ca.crt" > "$WORK/secrets-$which.json" <<'PY2' || return 1
+import base64, json, sys
+b = lambda f: base64.b64encode(open(f, "rb").read()).decode()
+print(json.dumps({"items": [{"metadata": {"name": "kaname-server-tls"}, "type": "kubernetes.io/tls",
+                             "data": {"tls.crt": b(sys.argv[1]), "ca.crt": b(sys.argv[2])}}]}))
+PY2
+  done
+}
+mk_leaf_secrets || { echo "ОТКАЗ: листы посадки для пробы не выпущены (openssl)" >&2; exit 1; }
+
 RUNNERS_SEEN=0
 BLOCKS_CUT=0
 POSTURES_RUN=0
@@ -76,13 +116,14 @@ FINDINGS=()
 # ─── ПОДСТАВНОЙ kubectl ──────────────────────────────────────────────────────
 # Отвечает ровно тем, чем отвечает посадка: разобранными объектами и наличием
 # секрета. Посадка задаётся двумя переменными, и каждая меняет РОВНО один факт.
-write_stub_kubectl() {  # <tls: true|false> <режим или пусто> <секрет: yes|no>
-  local tls="$1" mode="$2" secret="$3"
+write_stub_kubectl() {  # <tls: true|false> <режим или пусто> <секрет: yes|no> <SAN: yes|no>
+  local tls="$1" mode="$2" secret="$3" san="${4:-yes}"
   mkdir -p "$WORK/bin"
   {
     echo '#!/usr/bin/env bash'
     echo 'args="$*"'
     echo 'case "$args" in'
+    echo "  *\"get secrets\"*) cat '$WORK/secrets-$san.json'; exit 0 ;;"
     echo '  *"-o json"*)'
     echo '    cat <<J'
     echo '{"items":[{"kind":"Service","metadata":{"name":"kaname-internal"},'
@@ -114,9 +155,9 @@ cut_block() {  # <файл прогонщика> <куда>
 }
 
 # ─── ОДНА ПОСАДКА ────────────────────────────────────────────────────────────
-# Печатает «<лист ДА|НЕТ> <адрес ДА|НЕТ>».
-run_posture() {  # <блок> <производитель> <tls> <режим> <секрет>
-  write_stub_kubectl "$3" "$4" "$5"
+# Печатает «<лист ДА|НЕТ> <адрес ИМЯ|IP|НЕТ>».
+run_posture() {  # <блок> <производитель> <tls> <режим> <секрет> <SAN>
+  write_stub_kubectl "$3" "$4" "$5" "$6"
   cat > "$WORK/drive.sh" <<'DRV'
 set -uo pipefail
 PATH="$WORK/bin:$PATH"
@@ -129,20 +170,31 @@ own_front_forward internal 19099 ownInternalRestBaseUrl >/dev/null 2>&1
 # что именно произошло, и её первым делом спишут на поломку самой пробы.
 declare -p OWN_FRONT_TLS_ARGS >/dev/null 2>&1 || OWN_FRONT_TLS_ARGS=()
 declare -p OWN_FRONT_ENV_ARGS >/dev/null 2>&1 || OWN_FRONT_ENV_ARGS=()
+declare -p OWN_FRONT_PINS >/dev/null 2>&1 || OWN_FRONT_PINS=()
+declare -p OWN_FRONT_CA_ARGS >/dev/null 2>&1 || OWN_FRONT_CA_ARGS=()
+# Адрес: ИМЯ — хост не петля, он запинен на петлю и УЦ подан; IP — петля по
+# адресу; НЕТ — не инъектирован; ИМЯ-БЕЗ-ПИНА — имя без пина или без УЦ.
+addr="НЕТ"
+if [ "${#OWN_FRONT_ENV_ARGS[@]}" -gt 0 ]; then
+  url="${OWN_FRONT_ENV_ARGS[-1]#*=}"; host="${url#*://}"; host="${host%%:*}"
+  if [ "$host" = 127.0.0.1 ]; then addr="IP"
+  elif [[ " ${OWN_FRONT_PINS[*]} " == *" $host=127.0.0.1 "* ]] && [ "${#OWN_FRONT_CA_ARGS[@]}" -gt 0 ]; then addr="ИМЯ"
+  else addr="ИМЯ-БЕЗ-ПИНА"; fi
+fi
 printf '%s %s\n' \
-  "$( [ "${#OWN_FRONT_TLS_ARGS[@]}" -gt 0 ] && echo ДА || echo НЕТ )" \
-  "$( [ "${#OWN_FRONT_ENV_ARGS[@]}" -gt 0 ] && echo ДА || echo НЕТ )"
+  "$( [ "${#OWN_FRONT_TLS_ARGS[@]}" -gt 0 ] && echo ДА || echo НЕТ )" "$addr"
 DRV
   WORK="$WORK" BLOCK="$1" SCRIPT_DIR="$2" bash "$WORK/drive.sh" 2>/dev/null
 }
 
 # ─── ЧЕТЫРЕ ПОСАДКИ, каждая — ОДИН изменённый факт против соседней ───────────
-# посадка|tls|режим|секрет|ожидаемый лист|ожидаемый адрес|за что отвечает
+# посадка|tls|режим|секрет|SAN|ожидаемый лист|ожидаемый адрес|за что отвечает
 POSTURES=(
-  "ребро ВЗАИМНОЕ, лист в посадке есть|true|mutual|yes|ДА|ДА|лист подаётся там, где рукопожатие его требует"
-  "ребро ОДНОСТОРОННЕЕ (тот же фронт под транспортом)|true|server-tls-only|yes|НЕТ|ДА|лист НЕ подаётся там, где он ничего не доказывает"
-  "ребро ВЗАИМНОЕ, листа в посадке нет|true|mutual|no|НЕТ|НЕТ|адрес НЕ инъектируется: это «условие не создано», а не вердикт о продукте"
-  "фронт открытым текстом|false|mutual|yes|НЕТ|ДА|рукопожатия нет вовсе — сертификата не бывает"
+  "ребро ВЗАИМНОЕ, лист в посадке есть|true|mutual|yes|yes|ДА|ИМЯ|лист подаётся там, где рукопожатие его требует; адрес — от имени из SAN"
+  "ребро ОДНОСТОРОННЕЕ (тот же фронт под транспортом)|true|server-tls-only|yes|yes|НЕТ|ИМЯ|лист НЕ подаётся там, где он ничего не доказывает"
+  "ребро ВЗАИМНОЕ, листа в посадке нет|true|mutual|no|yes|НЕТ|НЕТ|адрес НЕ инъектируется: это «условие не создано», а не вердикт о продукте"
+  "фронт открытым текстом|false|mutual|yes|yes|НЕТ|IP|рукопожатия нет вовсе — сертификата не бывает, имя не нужно"
+  "ребро ВЗАИМНОЕ, лист фронта не называет Service в SAN|true|mutual|yes|no|НЕТ|НЕТ|имени в SAN нет — «условие не создано», а не откат на IP (kacho#3315)"
 )
 
 audit_runner() {  # <относительный путь> <абсолютный путь> <каталог производителя>
@@ -153,11 +205,11 @@ audit_runner() {  # <относительный путь> <абсолютный 
     return
   fi
   BLOCKS_CUT=$((BLOCKS_CUT + 1))
-  local row name tls mode secret want_leaf want_addr why got
+  local row name tls mode secret san want_leaf want_addr why got
   for row in "${POSTURES[@]}"; do
-    IFS='|' read -r name tls mode secret want_leaf want_addr why <<<"$row"
+    IFS='|' read -r name tls mode secret san want_leaf want_addr why <<<"$row"
     POSTURES_RUN=$((POSTURES_RUN + 1))
-    got="$(run_posture "$blk" "$prod" "$tls" "$mode" "$secret")"
+    got="$(run_posture "$blk" "$prod" "$tls" "$mode" "$secret" "$san")"
     if [ "$got" != "$want_leaf $want_addr" ]; then
       FINDINGS+=("$rel · $name: ждали «лист $want_leaf, адрес $want_addr», получили «${got:-пусто}» — $why")
     fi
@@ -167,7 +219,7 @@ audit_runner() {  # <относительный путь> <абсолютный 
 # ─── САМОПРОВЕРКА ────────────────────────────────────────────────────────────
 self_test() {
   local fails=0 tmp="$WORK/st" ; mkdir -p "$tmp/deploy/scripts"
-  cp "$ROOT_DEFAULT/deploy/scripts/own-rest-front-address.py" "$tmp/deploy/scripts/"
+  cp "$ROOT_DEFAULT/deploy/scripts/own-rest-front-address.py" "$ROOT_DEFAULT/deploy/scripts/own-front-tls-name.py" "$tmp/deploy/scripts/"
 
   # ИНЪЕКЦИЯ: прогонщик решает по СТАРОМУ правилу — «есть секрет ⇒ подаём».
   # Отличается от законного близнеца РОВНО одним фактом: чем принимается решение.
@@ -203,6 +255,8 @@ OLD
   _st "и находка называет ПОСАДКУ, на которой правило неверно" \
       "$(grep -q 'ОДНОСТОРОННЕЕ' <<<"$out" && echo 1 || echo 0)" "$out"
   _st "код возврата ненулевой" "$([ "$rc" != 0 ] && echo 1 || echo 0)" "rc=$rc"
+  _st "и адрес на петлю по IP при фронте под транспортом назван (kacho#3315)" \
+      "$(grep -q 'адрес ИМЯ», получили «[^»]* IP»' <<<"$out" && echo 1 || echo 0)" "$out"
 
   echo "ось 2 — законный близнец (прогонщик дерева) МОЛЧИТ"
   _st "о нём находок нет" \
@@ -223,9 +277,9 @@ OLD
 
   echo
   if [ "$fails" -gt 0 ]; then
-    echo "ОТКАЗ: провалено утверждений $fails из 7" >&2; return 1
+    echo "ОТКАЗ: провалено утверждений $fails из 8" >&2; return 1
   fi
-  echo "ЧИСТО: 7 утверждений — проба способна упасть на старом правиле, смолчать на дереве и объявить свою слепоту"
+  echo "ЧИСТО: 8 утверждений — проба способна упасть на старом правиле, смолчать на дереве и объявить свою слепоту"
   return 0
 }
 
