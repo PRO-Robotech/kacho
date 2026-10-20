@@ -181,13 +181,23 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 `emailVerified`, место заведения и слоты окружения (F6b-51). Самопроверка без стенда —
 `python3 verified_human.py --self-test`.
 
-Людей посева двенадцать: владельцы аккаунтов A и B, субъекты выдач NOB, INV, PA1,
+Людей посева семнадцать: владельцы аккаунтов A и B, субъекты выдач NOB, INV, PA1,
 неприкосновенный субъект, субъект личного токена, цель выдачи администратора облака
 набора `cluster_admin` (слоты `clusterTargetUserId`, `clusterTargetEmail`), два человека
-набора `iam-account-id-at-create` (администратор облака и человек без роли) и два человека
+набора `iam-account-id-at-create` (администратор облака и человек без роли), два человека
 набора края `iam-step-up-access-key-begin` (F8-S7-80; слоты носителей сессии
-`stepUpVerifiedHumanSession`, `stepUpUnverifiedHumanSession`). Ф-н среди них один —
-второй из последней пары; прочие одиннадцать — Ф-п.
+`stepUpVerifiedHumanSession`, `stepUpUnverifiedHumanSession`) и пять людей набора края
+`iam-edge-session-refusals` (kacho#3334; `seed_edge_refusals.py`): администратор облака
+с сессией «2», цель сброса с одним ключом и двумя сессиями, посторонний, прохожий и Ф-н
+с кодом письма (слоты `edge*`; сброс ключей расходует цель, поэтому посев один на
+прогон). Ф-н среди них два — второй из пары F8-S7-80 и человек набора
+`iam-edge-session-refusals`; прочие пятнадцать — Ф-п.
+
+Ключ доступа человеку заводит подставной аутентификатор (`webauthn_authenticator.py`,
+самопроверка — `python3 -I webauthn_authenticator.py`): церемония браузера у посева
+исполняется тем же составом (ES256, `none`-аттестация), под сессией уровня «2».
+Происхождение берётся из `kaname-config` стенда (`access-keys.origins`), задать явно —
+`SEED_WEBAUTHN_ORIGIN`.
 
 ### Прочее
 

@@ -269,6 +269,10 @@ class Human:
     bearer: str = ""
     account_id: str = ""
     project_id: str = ""
+    # code — код подтверждения из письма регистрации: нужен только набору, чей
+    # предмет — сам шаг подтверждения (kacho#3334, EV-14), и потому хранится у вида
+    # Ф-н, которого посев не подтверждает; у Ф-п код уже предъявлен и израсходован.
+    code: str = ""
     slots: list[str] = field(default_factory=list)
 
 
@@ -374,6 +378,8 @@ def enroll(edge, mailbox, email: str, password: str, kind: str, *, clock, sleep,
     bearer = b1
     if kind == KIND_VERIFIED:
         bearer = confirm(edge, email, b1, code)
+    else:
+        h.code = code
     h.user_id, h.verified = who_am_i(edge, email, bearer)
     h.bearer = bearer
     return h

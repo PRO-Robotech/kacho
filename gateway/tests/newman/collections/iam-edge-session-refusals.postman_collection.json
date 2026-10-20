@@ -1,0 +1,2322 @@
+{
+  "info": {
+    "_postman_id": "36d3e0f8-c7d2-5bc6-97f6-e3e745a41959",
+    "name": "kacho-api-gateway / newman / iam-edge-session-refusals",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
+          "}",
+          "(function () {",
+          "  var _u = '';",
+          "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+          "  var _all = _u.match(/\\{\\{[A-Za-z0-9_]+\\}\\}/g);",
+          "  if (!_all) { return; }",
+          "  var _n = null;",
+          "  for (var _i = 0; _i < _all.length; _i++) {",
+          "    var _c = _all[_i].slice(2, -2);",
+          "    if (!pm.variables.has(_c)) { _n = _c; break; }",
+          "  }",
+          "  if (_n === null) { return; }",
+          "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+          "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+          "  });",
+          "  pm.execution.skipRequest();",
+          "})();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "LMR-01-EDGE-SESSIONS-DEAD-AFTER-RESET — LMR-01: cloud administrator (session 2) resets a human's access keys → both prior sessions of the human get 401/16 with the cookie cleared on every path; twin: the same sessions before the reset get 200",
+      "description": "class:AUTHZ | class:AUTHN | class:STATE | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "before-auth-me-s1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession1 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession1') || pm.variables.get('edgeTargetSession1'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession1 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession1 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession1') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession1') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('before-auth-me-s1: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "before-auth-me-s2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession2') || pm.variables.get('edgeTargetSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('before-auth-me-s2: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "before-me-s1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "me"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession1 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession1') || pm.variables.get('edgeTargetSession1'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession1 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession1 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession1') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession1') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('before-me-s1: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "before-me-s2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "me"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession2') || pm.variables.get('edgeTargetSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('before-me-s2: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "before-accounts-s1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts?pageSize=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession1 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession1') || pm.variables.get('edgeTargetSession1'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession1 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession1 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession1') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession1') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('before-accounts-s1: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "before-accounts-s2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts?pageSize=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession2') || pm.variables.get('edgeTargetSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('before-accounts-s2: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "before-admin-lists-keys",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/users/{{edgeTargetUserId}}/accessKeys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "users",
+                "{{edgeTargetUserId}}",
+                "accessKeys"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeAdminSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeAdminSession2') || pm.variables.get('edgeAdminSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeAdminSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeAdminSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeAdminSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeAdminSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('before-admin-lists-keys: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('target has exactly one access key before the reset', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect((j.accessKeys || []).length, JSON.stringify(j)).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "reset-access-keys",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/users/{{edgeTargetUserId}}:resetAccessKeys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "users",
+                "{{edgeTargetUserId}}:resetAccessKeys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeAdminSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeAdminSession2') || pm.variables.get('edgeAdminSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeAdminSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeAdminSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — edgeTargetUserId is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetUserId') || pm.variables.get('edgeTargetUserId'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetUserId is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetUserId is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeAdminSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeAdminSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('reset-access-keys: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('IAM Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id must start with iop: ' + JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+                  "  pm.expect(j.done, 'operation.done present').to.be.a('boolean');",
+                  "});",
+                  "pm.environment.set('lmr01OpId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('lmr01OpId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-reset",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{lmr01OpId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{lmr01OpId}}"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeAdminSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeAdminSession2') || pm.variables.get('edgeAdminSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeAdminSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeAdminSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.environment.get('lmr01OpId')) { pm.execution.skipRequest(); }",
+                  "const __cookie = ((pm.environment.get('edgeAdminSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeAdminSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (pm.environment.get('_pollStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_pollCount', '0');",
+                  "  pm.environment.set('_pollStarted', pm.info.requestName);",
+                  "}",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 45) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _ipd = Date.now(); while (Date.now() - _ipd < 500) void 0;  /* настоящая пауза между опросами */",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.environment.unset('_pollStarted');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (no error)', () => {",
+                  "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
+                  "});",
+                  "pm.test('operation response is the target User', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect((j.response || {}).id, JSON.stringify(j)).to.eql(pm.environment.get('edgeTargetUserId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "after-auth-me-s1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession1 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession1') || pm.variables.get('edgeTargetSession1'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession1 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession1 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession1') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession1') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('after-auth-me-s1: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('error message exactly equals \"authentication failed\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"authentication failed\");",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason AUTHN_REQUIRED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('AUTHN_REQUIRED');",
+                  "  pm.expect(infos[0].domain, JSON.stringify(j)).to.eql('kaname.cloud.iam.v1');",
+                  "});",
+                  "pm.test('body keys are exactly code, details, message', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'details', 'message']);",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('Set-Cookie clears kaname_session (empty value, Max-Age=0)', () => {",
+                  "  const sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session='));",
+                  "  pm.expect(sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1);",
+                  "  pm.expect(sc[0].value.split(';')[0], sc[0].value).to.eql('kaname_session=');",
+                  "  pm.expect(sc[0].value, sc[0].value).to.match(/Max-Age=0/);",
+                  "});",
+                  "pm.test('WWW-Authenticate challenges with invalid_token', () => pm.expect(pm.response.headers.get('Www-Authenticate') || '', JSON.stringify(pm.response.headers.all())).to.eql('Bearer realm=\"kacho\", error=\"invalid_token\"'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "after-auth-me-s2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession2') || pm.variables.get('edgeTargetSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('after-auth-me-s2: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('error message exactly equals \"authentication failed\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"authentication failed\");",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason AUTHN_REQUIRED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('AUTHN_REQUIRED');",
+                  "  pm.expect(infos[0].domain, JSON.stringify(j)).to.eql('kaname.cloud.iam.v1');",
+                  "});",
+                  "pm.test('body keys are exactly code, details, message', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'details', 'message']);",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('Set-Cookie clears kaname_session (empty value, Max-Age=0)', () => {",
+                  "  const sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session='));",
+                  "  pm.expect(sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1);",
+                  "  pm.expect(sc[0].value.split(';')[0], sc[0].value).to.eql('kaname_session=');",
+                  "  pm.expect(sc[0].value, sc[0].value).to.match(/Max-Age=0/);",
+                  "});",
+                  "pm.test('WWW-Authenticate challenges with invalid_token', () => pm.expect(pm.response.headers.get('Www-Authenticate') || '', JSON.stringify(pm.response.headers.all())).to.eql('Bearer realm=\"kacho\", error=\"invalid_token\"'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "after-me-s1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "me"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession1 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession1') || pm.variables.get('edgeTargetSession1'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession1 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession1 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession1') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession1') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('after-me-s1: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('error message exactly equals \"authentication failed\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"authentication failed\");",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason AUTHN_REQUIRED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('AUTHN_REQUIRED');",
+                  "  pm.expect(infos[0].domain, JSON.stringify(j)).to.eql('kaname.cloud.iam.v1');",
+                  "});",
+                  "pm.test('body keys are exactly code, details, message', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'details', 'message']);",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('Set-Cookie clears kaname_session (empty value, Max-Age=0)', () => {",
+                  "  const sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session='));",
+                  "  pm.expect(sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1);",
+                  "  pm.expect(sc[0].value.split(';')[0], sc[0].value).to.eql('kaname_session=');",
+                  "  pm.expect(sc[0].value, sc[0].value).to.match(/Max-Age=0/);",
+                  "});",
+                  "pm.test('WWW-Authenticate challenges with invalid_token', () => pm.expect(pm.response.headers.get('Www-Authenticate') || '', JSON.stringify(pm.response.headers.all())).to.eql('Bearer realm=\"kacho\", error=\"invalid_token\"'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "after-me-s2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "me"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession2') || pm.variables.get('edgeTargetSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('after-me-s2: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('error message exactly equals \"authentication failed\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"authentication failed\");",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason AUTHN_REQUIRED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('AUTHN_REQUIRED');",
+                  "  pm.expect(infos[0].domain, JSON.stringify(j)).to.eql('kaname.cloud.iam.v1');",
+                  "});",
+                  "pm.test('body keys are exactly code, details, message', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'details', 'message']);",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('Set-Cookie clears kaname_session (empty value, Max-Age=0)', () => {",
+                  "  const sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session='));",
+                  "  pm.expect(sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1);",
+                  "  pm.expect(sc[0].value.split(';')[0], sc[0].value).to.eql('kaname_session=');",
+                  "  pm.expect(sc[0].value, sc[0].value).to.match(/Max-Age=0/);",
+                  "});",
+                  "pm.test('WWW-Authenticate challenges with invalid_token', () => pm.expect(pm.response.headers.get('Www-Authenticate') || '', JSON.stringify(pm.response.headers.all())).to.eql('Bearer realm=\"kacho\", error=\"invalid_token\"'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "after-accounts-s1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts?pageSize=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession1 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession1') || pm.variables.get('edgeTargetSession1'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession1 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession1 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession1') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession1') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('after-accounts-s1: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('error message exactly equals \"authentication failed\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"authentication failed\");",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason AUTHN_REQUIRED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('AUTHN_REQUIRED');",
+                  "  pm.expect(infos[0].domain, JSON.stringify(j)).to.eql('kaname.cloud.iam.v1');",
+                  "});",
+                  "pm.test('body keys are exactly code, details, message', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'details', 'message']);",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('Set-Cookie clears kaname_session (empty value, Max-Age=0)', () => {",
+                  "  const sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session='));",
+                  "  pm.expect(sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1);",
+                  "  pm.expect(sc[0].value.split(';')[0], sc[0].value).to.eql('kaname_session=');",
+                  "  pm.expect(sc[0].value, sc[0].value).to.match(/Max-Age=0/);",
+                  "});",
+                  "pm.test('WWW-Authenticate challenges with invalid_token', () => pm.expect(pm.response.headers.get('Www-Authenticate') || '', JSON.stringify(pm.response.headers.all())).to.eql('Bearer realm=\"kacho\", error=\"invalid_token\"'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "after-accounts-s2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts?pageSize=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeTargetSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeTargetSession2') || pm.variables.get('edgeTargetSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeTargetSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeTargetSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeTargetSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeTargetSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('after-accounts-s2: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 401', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(401));",
+                  "pm.test('grpc code 16 (UNAUTHENTICATED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('error message exactly equals \"authentication failed\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"authentication failed\");",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason AUTHN_REQUIRED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('AUTHN_REQUIRED');",
+                  "  pm.expect(infos[0].domain, JSON.stringify(j)).to.eql('kaname.cloud.iam.v1');",
+                  "});",
+                  "pm.test('body keys are exactly code, details, message', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'details', 'message']);",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('Set-Cookie clears kaname_session (empty value, Max-Age=0)', () => {",
+                  "  const sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session='));",
+                  "  pm.expect(sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1);",
+                  "  pm.expect(sc[0].value.split(';')[0], sc[0].value).to.eql('kaname_session=');",
+                  "  pm.expect(sc[0].value, sc[0].value).to.match(/Max-Age=0/);",
+                  "});",
+                  "pm.test('WWW-Authenticate challenges with invalid_token', () => pm.expect(pm.response.headers.get('Www-Authenticate') || '', JSON.stringify(pm.response.headers.all())).to.eql('Bearer realm=\"kacho\", error=\"invalid_token\"'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "after-admin-lists-keys",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/users/{{edgeTargetUserId}}/accessKeys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "users",
+                "{{edgeTargetUserId}}",
+                "accessKeys"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeAdminSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeAdminSession2') || pm.variables.get('edgeAdminSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeAdminSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeAdminSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeAdminSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeAdminSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('after-admin-lists-keys: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('target has no access key after the reset', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.accessKeys || [], JSON.stringify(j)).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LMR-03-EDGE-RESET-ACCESS-KEYS-BAD-ID — LMR-03: :resetAccessKeys with a malformed id → sync 400/3 \"invalid resource id\", byte-equal for the cloud administrator and an outsider; the outsider on a well-formed id → 403 AUTHZ_DENIED",
+      "description": "class:VAL | class:NEG | class:AUTHZ | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "lmr03-admin-bad-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/users/not-an-id:resetAccessKeys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "users",
+                "not-an-id:resetAccessKeys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeAdminSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeAdminSession2') || pm.variables.get('edgeAdminSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeAdminSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeAdminSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeAdminSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeAdminSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('lmr03-admin-bad-id: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('error message exactly equals \"invalid resource id \\'not-an-id\\'\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"invalid resource id 'not-an-id'\");",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('body keys are exactly code, message', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'message']);",
+                  "});",
+                  "pm.test('body is byte-equal to the edge refusal value', () => pm.expect(pm.response.text()).to.eql('{\"code\":3,\"message\":\"invalid resource id \\'not-an-id\\'\"}\\n'));",
+                  "pm.environment.set('lmr03BadIdBody', pm.response.text());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "lmr03-outsider-bad-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/users/not-an-id:resetAccessKeys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "users",
+                "not-an-id:resetAccessKeys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeOutsiderSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeOutsiderSession2') || pm.variables.get('edgeOutsiderSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeOutsiderSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeOutsiderSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeOutsiderSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeOutsiderSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('lmr03-outsider-bad-id: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('error message exactly equals \"invalid resource id \\'not-an-id\\'\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"invalid resource id 'not-an-id'\");",
+                  "});",
+                  "pm.test('outsider body is byte-equal to the cloud administrator body', () => {",
+                  "  const ref = pm.environment.get('lmr03BadIdBody') || '';",
+                  "  pm.expect(ref, 'reference body was not captured').to.not.be.empty;",
+                  "  pm.expect(pm.response.text()).to.eql(ref);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "lmr03-outsider-right-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/users/{{edgeBystanderUserId}}:resetAccessKeys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "users",
+                "{{edgeBystanderUserId}}:resetAccessKeys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeOutsiderSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeOutsiderSession2') || pm.variables.get('edgeOutsiderSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeOutsiderSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeOutsiderSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — edgeBystanderUserId is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeBystanderUserId') || pm.variables.get('edgeBystanderUserId'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeBystanderUserId is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeBystanderUserId is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeOutsiderSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeOutsiderSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('lmr03-outsider-right-id: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason AUTHZ_DENIED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('AUTHZ_DENIED');",
+                  "  pm.expect(infos[0].domain, JSON.stringify(j)).to.eql('kaname.cloud.iam.v1');",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('no kaname_session cookie is issued on this refusal', () => pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session=')).length, JSON.stringify(pm.response.headers.all())).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "F12-30-EDGE-RESET-SECOND-FACTOR-BAD-ID — Ф12-30: :resetSecondFactor with a malformed id → sync 400/3 \"invalid resource id\", byte-equal for the cloud administrator and an outsider; the outsider on a well-formed id → 403 AUTHZ_DENIED",
+      "description": "class:VAL | class:NEG | class:AUTHZ | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "f1230-admin-bad-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/users/not-an-id:resetSecondFactor",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "users",
+                "not-an-id:resetSecondFactor"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeAdminSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeAdminSession2') || pm.variables.get('edgeAdminSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeAdminSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeAdminSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeAdminSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeAdminSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('f1230-admin-bad-id: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('error message exactly equals \"invalid resource id \\'not-an-id\\'\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"invalid resource id 'not-an-id'\");",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('body keys are exactly code, message', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(Object.keys(j).sort(), JSON.stringify(j)).to.eql(['code', 'message']);",
+                  "});",
+                  "pm.test('body is byte-equal to the edge refusal value', () => pm.expect(pm.response.text()).to.eql('{\"code\":3,\"message\":\"invalid resource id \\'not-an-id\\'\"}\\n'));",
+                  "pm.environment.set('f1230BadIdBody', pm.response.text());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "f1230-outsider-bad-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/users/not-an-id:resetSecondFactor",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "users",
+                "not-an-id:resetSecondFactor"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeOutsiderSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeOutsiderSession2') || pm.variables.get('edgeOutsiderSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeOutsiderSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeOutsiderSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeOutsiderSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeOutsiderSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('f1230-outsider-bad-id: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('error message exactly equals \"invalid resource id \\'not-an-id\\'\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql(\"invalid resource id 'not-an-id'\");",
+                  "});",
+                  "pm.test('outsider body is byte-equal to the cloud administrator body', () => {",
+                  "  const ref = pm.environment.get('f1230BadIdBody') || '';",
+                  "  pm.expect(ref, 'reference body was not captured').to.not.be.empty;",
+                  "  pm.expect(pm.response.text()).to.eql(ref);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "f1230-outsider-right-id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/users/{{edgeBystanderUserId}}:resetSecondFactor",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "users",
+                "{{edgeBystanderUserId}}:resetSecondFactor"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeOutsiderSession2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeOutsiderSession2') || pm.variables.get('edgeOutsiderSession2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeOutsiderSession2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeOutsiderSession2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — edgeBystanderUserId is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeBystanderUserId') || pm.variables.get('edgeBystanderUserId'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeBystanderUserId is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeBystanderUserId is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "const __cookie = ((pm.environment.get('edgeOutsiderSession2') ? 'kaname_session' + '=' + pm.environment.get('edgeOutsiderSession2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('f1230-outsider-right-id: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('details[] carries ErrorInfo with reason AUTHZ_DENIED', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  const infos = (Array.isArray(j.details) ? j.details : []).filter(d => d && d['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo');",
+                  "  pm.expect(infos.length, JSON.stringify(j)).to.eql(1);",
+                  "  pm.expect(infos[0].reason, JSON.stringify(j)).to.eql('AUTHZ_DENIED');",
+                  "  pm.expect(infos[0].domain, JSON.stringify(j)).to.eql('kaname.cloud.iam.v1');",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('no kaname_session cookie is issued on this refusal', () => pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session=')).length, JSON.stringify(pm.response.headers.all())).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "EV-14-EDGE-ADDRESS-REFUSAL-NAMES-THE-STEP — EV-14: POST /iam/v1/auth/password with an unconfirmed address → 403, body byte-equal to the edge addressRefusalBody; after verify-email/confirm the NEW carrier gets 200",
+      "description": "class:AUTHZ | class:STATE | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "csrf-password-n1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/csrf?form=password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "csrf"
+              ],
+              "query": [
+                {
+                  "key": "form",
+                  "value": "password"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeUnverifiedSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeUnverifiedSession') || pm.variables.get('edgeUnverifiedSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeUnverifiedSession is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeUnverifiedSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "pm.environment.set('ev14Token1', '');",
+                  "pm.environment.set('ev14Form1', '');",
+                  "const __cookie = ((pm.environment.get('edgeUnverifiedSession') ? 'kaname_session' + '=' + pm.environment.get('edgeUnverifiedSession') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('csrf-password-n1: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('csrf password: csrfToken is a non-empty string', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.csrfToken, JSON.stringify(j)).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('ev14Token1', j.csrfToken);",
+                  "});",
+                  "{",
+                  "  const __sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_form='));",
+                  "  pm.test('csrf password: response sets the kaname_form cookie', () => pm.expect(__sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1));",
+                  "  if (__sc.length === 1) { pm.environment.set('ev14Form1', __sc[0].value.split(';')[0].slice('kaname_form='.length)); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "password-unverified",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"currentPassword\": \"{{edgeSeedPassword}}\", \"newPassword\": \"{{edgeSeedNewPassword}}\", \"csrfToken\": \"{{ev14Token1}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeUnverifiedSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeUnverifiedSession') || pm.variables.get('edgeUnverifiedSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeUnverifiedSession is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeUnverifiedSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — edgeSeedPassword is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeSeedPassword') || pm.variables.get('edgeSeedPassword'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeSeedPassword is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeSeedPassword is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — edgeSeedNewPassword is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeSeedNewPassword') || pm.variables.get('edgeSeedNewPassword'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeSeedNewPassword is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeSeedNewPassword is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.environment.get('ev14Token1')) { pm.execution.skipRequest(); }",
+                  "const __cookie = ((pm.environment.get('edgeUnverifiedSession') ? 'kaname_session' + '=' + pm.environment.get('edgeUnverifiedSession') + '; ' : '') + (pm.environment.get('ev14Form1') ? 'kaname_form' + '=' + pm.environment.get('ev14Form1') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('password-unverified: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('content-type is application/json', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.match(/^application\\/json/));",
+                  "pm.test('body is byte-equal to addressRefusalBody of the edge', () => pm.expect(pm.response.text()).to.eql('{\"code\":7,\"message\":\"email address is not verified: confirm it with the code from the letter (POST /iam/v1/auth/verify-email/confirm)\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"EMAIL_NOT_VERIFIED\",\"domain\":\"iam.kaname.cloud\"}]}'));",
+                  "pm.test('no kaname_session cookie is issued on this refusal', () => pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session=')).length, JSON.stringify(pm.response.headers.all())).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "csrf-confirm",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/csrf?form=verify-email-confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "csrf"
+              ],
+              "query": [
+                {
+                  "key": "form",
+                  "value": "verify-email-confirm"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeUnverifiedSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeUnverifiedSession') || pm.variables.get('edgeUnverifiedSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeUnverifiedSession is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeUnverifiedSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "pm.environment.set('ev14ConfirmToken', '');",
+                  "pm.environment.set('ev14ConfirmForm', '');",
+                  "const __cookie = ((pm.environment.get('edgeUnverifiedSession') ? 'kaname_session' + '=' + pm.environment.get('edgeUnverifiedSession') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('csrf-confirm: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('csrf verify-email-confirm: csrfToken is a non-empty string', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.csrfToken, JSON.stringify(j)).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('ev14ConfirmToken', j.csrfToken);",
+                  "});",
+                  "{",
+                  "  const __sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_form='));",
+                  "  pm.test('csrf verify-email-confirm: response sets the kaname_form cookie', () => pm.expect(__sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1));",
+                  "  if (__sc.length === 1) { pm.environment.set('ev14ConfirmForm', __sc[0].value.split(';')[0].slice('kaname_form='.length)); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "verify-email-confirm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/verify-email/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "verify-email",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"code\": \"{{edgeUnverifiedConfirmCode}}\", \"csrfToken\": \"{{ev14ConfirmToken}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — edgeUnverifiedSession is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeUnverifiedSession') || pm.variables.get('edgeUnverifiedSession'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeUnverifiedSession is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeUnverifiedSession is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "// SEED-SLOT GUARD — edgeUnverifiedConfirmCode is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('edgeUnverifiedConfirmCode') || pm.variables.get('edgeUnverifiedConfirmCode'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: edgeUnverifiedConfirmCode is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('edgeUnverifiedConfirmCode is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.environment.get('ev14ConfirmToken')) { pm.execution.skipRequest(); }",
+                  "pm.environment.set('ev14Session2', '');",
+                  "const __cookie = ((pm.environment.get('edgeUnverifiedSession') ? 'kaname_session' + '=' + pm.environment.get('edgeUnverifiedSession') + '; ' : '') + (pm.environment.get('ev14ConfirmForm') ? 'kaname_form' + '=' + pm.environment.get('ev14ConfirmForm') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('verify-email-confirm: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('session.emailVerified is true', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect((j.session || {}).emailVerified, JSON.stringify(j)).to.eql(true);",
+                  "});",
+                  "{",
+                  "  const __sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_session='));",
+                  "  pm.test('a NEW kaname_session carrier is issued', () => {",
+                  "    pm.expect(__sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1);",
+                  "    const v = __sc[0].value.split(';')[0].slice('kaname_session='.length);",
+                  "    pm.expect(v).to.not.be.empty;",
+                  "    pm.expect(v).to.not.eql(pm.environment.get('edgeUnverifiedSession'));",
+                  "    pm.environment.set('ev14Session2', v);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "csrf-password-n2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/csrf?form=password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "csrf"
+              ],
+              "query": [
+                {
+                  "key": "form",
+                  "value": "password"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — ev14Session2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('ev14Session2') || pm.variables.get('ev14Session2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ev14Session2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('ev14Session2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "pm.environment.set('ev14Token2', '');",
+                  "pm.environment.set('ev14Form2', '');",
+                  "const __cookie = ((pm.environment.get('ev14Session2') ? 'kaname_session' + '=' + pm.environment.get('ev14Session2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('csrf-password-n2: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('csrf password: csrfToken is a non-empty string', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.csrfToken, JSON.stringify(j)).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('ev14Token2', j.csrfToken);",
+                  "});",
+                  "{",
+                  "  const __sc = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie' && h.value.startsWith('kaname_form='));",
+                  "  pm.test('csrf password: response sets the kaname_form cookie', () => pm.expect(__sc.length, JSON.stringify(pm.response.headers.all())).to.eql(1));",
+                  "  if (__sc.length === 1) { pm.environment.set('ev14Form2', __sc[0].value.split(';')[0].slice('kaname_form='.length)); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "password-verified",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/auth/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "auth",
+                "password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"currentPassword\": \"{{edgeSeedPassword}}\", \"newPassword\": \"{{edgeSeedNewPassword}}\", \"csrfToken\": \"{{ev14Token2}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');",
+                  "// SEED-SLOT GUARD — ev14Session2 is written by the authz-fixture seed.",
+                  "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+                  "if (!(pm.environment.get('ev14Session2') || pm.variables.get('ev14Session2'))) {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: ev14Session2 is set (seed slot) — seeded by prodseed_matrix.py (kacho#3334)', () => {",
+                  "    pm.expect.fail('ev14Session2 is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) did not provide this slot. The step would run with an empty identifier and its refusal would read as a finding about the product.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.environment.get('ev14Token2')) { pm.execution.skipRequest(); }",
+                  "const __cookie = ((pm.environment.get('ev14Session2') ? 'kaname_session' + '=' + pm.environment.get('ev14Session2') + '; ' : '') + (pm.environment.get('ev14Form2') ? 'kaname_form' + '=' + pm.environment.get('ev14Form2') + '; ' : '')).replace(/; $/, '');",
+                  "if (__cookie) { pm.request.headers.upsert({key: 'Cookie', value: __cookie}); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('password-verified: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ края').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('the same request after the named step: session.emailVerified is true', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect((j.session || {}).emailVerified, JSON.stringify(j)).to.eql(true);",
+                  "});",
+                  "pm.test('no address refusal in the body', () => pm.expect(pm.response.text()).to.not.include('EMAIL_NOT_VERIFIED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

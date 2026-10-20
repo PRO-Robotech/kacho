@@ -58,6 +58,15 @@
 | `IAM-AB-SIA-12-EDGE-LIST-BY-ACCOUNT` | NEG/VAL | P0 | IAM-AB-SIA-12: GET /accounts/not-an-id/accessBindings → sync 400 INVALID_ARGUMENT (3), "invalid resource id 'not-an-id'" from the edge; a well-formed absent account on the same route passes on to the permission check (403) |
 | `IAM-ID2-NEG-FORM-EDGE-ACCOUNT-ID` | NEG/VAL | P0 | Malformed account id is refused by the EDGE before the permission model: 400 for the rights holder and for a caller without a single grant, bodies equal; a well-formed absent account passes on to the model (403) |
 
+## `iam-edge-session-refusals.py`
+
+| case-id | class | prio | проверка |
+|---|---|---|---|
+| `LMR-01-EDGE-SESSIONS-DEAD-AFTER-RESET` | AUTHZ/AUTHN/STATE/CONF | P0 | LMR-01: администратор облака (сессия «2») сбрасывает ключи человека → обе прежние сессии человека на каждом из трёх путей получают 401/16 с погашенным печеньем; близнец — те же сессии до сброса получают 200 |
+| `LMR-03-EDGE-RESET-ACCESS-KEYS-BAD-ID` | VAL/NEG/AUTHZ/CONF | P0 | LMR-03: `:resetAccessKeys` с кривым идентификатором → синхронный 400/3 «invalid resource id», побайтово одинаково для администратора облака и постороннего; посторонний на правильный идентификатор → 403 AUTHZ_DENIED |
+| `F12-30-EDGE-RESET-SECOND-FACTOR-BAD-ID` | VAL/NEG/AUTHZ/CONF | P0 | Ф12-30: то же для `:resetSecondFactor` |
+| `EV-14-EDGE-ADDRESS-REFUSAL-NAMES-THE-STEP` | AUTHZ/STATE/CONF | P0 | EV-14: смена пароля сессией без подтверждённого адреса → 403, тело побайтово `addressRefusalBody` края; после `verify-email/confirm` новый носитель получает 200 |
+
 ## `iam-int-1-s3.py`
 
 | case-id | class | prio | проверка |

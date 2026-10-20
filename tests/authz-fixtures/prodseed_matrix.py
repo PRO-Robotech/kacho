@@ -87,6 +87,8 @@ import time
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import mint_rs256 as m  # noqa: E402
 import verified_human as vh  # noqa: E402
+import seed_ceremony  # noqa: E402
+import seed_edge_refusals  # noqa: E402
 import seed_transport  # noqa: E402
 # Declared id↔token pairings + their check. Own module because THIS one mints the
 # bootstrap Bearer at import time — a checker that cannot be imported without a
@@ -422,6 +424,14 @@ def _await_cloud_admin_visible(user_id, budget=60):
         f"[prodseed] выдача system_admin человеку user:{user_id} НЕ ВИДНА модели за "
         f"{budget} с: последний ответ модели {last}. Слот администратора облака без "
         "права не отдаётся.")
+
+
+def _grant_cloud_admin_and_await(user_id):
+    """Выдача `system_admin` на кластере человеку и ожидание её видимости модели."""
+    _await(_curl("POST", "/iam/v1/internal/cluster/admins", boot,
+                 {"subjectType": "USER", "subjectId": user_id}, base=INTERNAL),
+           boot, "clusterAdminGrantId")
+    _await_cloud_admin_visible(user_id)
 
 
 def _assert_not_cloud_admin(user_id):
@@ -890,7 +900,19 @@ def seed() -> dict:
     h_stepup_p = human(f"prodseed-stepup-p-{RID}@example.com")
     h_stepup_n = human(f"prodseed-stepup-n-{RID}@example.com", vh.KIND_UNVERIFIED)
 
+    # ПОЛОЖЕНИЯ НАБОРА `iam-edge-session-refusals` (kacho#3334; сброс ключей и
+    # второго фактора администратором облака, отказ адреса на смене пароля): человек с
+    # ключом и двумя сессиями, администратор облака с сессией «2», посторонний,
+    # прохожий и Ф-н с кодом письма. Состав и довод каждого — в шапке модуля.
+    edge_refusals = seed_edge_refusals.seed(
+        edge=EDGE, human=human, rid=RID, ceremony=seed_ceremony,
+        grant_cloud_admin=_grant_cloud_admin_and_await,
+        sleep=time.sleep,
+        origin=seed_edge_refusals.webauthn_origin(KACHO_NS, os.environ),
+        password=HUMAN_PASSWORD, new_password=HUMAN_PASSWORD + "-N2")
+
     fixtures = {
+        **edge_refusals,
         "jwtBootstrap": boot,
         # `iss` — наш издатель, подпись ES256, ключ из нашего же реестра. Слот
         # читает суита края (gateway/tests/newman).
