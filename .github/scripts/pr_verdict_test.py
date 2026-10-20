@@ -414,15 +414,18 @@ def tree_workflows() -> dict[str, object]:
     return copy.deepcopy(_parsed_tree())
 
 
-def _pr_jobs_declared(workflows: dict[str, object]) -> int:
-    """Знаменатель обхода, посчитанный независимо от гейта."""
-    n = 0
-    for doc in workflows.values():
-        on = doc.get("on", doc.get(True))
-        triggers = [on] if isinstance(on, str) else list(on or [])
-        if {"pull_request", "pull_request_target"} & set(triggers):
-            n += len(doc["jobs"])
-    return n
+def _jobs_declared(workflows: dict[str, object]) -> int:
+    """Знаменатель обхода, посчитанный независимо от гейта: джобы ВСЕХ процессов
+    дерева, а не только тех, что запускает запрос (kacho#3322)."""
+    return sum(len(doc["jobs"]) for doc in workflows.values())
+
+
+# Процессы, которые запрос на слияние НЕ запускает, — по одному на каждое событие,
+# которым прогон ложится на голову запроса мимо самого запроса: ручной запуск на
+# ветке запроса и расписание. Их check-runs приходят на ту же sha, а процесса в
+# ответе check-runs нет (kacho#3322).
+OUTSIDE = tuple(f".github/workflows/{n}" for n in (
+    "runner-probe.yml", "release.yml", "continuous-fuzz.yml", "branch-protection-drift.yml"))
 
 
 def test_the_tree_holds_the_check_name_premise() -> None:
@@ -433,22 +436,66 @@ def test_the_tree_holds_the_check_name_premise() -> None:
     print(f"предпосылка ключа: осмотрено джоб {p.examined}, имён {p.names}, "
           f"нарушений {len(p.breaches)}")
     assert p.breaches == (), "\n".join(p.breaches)
-    assert p.examined == _pr_jobs_declared(wf) > 0, p
+    assert p.examined == _jobs_declared(wf) > 0, p
     assert p.names >= p.examined, p
 
 
 def test_a_same_named_job_in_another_pr_workflow_breaks_the_premise() -> None:
     """Инъекция: джоба `review-text.yml` скопирована в `ui.yml`. Её отказ в одном
-    процессе отставлялся бы успехом в другом. Близнец — та же копия в процессе,
-    который запрос не запускает: его прогонов на голове запроса нет."""
+    процессе отставлялся бы успехом в другом. Близнец — та же копия под своим
+    именем."""
     job = tree_workflows()[REVIEW]["jobs"]["attribution"]
     wf = tree_workflows()
     wf[UI]["jobs"]["attribution-copy"] = copy.deepcopy(job)
     breaches = premise(wf).breaches
     assert any(TITLE in b and "ui.yml" in b and "review-text.yml" in b for b in breaches), breaches
     twin = tree_workflows()
-    twin[FUZZ]["jobs"]["attribution-copy"] = copy.deepcopy(job)
+    twin[UI]["jobs"]["attribution-copy"] = copy.deepcopy(job)
+    twin[UI]["jobs"]["attribution-copy"]["name"] = TITLE + " — копия"
     assert premise(twin).breaches == (), premise(twin).breaches
+
+
+def test_a_same_named_job_in_a_workflow_outside_the_request_breaks_the_premise() -> None:
+    """kacho#3322. Процесс, который запрос не запускает, оставляет check-run на той
+    же sha — ручным запуском на ветке запроса либо расписанием на голове ствола, —
+    и его одноимённый успех отставил бы отказ джобы запроса (вход E10b приёмки
+    #3267). Инъекция — по процессу на каждое такое событие; близнец — та же копия
+    под своим именем. Мутант «отбор только по триггеру запроса» здесь краснеет:
+    копия в процесс вне запроса им не осматривается."""
+    job = tree_workflows()[REVIEW]["jobs"]["attribution"]
+    for where in OUTSIDE:
+        wf = tree_workflows()
+        wf[where]["jobs"]["attribution-copy"] = copy.deepcopy(job)
+        breaches = premise(wf).breaches
+        owner = where.rsplit("/", 1)[1]
+        assert any(TITLE in b and owner in b and "review-text.yml" in b for b in breaches), \
+            (where, breaches)
+        twin = tree_workflows()
+        twin[where]["jobs"]["attribution-copy"] = copy.deepcopy(job)
+        twin[where]["jobs"]["attribution-copy"]["name"] = TITLE + " — копия"
+        assert premise(twin).breaches == (), (where, premise(twin).breaches)
+
+
+def test_include_only_legs_are_judged_by_their_shown_names() -> None:
+    """Матрица из одного литерального `include` даёт ровно одну ногу на запись, и
+    её имена вычислимы: `fuzz ${{ matrix.target }}` различает ноги, хотя `mod`,
+    `pkg`, `dir` не названы (`continuous-fuzz.yml`). Инъекция — две записи с
+    одной целью, различимые только `pkg`: находка называет `pkg`. Значение из
+    выражения ноги не вычисляет — две записи с разными `${{ inputs.* }}` могут
+    дать одно имя, и судит прежнее правило: имя не называет `mod`. Близнец —
+    дерево как есть."""
+    assert premise({FUZZ: tree_workflows()[FUZZ]}).breaches == ()
+    wf = tree_workflows()
+    legs = wf[FUZZ]["jobs"]["fuzz"]["strategy"]["matrix"]["include"]
+    legs.append({**legs[0], "pkg": legs[0]["pkg"] + "/twin"})
+    breaches = premise(wf).breaches
+    assert any("jobs.fuzz" in b and "pkg" in b and legs[0]["target"] in b for b in breaches), \
+        breaches
+    wf = tree_workflows()
+    legs = wf[FUZZ]["jobs"]["fuzz"]["strategy"]["matrix"]["include"]
+    legs[:] = [{**legs[0], "target": "${{ inputs.a }}"}, {**legs[0], "target": "${{ inputs.b }}"}]
+    breaches = premise(wf).breaches
+    assert any("jobs.fuzz" in b and "mod" in b for b in breaches), breaches
 
 
 def test_a_same_named_job_in_the_same_workflow_breaks_the_premise() -> None:
@@ -583,11 +630,14 @@ def test_a_reusable_workflow_call_is_not_read_as_unique() -> None:
 
 
 def test_an_empty_traversal_is_a_breach_not_a_pass() -> None:
-    """Ноль осмотренных джоб — не «нарушений нет», а «никто не смотрел». Близнец —
-    одно дерево без процессов запроса, другое пустое: оба красны."""
+    """Ноль осмотренных джоб — не «нарушений нет», а «никто не смотрел». Пустое
+    дерево и дерево из процесса без джоб красны; близнец — один процесс вне
+    запроса — осмотрен и молчит."""
     assert premise({}).breaches, premise({})
-    only_schedule = {FUZZ: tree_workflows()[FUZZ]}
-    assert premise(only_schedule).breaches, premise(only_schedule)
+    jobless = {FUZZ: {**tree_workflows()[FUZZ], "jobs": {}}}
+    assert premise(jobless).breaches, premise(jobless)
+    only_schedule = premise({FUZZ: tree_workflows()[FUZZ]})
+    assert only_schedule.breaches == () and only_schedule.examined == 1, only_schedule
 
 
 # ── Объявленное: джобы, которые запрос обязан завести на голове (#2910) ───────
@@ -997,6 +1047,47 @@ def test_a_payload_of_the_wrong_shape_is_not_decided() -> None:
         assert code == 2 and "НЕ «зелено»" in out and "Traceback" not in out, (junk, code, out)
 
 
+def _tree_copy(tmp_path: Path) -> Path:
+    """Каталог процессов дерева и карта выбора — копией, для инъекции в текст."""
+    root = tmp_path / "gh"
+    (root / "workflows").mkdir(parents=True)
+    for f in WORKFLOWS.iterdir():
+        (root / "workflows" / f.name).write_bytes(f.read_bytes())
+    paths = WORKFLOWS.parent / "ci-paths.json"
+    if paths.exists():
+        (root / "ci-paths.json").write_bytes(paths.read_bytes())
+    return root / "workflows"
+
+
+def test_a_success_outside_the_request_does_not_erase_a_request_failure(tmp_path: Path) -> None:
+    """kacho#3322, вход E10b приёмки #3267 — НАСТОЯЩИМ скриптом. Джоба запроса
+    `review-text` упала (набор 1); на той же sha позже (набор 2) успел одноимённый
+    прогон процесса вне запроса — ручной `runner-probe`. Отбор по триггеру запроса
+    не видел совпадения имён, и успех отставлял отказ: «зелено», код 0. Теперь
+    предпосылка ключа нарушена — вердикта нет, код 2. Близнец — `runner-probe` под
+    своим именем `hosted`: тот же отказ судится и называется, код 1."""
+    wfdir = _tree_copy(tmp_path)
+    probe = wfdir / "runner-probe.yml"
+    text = probe.read_text(encoding="utf-8")
+    assert text.count("\n  hosted:\n") == 1, "форма runner-probe.yml сменилась — инъекции не во что встать"
+    d = tree_declared()
+    args = ("--self-name", VERDICT, "--base", LINE_BASE)
+    payload = all_green(d)
+    failed = next(r for r in payload if r["name"] == TITLE)
+    failed["conclusion"] = "failure"
+
+    probe.write_text(text.replace("\n  hosted:\n", f"\n  hosted:\n    name: {TITLE}\n"),
+                     encoding="utf-8")
+    later = run(TITLE, "completed", "success", run_id=10_000, suite=2)
+    code, out = cli(payload + [later], *args, "--workflows", str(wfdir))
+    assert code == 2 and "предпосылка ключа" in out and "runner-probe.yml" in out, (code, out)
+
+    probe.write_text(text, encoding="utf-8")
+    hosted = run("hosted", "completed", "success", run_id=10_000, suite=2)
+    code, out = cli(payload + [hosted], *args, "--workflows", str(wfdir))
+    assert code == 1 and TITLE in out, (code, out)
+
+
 def _wait(tmp_path: Path, payload: object, base: str | None) -> tuple[int, str]:
     fetch = tmp_path / "fetch.sh"
     (tmp_path / "payload.json").write_text(json.dumps(payload), encoding="utf-8")
@@ -1153,7 +1244,7 @@ def test_a_dynamic_name_is_compared_in_its_shown_form_too() -> None:
 def test_a_pull_request_target_workflow_is_examined() -> None:
     """Процесс, запускаемый только `pull_request_target`, — тоже процесс
     запроса. Копия джобы `review-text.yml` в нём — нарушение. Близнец — та же
-    копия, пока процесс запускается только по расписанию."""
+    копия под своим именем."""
     job = tree_workflows()[REVIEW]["jobs"]["attribution"]
     wf = tree_workflows()
     assert True in wf[FUZZ], "YAML 1.1 читает голый ключ `on` как True"
@@ -1162,16 +1253,18 @@ def test_a_pull_request_target_workflow_is_examined() -> None:
     p = premise(wf)
     assert any(TITLE in b and "continuous-fuzz.yml" in b and "review-text.yml" in b
                for b in p.breaches), p.breaches
-    assert p.examined == _pr_jobs_declared(wf), p
+    assert p.examined == _jobs_declared(wf), p
     twin = tree_workflows()
+    twin[FUZZ][True] = {"pull_request_target": {"branches": ["main"]}}
     twin[FUZZ]["jobs"]["attribution-copy"] = copy.deepcopy(job)
+    twin[FUZZ]["jobs"]["attribution-copy"]["name"] = TITLE + " — копия"
     assert premise(twin).breaches == (), premise(twin).breaches
 
 
 def test_a_workflow_not_parsed_as_an_object_is_a_breach() -> None:
     """Файл процесса, разобранный не объектом (пустой, список, строка), не
     осмотрен — и это нарушение с его путём, а не пропуск. Близнец — тот же
-    путь с разобранным процессом по расписанию."""
+    путь с разобранным процессом по расписанию и джобой под своим именем."""
     extra = ".github/workflows/extra.yml"
     for doc in (None, [], "on: pull_request"):
         wf = tree_workflows()
@@ -1179,21 +1272,23 @@ def test_a_workflow_not_parsed_as_an_object_is_a_breach() -> None:
         assert any(extra in b and "не разобран" in b for b in premise(wf).breaches), \
             (doc, premise(wf))
     twin = tree_workflows()
-    twin[extra] = copy.deepcopy(twin[FUZZ])
+    twin[extra] = {True: {"schedule": [{"cron": "0 3 * * *"}]},
+                   "jobs": {"extra": {"runs-on": "ubuntu-latest", "steps": []}}}
     assert premise(twin).breaches == (), premise(twin).breaches
 
 
-def test_a_pr_workflow_without_parsed_jobs_is_a_breach() -> None:
-    """Процесс запроса, у которого `jobs` не объект, не осмотрен — нарушение.
-    Близнец — то же у процесса по расписанию: запрос его не запускает."""
-    for jobs in (None, [], "build"):
-        wf = tree_workflows()
-        wf[UI]["jobs"] = jobs
-        assert any("ui.yml" in b and "нет разобранных джоб" in b for b in premise(wf).breaches), \
-            (jobs, premise(wf))
-    twin = tree_workflows()
-    twin[FUZZ]["jobs"] = []
-    assert premise(twin).breaches == (), premise(twin).breaches
+def test_a_workflow_without_parsed_jobs_is_a_breach() -> None:
+    """Процесс, у которого `jobs` не объект, не осмотрен — нарушение, и у процесса
+    запроса, и у процесса вне его: прогоны обоих ложатся на голову запроса
+    (kacho#3322). Близнец — дерево как есть."""
+    for where in (UI, FUZZ):
+        for jobs in (None, [], "build"):
+            wf = tree_workflows()
+            wf[where]["jobs"] = jobs
+            owner = where.rsplit("/", 1)[1]
+            assert any(owner in b and "нет разобранных джоб" in b
+                       for b in premise(wf).breaches), (where, jobs, premise(wf))
+    assert premise(tree_workflows()).breaches == (), premise(tree_workflows()).breaches
 
 
 def test_a_matrix_without_dimensions_is_a_breach() -> None:

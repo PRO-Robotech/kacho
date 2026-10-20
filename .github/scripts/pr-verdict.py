@@ -114,13 +114,23 @@ Check-runs одной sha приходят из разных наборов: с�
 нет ни процесса, ни события, ни запроса, из которых пришёл прогон, поэтому
 одноимённая джоба ДРУГОГО процесса была бы принята за замену: её успех
 отставил бы чужой отказ. Ключ держится предпосылкой, и стережёт её
-`premise()` над разобранными процессами, которые запускает запрос на слияние:
+`premise()` над разобранными процессами ВСЕГО дерева, а не только теми, что
+запускает запрос. Прогон процесса вне запроса ложится на ту же sha ручным
+запуском на ветке запроса, расписанием или `workflow_run` на голове ствола,
+выпуском с метки на ней, — и до kacho#3322 его одноимённый успех отставлял
+отказ джобы запроса (вход E10b приёмки #3267: вердикт «зелено», код 0).
+Перечня событий здесь нет намеренно: его пришлось бы держать в согласии с
+провайдером, а «все процессы» не устаревает.
 
 * имя каждой джобы с раскрытой литеральной матрицей встречается один раз —
   внутри процесса и между процессами; имя из выражения — образец, и литерал,
   которому он отвечает, считается совпадением;
 * имя матричной джобы называет каждое измерение матрицы, а имя матрицы из
-  выражения — хотя бы одно; различимость ног такой матрицы держит её план;
+  выражения — хотя бы одно; различимость ног такой матрицы держит её план.
+  Исключение вычислимо: матрица из одного литерального `include` даёт ровно
+  одну ногу на запись, и её ноги судятся по вычисленным именам
+  (`continuous-fuzz.yml`: `fuzz ${{ matrix.target }}` различает ноги, хотя
+  `mod`, `pkg`, `dir` не названы);
 * вызов переиспользуемого процесса не вычисляется и однозначным не считается;
 * ноль осмотренных джоб — нарушение, а не «нарушений нет».
 
@@ -136,15 +146,18 @@ b7608fe9750; 98-байтное имя `terraform` на 1ad671ef764 показа�
 
 Предикат — `test_the_tree_holds_the_check_name_premise` в `pr_verdict_test.py`;
 на 6e39921cfd2 (сведение #2910 с #2891) осмотрено джоб 29, имён 50, нарушений 0,
-как и на b7608fe9750. Свод на запуске судит ту же предпосылку над процессами
-запроса: нарушение — вердикт не вынесен (код 2).
+как и на b7608fe9750 (тогда — лишь процессы запроса). На 2d44686a3c обход всего
+дерева: процессов 14, джоб 41, имён 63, нарушений 0; из них вне запроса джоб 6.
+Свод на запуске судит ту же предпосылку над процессами дерева: нарушение —
+вердикт не вынесен (код 2).
 
 Граница предпосылки — чего этот обход НЕ стережёт (измерено 2026-09-27):
 
 * другое событие того же процесса на той же sha. Из восьми процессов запроса
   `push` объявляют пять, и у всех он сужен до `main`; `workflow_dispatch`
   объявляют шесть, и ручной запуск на ветке запроса заводит более поздний
-  набор тех же имён — он судится как замена;
+  набор тех же имён — он судится как замена. Одноимённость джоб РАЗНЫХ
+  процессов (и запроса, и вне его) обход стережёт (kacho#3322);
 * другой запрос с той же головой. У `review-text` наборы отдельны на каждый
   запрос, и набор второго запроса судится как замена набора первого.
 
@@ -410,7 +423,6 @@ def render(v: Verdict) -> str:
 
 # ── Предпосылка ключа (см. шапку) ────────────────────────────────────────────
 
-PR_TRIGGERS = {"pull_request", "pull_request_target"}
 _EXPR = re.compile(r"\$\{\{.*?\}\}", re.S)
 _MATRIX_REF = re.compile(r"\bmatrix\.([A-Za-z_][A-Za-z0-9_-]*)")
 _BARE_MATRIX_REF = re.compile(r"^\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*)\s*$")
@@ -418,7 +430,7 @@ _BARE_MATRIX_REF = re.compile(r"^\s*matrix\.([A-Za-z_][A-Za-z0-9_-]*)\s*$")
 
 @dataclass(frozen=True)
 class Premise:
-    examined: int                 # джоб процессов запроса
+    examined: int                 # джоб всех процессов дерева (kacho#3322)
     names: int                    # имён: литеральная матрица раскрыта, образец — одно имя
     breaches: tuple[str, ...]
 
@@ -474,6 +486,9 @@ def _job_names(where: str, job_id: str, job: object) -> tuple[list[JobName], lis
         return pattern, [f"{where}: у матрицы нет ни одного измерения — ноги не вычислены"]
     missing = [d for d in dims if d not in refs]
     if missing:
+        legs = _include_only_legs(matrix, exprs)
+        if legs is not None:
+            return pattern, _colliding_legs(where, template, legs)
         return pattern, [f"{where}: имя «{template}» не называет измерение матрицы "
                          f"{', '.join(missing)} — ноги по нему получат одно имя"]
 
@@ -493,6 +508,47 @@ def _job_names(where: str, job_id: str, job: object) -> tuple[list[JobName], lis
                          template)
         legs.append(JobName(where, text, None))
     return legs, []
+
+
+def _include_only_legs(matrix: dict, exprs: list[str]) -> list[dict] | None:
+    """Ноги матрицы из одного литерального `include`: без иных измерений каждая
+    запись — ровно одна нога. Вычислимо, лишь когда значения — скаляры без
+    выражений, а имя ссылается голыми `matrix.<ключ>` на ключи КАЖДОЙ записи;
+    иначе ног не вычислить — None."""
+    entries = matrix.get("include")
+    if set(matrix) != {"include"} or not isinstance(entries, list) or not entries:
+        return None
+    if not all(isinstance(e, dict) and e and all(
+            not isinstance(v, (dict, list)) and not _EXPR.search(str(v)) for v in e.values())
+            for e in entries):
+        return None
+    bare = [_BARE_MATRIX_REF.match(x) for x in exprs]
+    if not all(bare):
+        return None
+    refs = {m.group(1) for m in bare if m}
+    if not all(refs <= {str(k) for k in e} for e in entries):
+        return None
+    return entries
+
+
+def _colliding_legs(where: str, template: str, legs: list[dict]) -> list[str]:
+    """Ноги, чьи имена совпадают в показе GitHub, — по находке на имя; находка
+    называет ключи, которыми эти ноги различаются, а имя — нет."""
+    by_name: dict[str, list[dict]] = {}
+    for leg in legs:
+        text = _EXPR.sub(
+            lambda m: _scalar(leg[_BARE_MATRIX_REF.match(m.group(0)[3:-2]).group(1)]), template)
+        by_name.setdefault(provider_cut(text), []).append(leg)
+    breaches = []
+    for text, same in by_name.items():
+        if len(same) < 2:
+            continue
+        keys = sorted({str(k) for leg in same for k in leg
+                       if len({_scalar(o.get(k)) for o in same}) > 1})
+        breaches.append(f"{where}: имя «{template}» не называет измерение матрицы "
+                        f"{', '.join(keys) or '(записи равны)'} — ноги по нему получат "
+                        f"одно имя «{text}»")
+    return breaches
 
 
 def _shown(n: JobName) -> tuple[JobName, ...]:
@@ -528,8 +584,9 @@ def _may_equal(a: JobName, b: JobName) -> bool:
 
 
 def premise(workflows: dict[str, object]) -> Premise:
-    """Однозначно ли имя проверки в процессах запроса. Чистая функция над
-    разобранными процессами: `{путь: документ}`."""
+    """Однозначно ли имя проверки среди джоб ВСЕХ процессов дерева: прогон
+    процесса вне запроса ложится на ту же sha (см. шапку, kacho#3322). Чистая
+    функция над разобранными процессами: `{путь: документ}`."""
     names: list[JobName] = []
     breaches: list[str] = []
     examined = 0
@@ -537,11 +594,9 @@ def premise(workflows: dict[str, object]) -> Premise:
         if not isinstance(doc, dict):
             breaches.append(f"{path}: процесс не разобран как объект")
             continue
-        if not PR_TRIGGERS & _triggers(doc):
-            continue
         jobs = doc.get("jobs")
         if not isinstance(jobs, dict):
-            breaches.append(f"{path}: у процесса запроса нет разобранных джоб")
+            breaches.append(f"{path}: у процесса нет разобранных джоб")
             continue
         for job_id, job in jobs.items():
             examined += 1
@@ -549,7 +604,7 @@ def premise(workflows: dict[str, object]) -> Premise:
             names += got
             breaches += bad
     if not examined:
-        breaches.append("осмотрено ноль джоб процессов запроса — это не «нарушений нет», "
+        breaches.append("осмотрено ноль джоб процессов дерева — это не «нарушений нет», "
                         "а «никто не смотрел»")
     for a, b in itertools.combinations(names, 2):
         hit = next(((x, y) for x in _shown(a) for y in _shown(b) if _may_equal(x, y)), None)
@@ -854,10 +909,13 @@ def main() -> int:
     root = args.workflows.resolve()
     docs, errors = load_workflows(root)
     d = declare(docs, args.base, args.self_name)
-    refusals = (errors + [f"предпосылка ключа: {b}" for b in premise(docs).breaches]
+    key = premise(docs)
+    refusals = (errors + [f"предпосылка ключа: {b}" for b in key.breaches]
                 + [f"объявление: {b}" for b in d.breaches])
     print(f"объявление: каталог {root}, процессов {d.workflows}, идут на запросе в "
           f"«{args.base}» {d.on_request}")
+    print(f"предпосылка ключа: джоб всех процессов осмотрено {key.examined}, имён "
+          f"{key.names}, нарушений {len(key.breaches)}")
     if refusals:
         print("ОТКАЗ: объявление проверок запроса не вычислено — вердикта НЕТ, и это НЕ "
               "«зелено»:\n" + "\n".join(f"   • {r}" for r in refusals), file=sys.stderr)
