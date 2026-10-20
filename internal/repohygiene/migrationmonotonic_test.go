@@ -232,11 +232,27 @@ func TestNewMigrationOutranksEveryAppliedOne(t *testing.T) {
 	root := repoRoot(t)
 	base := requireTrunkRef(t, root)
 
+	findings, census, indexed, err := judgeAddedMigrationVersions(root, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("относительно %s: %s; миграций в индексе %d", base, census, indexed)
+	for _, f := range findings {
+		t.Error(f)
+	}
+}
+
+// judgeAddedMigrationVersions — гейт целиком на заданном корне и стволе: состав
+// добавленного относительно `base`, состав индекса, разбор. Без `*testing.T`,
+// чтобы проба могла прогнать ровно этот путь на синтетическом репозитории, а не
+// его пересказ. Отказы предпосылки возвращаются ошибкой, а не пустым списком.
+func judgeAddedMigrationVersions(root, base string) ([]string, addedMigrationCensus, int, error) {
 	out, err := gitenv.Command(root, "diff", "--name-only",
 		"--diff-filter=A", base+"...HEAD").Output()
 	if err != nil {
-		t.Fatalf("состав добавленного относительно %s не прочитан: %v — это отказ "+
-			"предпосылки, а не пустой список", base, err)
+		return nil, addedMigrationCensus{}, 0, fmt.Errorf("состав добавленного "+
+			"относительно %s не прочитан: %v — это отказ предпосылки, а не пустой список", base, err)
 	}
 	var added []string
 	for _, rel := range strings.Split(string(out), "\n") {
@@ -247,7 +263,8 @@ func TestNewMigrationOutranksEveryAppliedOne(t *testing.T) {
 
 	indexed, err := gitenv.Command(root, "ls-files", "--", "*/migrations/*.sql").Output()
 	if err != nil {
-		t.Fatalf("состав индекса не прочитан: %v — это отказ предпосылки, а не пустой список", err)
+		return nil, addedMigrationCensus{}, 0, fmt.Errorf("состав индекса не прочитан: %v — "+
+			"это отказ предпосылки, а не пустой список", err)
 	}
 	var tracked []string
 	for _, rel := range strings.Split(string(indexed), "\n") {
@@ -256,14 +273,11 @@ func TestNewMigrationOutranksEveryAppliedOne(t *testing.T) {
 		}
 	}
 	if len(tracked) == 0 {
-		t.Fatalf("обход пуст: индекс не назвал НИ ОДНОЙ миграции — сравнивать не с чем, "+
-			"и «находок 0» здесь неотличимо от «прочитано 0» (корень %s)", root)
+		return nil, addedMigrationCensus{}, 0, fmt.Errorf("обход пуст: индекс не назвал НИ "+
+			"ОДНОЙ миграции — сравнивать не с чем, и «находок 0» здесь неотличимо от "+
+			"«прочитано 0» (корень %s)", root)
 	}
 
 	findings, census := auditAddedMigrationVersions(added, tracked)
-
-	t.Logf("относительно %s: %s; миграций в индексе %d", base, census, len(tracked))
-	for _, f := range findings {
-		t.Error(f)
-	}
+	return findings, census, len(tracked), nil
 }
