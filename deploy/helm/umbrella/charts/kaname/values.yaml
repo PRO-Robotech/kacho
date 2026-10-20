@@ -394,16 +394,18 @@ config:
     # реплику; то же число, что у соседнего темпа на источник
     # (authn.clientToken.authorizePerSourcePerSec). Перемерить на стенде до
     # включения потока в профиле (kacho#3303).
-    # ПЕРЕСЫЛЬЩИК — учётка `kacho-registry` в пространстве, которое объявляет
-    # клиентский лист реестра (`registry.mtls.spiffe.namespace`, `kacho`), в
-    # домене доверия установки (`mtls.spiffe.trustDomain` ниже, `kacho.cloud`):
-    # ровно его URI SAN выписывает `services/registry/deploy/templates/certificate.yaml`.
+    # ПЕРЕСЫЛЬЩИК — НЕ имеет умолчания: профиль, включающий поток, называет точный
+    # URI SAN клиентского листа реестра сам (учётка, пространство и домен доверия
+    # листа — `registry.mtls.spiffe.*` в чарте реестра; домен — тот же, что
+    # `mtls.spiffe.trustDomain` ниже). Умолчание здесь было бы вторым объявлением
+    # имени платформы в значениях копии; расхождение с листом на одну метку — и
+    # пересыльщик не узнаётся, все клиенты делят один темп.
     registryToken:
       issuer: ""
       service: ""
       anonymousClientId: ""
       anonymousPerSourcePerSec: 10
-      anonymousForwarderSan: "spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
+      anonymousForwarderSan: ""
   repository:
     postgres:
       # Приведён к НАИМЕНЬШЕМУ пределу, который эта служба может встретить.

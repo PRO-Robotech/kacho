@@ -48,6 +48,7 @@ kaname:
       registryToken:
         anonymousClientId: registry-anonymous
         anonymousPerSourcePerSec: 1
+        anonymousForwarderSan: spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
 registry:
   service:
     dataplaneLB:
@@ -88,13 +89,17 @@ run() {
   trap cleanup EXIT
 
   # ── условие прогона ──
-  k get deploy registry -o jsonpath='{.spec.template.spec.containers[*].name}' | grep -qw dataplane-tls ||
+  local names
+  names="$(k get deploy registry -o jsonpath='{.spec.template.spec.containers[*].name}')"
+  [[ " $names " == *" dataplane-tls "* ]] ||
     not_created "у пода реестра нет контейнера dataplane-tls — сайдкар не поднят"
   k rollout status deploy/registry --timeout=180s >/dev/null || not_created "под реестра не готов"
   local cm
   cm="$(k get configmap -o name | grep -E 'kaname.*-config$' | head -1)"
   [ -n "$cm" ] || not_created "карты настроек службы доступа нет"
-  k get "$cm" -o jsonpath='{.data.config\.yaml}' | grep -q 'anonymous-forwarder-san:' ||
+  local cfg
+  cfg="$(k get "$cm" -o jsonpath='{.data.config\.yaml}')"
+  [[ "$cfg" == *"anonymous-forwarder-san:"* ]] ||
     not_created "анонимный поток службы доступа не включён (в $cm нет anonymous-forwarder-san)"
   LB_IP="$(k get svc registry-lb -o jsonpath='{.spec.clusterIP}')"
   [ -n "$LB_IP" ] || not_created "службы плоскости данных registry-lb нет"

@@ -319,7 +319,7 @@ kaname.requireAnonymousRegistryLane — АНОНИМНЫЙ ПОТОК ДОКЕР
 {{- $missing = append $missing "  kaname.config.apiServer.registryToken.anonymousPerSourcePerSec — анонимных запросов токена в секунду на источник, на реплику; сверх — 429." -}}
 {{- end -}}
 {{- if not $rt.anonymousForwarderSan -}}
-{{- $missing = append $missing "  kaname.config.apiServer.registryToken.anonymousForwarderSan — точный URI SAN клиентского листа сайдкара реестра (spiffe://<домен доверия>/ns/<пространство>/sa/kacho-registry)." -}}
+{{- $missing = append $missing "  kaname.config.apiServer.registryToken.anonymousForwarderSan — точный URI SAN клиентского листа сайдкара реестра (схема spiffe, домен доверия установки, пространство и учётка листа реестра)." -}}
 {{- end -}}
 {{- if not (and .Values.mtls.enable (dig "registryToken" .Values.mtls.httpListeners .Values.mtls)) -}}
 {{- $missing = append $missing "  kaname.mtls.enable=true и kaname.mtls.registryToken=true — слушатель выдачи под TLS: без него сертификата пересыльщика не спрашивают." -}}

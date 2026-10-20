@@ -9,16 +9,17 @@
 //
 //	(а) поток включён со своими условиями — в карте настроек все три ручки:
 //	    принципал, темп на источник, доверенный пересыльщик;
-//	(б) поток выключен (умолчание) — ни одной, хотя темп и пересыльщик в
-//	    значениях объявлены;
+//	(б) поток выключен (умолчание) — ни одной, хотя темп в значениях
+//	    объявлен (пересыльщика в значениях копии нет);
 //	(в) поток включён без TLS слушателя выдачи, без режима optional-mutual,
 //	    без темпа или без пересыльщика — отказ рендера, называющий недостающее;
-//	(г) пересыльщик, объявленный значениями копии, есть ровно URI SAN
+//	(г) пересыльщик, который называет накладка стенда пробы, есть ровно URI SAN
 //	    клиентского листа, который выписывает чарт реестра.
 package umbrella_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -27,8 +28,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// anonLaneForwarder — URI SAN клиентского листа реестра при умолчаниях его чарта;
+// у копии службы доступа умолчания нет, и профиль называет его сам.
+const anonLaneForwarder = "spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
+
 var anonLaneOn = []string{
 	"config.apiServer.registryToken.anonymousClientId=registry-anonymous",
+	"config.apiServer.registryToken.anonymousForwarderSan=" + anonLaneForwarder,
 	"mtls.enable=true",
 	"mtls.registryToken=true",
 	"mtls.registryTokenClientAuthMode=optional-mutual",
@@ -65,7 +71,7 @@ func TestKanameAnonymousRegistryLane_OnRendersAllThreeKnobs(t *testing.T) {
 	want := map[string]string{
 		"anonymous-client-id":          "registry-anonymous",
 		"anonymous-per-source-per-sec": "10",
-		"anonymous-forwarder-san":      "spiffe://kacho.cloud/ns/kacho/sa/kacho-registry",
+		"anonymous-forwarder-san":      anonLaneForwarder,
 	}
 	for k, v := range want {
 		if got[k] != v {
@@ -121,11 +127,12 @@ func TestKanameAnonymousRegistryLane_RefusesWithoutItsConditions(t *testing.T) {
 	}
 }
 
-// TestKanameAnonymousForwarderIsTheRegistryClientLeaf — (г): объявленный
-// пересыльщик совпадает с URI SAN, который выписывает чарт реестра
-// (`spiffe://<домен>/ns/<пространство>/sa/<учётка>` из его `mtls.spiffe`), в
-// домене доверия копии. Сравнение у службы точное: расхождение в одну метку —
-// пересыльщик не узнаётся, и все клиенты делят один темп.
+// TestKanameAnonymousForwarderIsTheRegistryClientLeaf — (г): пересыльщик,
+// которого называет накладка стенда сквозной пробы, совпадает с URI SAN,
+// который выписывает чарт реестра (`spiffe://<домен>/ns/<пространство>/sa/<учётка>`
+// из его `mtls.spiffe`), в домене доверия копии. Сравнение у службы точное:
+// расхождение в одну метку — пересыльщик не узнаётся, и все клиенты делят один
+// темп. Умолчания у копии нет, поэтому судится накладка, а не значения чарта.
 func TestKanameAnonymousForwarderIsTheRegistryClientLeaf(t *testing.T) {
 	read := func(p string) map[string]any {
 		raw, err := os.ReadFile(p)
@@ -147,9 +154,15 @@ func TestKanameAnonymousForwarderIsTheRegistryClientLeaf(t *testing.T) {
 		s, _ := cur.(string)
 		return s
 	}
+	overlayPath := filepath.Join(t.TempDir(), "overlay.yaml")
+	probe := filepath.Join("..", "..", "scripts", "stand-registry-forwarder-probe.sh")
+	if out, err := exec.Command("bash", probe, "overlay", overlayPath).CombinedOutput(); err != nil {
+		t.Fatalf("накладка стенда не записана: %v\n%s", err, out)
+	}
+	overlay := read(overlayPath)
 	kan := read(filepath.Join(iamChartDir, "values.yaml"))
 	reg := read(filepath.Join("..", "..", "..", "services", "registry", "deploy", "values.yaml"))
-	san := get(kan, "config", "apiServer", "registryToken", "anonymousForwarderSan")
+	san := get(overlay, "kaname", "config", "apiServer", "registryToken", "anonymousForwarderSan")
 	trust := get(kan, "mtls", "spiffe", "trustDomain")
 	leaf := "spiffe://" + get(reg, "mtls", "spiffe", "trustDomain") + "/ns/" +
 		get(reg, "mtls", "spiffe", "namespace") + "/sa/" + get(reg, "mtls", "spiffe", "saName")
@@ -157,7 +170,7 @@ func TestKanameAnonymousForwarderIsTheRegistryClientLeaf(t *testing.T) {
 		t.Fatalf("предпосылка исчезла: пересыльщик %q, домен копии %q, лист реестра %q", san, trust, leaf)
 	}
 	if san != leaf {
-		t.Errorf("пересыльщик копии %q ≠ URI SAN клиентского листа реестра %q", san, leaf)
+		t.Errorf("пересыльщик накладки %q ≠ URI SAN клиентского листа реестра %q", san, leaf)
 	}
 	if !strings.HasPrefix(san, "spiffe://"+trust+"/") {
 		t.Errorf("пересыльщик %q вне домена доверия копии %q — служба его отвергнет", san, trust)
