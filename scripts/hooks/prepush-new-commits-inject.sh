@@ -20,7 +20,9 @@
 # обойдённое); D1b черновик, затем обычное имя; D1env-b обход, затем новое имя;
 # D2b коммит лишь в форке, отправка адресом, D2a — по имени; D3a снятый на сервере
 # черновик с оставшимся отслеживанием, D3b — без него; D4a тег на черновом
-# коммите, D4b — на локальном; D5 ствол на черновой коммит.
+# коммите, D4b — на локальном; D5 ствол на черновой коммит. KACHO_PREPUSH_SKIP_ONLY=1
+# (переходник слота воркспейса, kacho-workspace#1288): на проверенной — «наборы не нужны»,
+# на непроверенной — 79 без прогонщика.
 #
 # Смешанная отправка двух РАЗНЫХ вершин здесь не пробуется: хук отказывает ей и без
 # предиката («отправка несёт 2 разных вершин»); перепись по ссылкам держит check-27
@@ -33,7 +35,7 @@ set -uo pipefail
 
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
-unset KACHO_PUSH_RANGE KACHO_TRUNK_REF KACHO_PREPUSH_GROUP KACHO_SKIP_PREPUSH
+unset KACHO_PUSH_RANGE KACHO_TRUNK_REF KACHO_PREPUSH_GROUP KACHO_SKIP_PREPUSH KACHO_PREPUSH_SKIP_ONLY
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$HERE/pre-push"
@@ -93,7 +95,7 @@ hook_run() { # <вход git> [<первый довод>] [<KACHO_SKIP_PREPUSH>]
     local out rc at
     # Рабочая копия стоит на отправляемой вершине — как при настоящей отправке.
     at="${4:-$(printf '%s' "$1" | head -1 | cut -d' ' -f2)}"; g checkout -q -f "$at" 2> /dev/null || true
-    out="$(cd "$repo" && printf '%s\n' "$1" | env PATH="$tmp/bin:$PATH" KACHO_SKIP_PREPUSH="${3:-0}" \
+    out="$(cd "$repo" && printf '%s\n' "$1" | env PATH="$tmp/bin:$PATH" KACHO_SKIP_PREPUSH="${3:-0}" KACHO_PREPUSH_SKIP_ONLY="${SO:-0}" \
         bash scripts/hooks/pre-push "${2:-origin}" "$repo" 2>&1)"
     rc=$?
     printf 'rc%s\n%s\n' "$rc" "$out"
@@ -126,6 +128,10 @@ assert_all() { # $1 — метка, $2 — файл для числа прова
     skip_case "две ссылки на проверенной вершине" "$(ref b-t1b)
 $(ref b-t1c)"
     skip_case "проверенная вершина, отправленная адресом" "$(ref b-t1b b-t1d)" "$repo"
+    SO=1 skip_case "KACHO_PREPUSH_SKIP_ONLY=1 на проверенной вершине — ветвь «наборы не нужны»" "$(ref b-t1b b-so1)"
+    newc b-so2
+    r="$(SO=1 hook_run "$(ref b-so2)")"
+    if [ "$(head -1 <<< "$r")" = rc79 ] && ! grep -qF "$MARK" <<< "$r"; then ok "KACHO_PREPUSH_SKIP_ONLY=1 на непроверенной — 79 без прогонщика (переходник слота уводит хук в Job)"; else bad "KACHO_PREPUSH_SKIP_ONLY=1 на непроверенной: ждали rc79 без прогонщика ($(head -1 <<< "$r"))"; fi
 
     newc b-ahead; run_case "посев слияния: голова впереди" "$(ref b-ahead)"; pub b-ahead
     g checkout -q -f -B b-ff "$m0"; g merge -q --no-ff -m "слияние проверенного" b-ahead > /dev/null 2>&1
@@ -229,9 +235,10 @@ build p-mergeany 's/if verified "\$p" && \[ "\$(git rev-parse "\$p^{tree}")" = "
 build h-ignore 's/if \[ "\$nc_rc" -eq 0 \]; then/if true; then/' "$HOOK" && run_mutant "хук не читает код предиката" "$PRED" "$tmp/h-ignore"
 build h-norecord 's/^    record_verified$/    :/' "$HOOK" && run_mutant "хук не пишет запись" "$PRED" "$tmp/h-norecord"
 build h-recordred 's/^if \[ "\$run_rc" -ne 0 \]; then$/if [ "$run_rc" -ne 0 ]; then record_verified;/' "$HOOK" && run_mutant "хук записывает красную" "$PRED" "$tmp/h-recordred"
+build h-skiponly 's/^    exit 79$/    :/' "$HOOK" && run_mutant "KACHO_PREPUSH_SKIP_ONLY не останавливает наборы" "$PRED" "$tmp/h-skiponly"
 build h-coverall 's/^    \[ -z "\${KACHO_TRUNK_REF:-}" \] || return 1$/    return 0/' "$HOOK" && run_mutant "любой диапазон покрывает вершину" "$PRED" "$tmp/h-coverall"
 
-want=14
+want=15
 printf '\nprepush-new-commits-inject: утверждений на прогон — %s · дефектов — %s\n' "$real_asserts" "$want"
 printf '  провалов у настоящего:            %s (норма 0)\n' "$real_f"
 rc=0
