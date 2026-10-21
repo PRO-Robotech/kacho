@@ -15,6 +15,15 @@ the docker one:
     challenge names the facade handle, and that handle is a live gate at that
     address.
 
+What "live gate" means changed with REG-PUB-1
+(`docs/specs/sub-phase-REG-PUB-1-public-registry-by-class-grant-acceptance.md`,
+Р9 п. 3, сценарий 52 близнец (б)): the anonymous pull flow is ON in every
+deployment profile, so a caller with NO credentials gets `200` and a READ-ONLY
+token (`scope = registry:pull`, `aud` = the data plane's service), and only a
+caller with UNVERIFIABLE credentials gets the `401` challenge. The lane asserts
+both halves; the earlier expectation "anonymous → 401" predates REG-PUB-1 and is
+re-asserted, not dropped (see the steps).
+
 The negative half is the point. A challenge naming the provider's `/oauth2/token`
 would route every docker client around the facade — with no error anywhere, since
 the provider would answer perfectly happily.
@@ -76,10 +85,11 @@ other's answers. Nothing is left behind.
 снятым встроенным умолчанием процесса (#1184) — сегодня его нет ни в коде, ни в
 одном профиле.
 
-Почему отрицания его не ловят — доказуемо кодом, а не наблюдением: аноним
-получает вызов на аутентификацию ДО всякого разбора адресата, а при негодных
-учётных данных адресат решается ПОСЛЕ их проверки. То есть `service=` в этих двух
-шагах не участвует в исходе by construction.
+Почему отрицания его не ловили — доказуемо кодом, а не наблюдением: аноним
+получал вызов на аутентификацию ДО всякого разбора адресата (анонимного потока
+тогда не было), а при негодных учётных данных адресат решается ПОСЛЕ их проверки.
+То есть `service=` в тех шагах не участвовал в исходе by construction. После
+REG-PUB-1 аноним получает токен, и адресат слышен в его `aud`.
 
 Поэтому имя теперь БЕРЁТСЯ ИЗ ВЫЗОВА полосы данных — ровно там, где берёт его
 докер-клиент, — и рядом стоит ПОЛОЖИТЕЛЬНОЕ утверждение, зависящее от адресата:
@@ -94,10 +104,29 @@ other's answers. Nothing is left behind.
 Окна здесь нет: шаги анонимные, ресурса не создаётся, а `ibtServiceAud` — имя,
 прочитанное из ответа, а не идентификатор. Обёртка НЕ маскирует (fail-open:
 утверждения исполняются на терминальном ответе, вердикт тот же) и на зелёном пути
-инертна — 401 в её полосу не входит. На КРАСНОМ она стоит до 48 с на шаг (80×600мс),
+инертна — ни 200, ни 401 в её полосу не входят. На КРАСНОМ она стоит до 48 с на шаг (80×600мс),
 и «advertised but not served» приезжает с этой задержкой. Предикат генератора шире
 своего предмета — это отдельная находка, а не предмет этого файла.
 """
+
+def _anon_claims():
+    """Тело анонимной выдачи: токен — трёхсегментный JWS, его утверждения — в `_c`.
+
+    Сам токен в сообщения проверок не печатается: на отказе печатаются ключи тела,
+    а утверждения сверяются по полям (`aud`, `scope`, `sub`)."""
+    return [
+        "let _j = null; try { _j = pm.response.json(); } catch (e) { _j = null; }",
+        "const _tok = (_j && (_j.token || _j.access_token)) || '';",
+        "pm.test('the body carries the token as a three-segment JWS', () => "
+        "pm.expect(_tok.split('.').length, 'body keys: ' + JSON.stringify(Object.keys(_j || {}))).to.eql(3));",
+        "let _c = null;",
+        "try {",
+        "  const _cj = require('crypto-js');",
+        "  const _b = _tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+        "  _c = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b)));",
+        "} catch (e) { _c = null; }",
+    ]
+
 
 CASES = []
 
@@ -108,8 +137,12 @@ CASES = []
 
 CASES.append(Case(
     id="IBT-14-DOCKER-CHALLENGE-NAMES-THE-FACADE-HANDLE",
-    title="Registry data-plane 401 challenge advertises the iam /iam/token handle (never the provider token endpoint), and that handle is a live gate",
-    classes=["SEC", "CONF", "NEG"],
+    title="Registry data-plane 401 challenge advertises the iam /iam/token handle (never the provider token endpoint), and that handle is a live gate: read-only anonymous token minted for the data plane's audience, garbage credentials refused with the same realm",
+    # Техники: ECP по удостоверению (нет · негодное), один изменённый факт против
+    # близнеца (запрошенное действие pull против push; удостоверение нет против
+    # негодного), сверка двух сторон полосы (адресат вызова против `aud` токена),
+    # контроль слушателя посторонним путём. Приёмка — REG-PUB-1 Р9 п. 3, 52 (б).
+    classes=["SEC", "CONF", "NEG", "AUTHN"],
     priority="P0",
     steps=[
         Step(
@@ -156,30 +189,28 @@ CASES.append(Case(
         ),
         # ── ОБЕ СТОРОНЫ ПОЛОСЫ НАЗЫВАЮТ ОДНО ИМЯ: положительное утверждение ──
         #
-        # Прежде здесь не было НИ ОДНОГО утверждения, зависящего от адресата: три
-        # шага ниже — отрицания (401/404), а они получаются при ЛЮБОМ имени, в том
-        # числе заведомо неверном. Литерал `registry.kacho.local`, стоявший в них,
-        # неверен и сегодня: посадка объявляет адресата один раз
-        # (`global.kacho.registry.serviceAud`, действующее значение —
-        # `registry.in-cloud.io`), а это имя было СНЯТЫМ встроенным умолчанием
-        # процесса (задача #1184). Ложь была невидима ровно потому, что спросить о
-        # ней было некому.
+        # Шаги ниже прежде ждали 401 на анонимный вход: анонимного потока не было
+        # ни в одной посадке. Приёмка REG-PUB-1 (Р9 п. 3, сценарий 52, близнец (б))
+        # включила его во всех профилях развёртывания: вход без удостоверения
+        # получает `200` и токен ТОЛЬКО ЧТЕНИЯ. Ожидание 401 здесь — от времени до
+        # REG-PUB-1, и оно переутверждено, а не ослаблено: каждое прежнее свойство
+        # полосы утверждается и теперь, в том шаге, где оно наблюдаемо.
         #
-        # ПОЧЕМУ ОТДЕЛЬНЫЙ ШАГ, А НЕ СВЕРКА В ШАГЕ НИЖЕ. Ручка ЭХАЕТ присланное
-        # `service=` в свой вызов на аутентификацию (`handler.go`: имя берётся из
-        # запроса, умолчание подставляется только когда запрос его не назвал).
-        # Сверять ответ шага, который сам это имя и прислал, значило бы утверждать
-        # «я прислал X — мне ответили X»: тавтология на месте проверки, то есть
-        # ровно тот класс, ради снятия которого правится этот файл. Умолчание
-        # ручки слышно ТОЛЬКО на запросе БЕЗ параметра.
+        # ПОЧЕМУ ЗАПРОС БЕЗ `service`. Ручка ЭХАЕТ присланное `service=` в адресат
+        # (резолв адресата kaname: пустой параметр — законный вход, адресат берётся
+        # из умолчания посадки). Сверять ответ шага, который сам это имя прислал,
+        # значило бы утверждать «я прислал X — мне ответили X». Умолчание ручки
+        # слышно ТОЛЬКО на запросе без параметра — и теперь оно читается не из
+        # вызова на аутентификацию, а из `aud` выданного токена, то есть ровно из
+        # того, что сверит приёмная сторона.
         #
-        # ЧТО ЭТО ДОКАЗЫВАЕТ. Докер-клиент берёт `service` из вызова полосы данных
-        # и предъявляет его фасаду; фасад чеканит его в `aud`. Разойдись стороны —
-        # поток сломан у всякого клиента, и ни одно отрицание этого не заметит.
-        # Обе величины СПРАШИВАЮТСЯ у своих сторон, поэтому утверждение не
-        # переживёт смену имени в посадке: оно про согласие, а не про значение.
+        # ЧТО ЭТО ДОКАЗЫВАЕТ. Докер-клиент берёт `service` из вызова плоскости
+        # данных, фасад чеканит адресат в `aud`. Разойдись стороны — анонимный
+        # токен не примет плоскость данных, и ни одно отрицание этого не заметит.
+        # Обе величины СПРАШИВАЮТСЯ у своих сторон: утверждение про согласие, а не
+        # про значение, и смену имени в посадке переживает.
         Step(
-            name="facade-names-the-same-audience-as-the-data-plane",
+            name="facade-default-audience-is-the-data-plane-audience",
             method="GET",
             path="/iam/token",
             auth="anonymous",
@@ -189,31 +220,21 @@ CASES.append(Case(
                 "докер-полоса — у неё же и спрашиваем, кому она чеканит"),
             test_script=[
                 *assert_answered("facade docker-token handle, no service parameter"),
-                # 401 — тот же исход, что у соседних шагов: анонимная выдача не
-                # включена. 200 означало бы включённую анонимную выдачу, и тогда
-                # адресата надо брать иначе — молчать об этом нельзя.
-                "pm.test('the handle challenges an anonymous caller (401)',",
-                "  () => pm.expect(pm.response.code, pm.response.text()).to.eql(401));",
-                "const _fwa = pm.response.headers.get('WWW-Authenticate') || '';",
-                "const _fsvc = (_fwa.match(/service=\"([^\"]+)\"/) || [])[1] || '';",
-                "pm.test('the handle NAMES the audience it mints for — its own default, "
-                "not an echo: this request named none', () => {",
-                "  pm.expect(_fsvc, 'WWW-Authenticate: ' + _fwa).to.be.a('string')",
-                "    .with.length.greaterThan(0);",
-                "});",
-                # Положительное утверждение, зависящее от адресата: разойдись имена —
-                # докер-клиент предъявит фасаду имя, которого тот не знает, и получит
-                # отказ, неотличимый от неверных учётных данных.
+                "pm.test('the handle issues an anonymous token to a caller with no credentials "
+                "(REG-PUB-1 Р9 п. 3; 401 = anonymous flow off on this landing)',",
+                "  () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                *_anon_claims(),
                 "pm.test('BOTH sides of the lane name the SAME audience — the data plane "
-                "tells it to the docker client, the facade mints it into aud', () => {",
-                "  pm.expect(_fsvc, 'facade says \"' + _fsvc + '\", data plane says \"'",
+                "tells it to the docker client, the facade mints it into aud; this request "
+                "named none, so aud is the facade default, not an echo', () => {",
+                "  pm.expect(_c && _c.aud, 'facade aud ' + JSON.stringify(_c && _c.aud) + ', data plane says \"'",
                 "    + pm.environment.get('ibtServiceAud') + '\"')",
-                "    .to.eql(pm.environment.get('ibtServiceAud'));",
+                "    .to.eql([pm.environment.get('ibtServiceAud')]);",
                 "});",
             ],
         ),
         Step(
-            name="facade-token-handle-is-a-gate",
+            name="facade-token-handle-serves-the-anonymous-pull-flow",
             method="GET",
             path="/iam/token?service={{ibtServiceAud}}&scope=repository:ibt/{{runId}}:pull",
             auth="anonymous",
@@ -224,20 +245,49 @@ CASES.append(Case(
                 "docker lane — the facade handle the challenge points at"),
             test_script=[
                 *assert_answered("facade docker-token handle"),
-                # 401 and not 404 is the whole assertion: 404 would mean the handle the
-                # data plane advertises is not served at that address at all, and every
-                # docker client would fail with a confusing "not found" instead of a
-                # credential prompt.
-                "pm.test('the handle EXISTS and refuses an anonymous caller (404 = advertised but '",
-                "  + 'not served; 200 = anonymous issuance)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(401));",
-                "const _wa = pm.response.headers.get('WWW-Authenticate') || '';",
-                "pm.test('the handle re-challenges with its own realm, and it is the same handle', () => {",
-                "  const m = _wa.match(/realm=\"([^\"]+)\"/);",
-                "  pm.expect(m && m[1], _wa).to.be.a('string');",
-                "  const p = (m && m[1] || '').replace(/^[a-z]+:\\/\\/[^/]+/i, '');",
-                "  pm.expect(p, 'the facade advertises ' + p + ' while the data plane advertises '",
-                "    + pm.environment.get('ibtRealmPath')).to.eql(pm.environment.get('ibtRealmPath'));",
-                "});",
+                # 200 и не 404: 404 значило бы, что ручки, которую называет плоскость
+                # данных, по этому адресу нет вовсе, и всякий docker pull без входа
+                # падал бы непонятным «not found».
+                "pm.test('the handle EXISTS at the advertised address and serves the anonymous "
+                "pull flow (404 = advertised but not served; 401 = anonymous flow off)', () => "
+                "pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                *_anon_claims(),
+                # Предмет «только чтения» — объём токена, а не его наличие: приёмка
+                # (Р9, расширение поверхности названо) обещает анониму токен только
+                # чтения; контракт выдачи kaname (SC-39 (а)) — `scope = registry:pull`.
+                "pm.test('the anonymous token is read-only: scope is exactly registry:pull', () => "
+                "pm.expect(_c && _c.scope, JSON.stringify(_c)).to.eql('registry:pull'));",
+                # Субъект — объявленный принципал закрытой формы (SC-39), а не
+                # порождённый id и не пустая строка: такой `sub` плоскость данных
+                # переводит в класс `anonymous`, и только его.
+                "pm.test('the token subject is the declared anonymous principal of the closed form, "
+                "not a generated id', () => pm.expect(_c && _c.sub, JSON.stringify(_c))"
+                ".to.be.a('string').and.match(/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/));",
+            ],
+        ),
+        # ── ОТРИЦАТЕЛЬНЫЙ БЛИЗНЕЦ: аноним просит запись — токен всё равно только чтения ──
+        #
+        # Отличие от шага выше — один факт: запрошенное действие (`push` вместо
+        # `pull`). Ручка не обязана отказать — анонимный поток объём запроса не
+        # читает, — но обязана не выдать глагола записи: иначе «токен только чтения»
+        # держался бы тем, что клиент вежливо попросил чтение.
+        Step(
+            name="facade-anonymous-push-request-still-gets-read-only",
+            method="GET",
+            path="/iam/token?service={{ibtServiceAud}}&scope=repository:ibt/{{runId}}:pull,push",
+            auth="anonymous",
+            insecure_tls=True,
+            pre_script=require_env_url(
+                "iamRegistryTokenBaseUrl",
+                "/iam/token?service={{ibtServiceAud}}&scope=repository:ibt/{{runId}}:pull,push",
+                "docker lane — anonymous caller asking for a write verb"),
+            test_script=[
+                *assert_answered("facade docker-token handle, anonymous push request"),
+                "pm.test('the anonymous flow answers a write request with a token, not an error', () => "
+                "pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                *_anon_claims(),
+                "pm.test('asking for push does not widen the anonymous token: scope is still exactly "
+                "registry:pull', () => pm.expect(_c && _c.scope, JSON.stringify(_c)).to.eql('registry:pull'));",
             ],
         ),
         Step(
@@ -259,11 +309,26 @@ CASES.append(Case(
             ],
             test_script=[
                 *assert_answered("facade docker-token handle, garbage credentials"),
+                # Отличие от шага «serves the anonymous pull flow» — один факт:
+                # предъявлено негодное удостоверение. Включённый анонимный поток его не
+                # подменяет: негодное удостоверение анонимом не становится.
                 "pm.test('unverifiable credentials are refused, never brokered into a token',",
                 "  () => pm.expect(pm.response.code, pm.response.text()).to.eql(401));",
                 "pm.test('no token was handed out', () => {",
                 "  let j = null; try { j = pm.response.json(); } catch (e) { j = null; }",
-                "  pm.expect(j && j.token, JSON.stringify(j)).to.be.oneOf([undefined, null]);",
+                "  pm.expect(j && (j.token || j.access_token), JSON.stringify(j)).to.be.oneOf([undefined, null]);",
+                "});",
+                # Вызов на аутентификацию называет ФАСАД: тот же путь ручки, что
+                # называет плоскость данных. Прежде это утверждалось на анонимном
+                # 401; анонимный вход теперь получает токен, и вызов наблюдаем только
+                # на отказе удостоверения.
+                "const _wa = pm.response.headers.get('WWW-Authenticate') || '';",
+                "pm.test('the handle re-challenges with its own realm, and it is the same handle', () => {",
+                "  const m = _wa.match(/realm=\"([^\"]+)\"/);",
+                "  pm.expect(m && m[1], 'WWW-Authenticate: ' + _wa).to.be.a('string');",
+                "  const p = (m && m[1] || '').replace(/^[a-z]+:\\/\\/[^/]+/i, '');",
+                "  pm.expect(p, 'the facade advertises ' + p + ' while the data plane advertises '",
+                "    + pm.environment.get('ibtRealmPath')).to.eql(pm.environment.get('ibtRealmPath'));",
                 "});",
             ],
         ),
@@ -275,14 +340,14 @@ CASES.append(Case(
             insecure_tls=True,
             pre_script=require_env_url(
                 "iamRegistryTokenBaseUrl", "/ibt-nonsense-{{runId}}",
-                "docker lane — control proving the 401s above are the HANDLE answering, "
-                "not a listener that refuses everything"),
+                "docker lane — control proving the answers above are the HANDLE answering, "
+                "not a listener that answers every path alike"),
             test_script=[
                 *assert_answered("facade token listener, nonsense path"),
-                # Without this control, "401 on /iam/token" is satisfied by a listener
-                # that 401s every path, including ones that do not exist — i.e. by a
-                # handle that is not there.
-                "pm.test('a path that is NOT the handle is 404, so the 401s above came from the "
+                # Without this control, "200 / 401 on /iam/token" is satisfied by a
+                # listener that answers every path the same way, including ones that do
+                # not exist — i.e. by a handle that is not there.
+                "pm.test('a path that is NOT the handle is 404, so the answers above came from the "
                 "handle itself', () => pm.expect(pm.response.code, pm.response.text()).to.eql(404));",
             ],
         ),
