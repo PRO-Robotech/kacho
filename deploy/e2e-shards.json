@@ -36,7 +36,7 @@
     "",
     "Предикат, из которого это выведено (повторяемый):",
     "  git grep -lE 'consoleUrl|ui-future|:5173' -- \\",
-    "      'services/*/tests/newman/collections' 'gateway/tests/newman/collections'   → 0 при 72 коллекциях",
+    "      'services/*/tests/newman/collections' 'gateway/tests/newman/collections'   → 0 при 73 коллекциях",
     "",
     "То есть НИ ОДИН newman-запрос консоли не касается: newman ходит по HTTP в",
     "край, консоль — отдельная поверхность. При этом `dev-up` собирал девять её",
@@ -206,7 +206,7 @@
       "id": "edge",
       "suites": ["geo", "registry"],
       "components": ["registry", "pg-registry"],
-      "why": "8+5 коллекций / 479 запросов. Ни одна из двух суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, registry→registry). Самый лёгкий стенд. Суита api-gateway отсюда уехала на шард compute-storage (kacho#3238, kacho#3256): её коллекции system_class_anonymous_edge и system_class_subject_check ходят в compute, storage и vpc, которых этот стенд не поднимает."
+      "why": "8+6 коллекций / 651 запросов. Ни одна из двух суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, registry→registry). Самый лёгкий стенд. Суита api-gateway отсюда уехала на шард compute-storage (kacho#3238, kacho#3256): её коллекции system_class_anonymous_edge и system_class_subject_check ходят в compute, storage и vpc, которых этот стенд не поднимает."
     }
   ]
 }

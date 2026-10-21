@@ -36,6 +36,7 @@ UMBRELLA="${E2E_SHARD_UMBRELLA:-$REPO_ROOT/helm/umbrella}"
 STACKS="$(dirname "$0")/stacks.sh"
 MATRIX="$REPO_ROOT/scripts/e2e-shard-matrix.py"
 
+# shellcheck source=deploy/tests/helm/outcome.sh
 . "$(dirname "$0")/outcome.sh"
 
 G_KEY="global.kacho.registry.anonymousSubjectId"
@@ -49,6 +50,12 @@ require_mikefarah_yq
 command -v python3 >/dev/null 2>&1 || fatal "нужен python3 — вывести строку шарда нечем"
 [ -f "$UMBRELLA/Chart.yaml" ] || fatal "чарта зонта нет на диске ($UMBRELLA)"
 [ -f "$MATRIX" ] || fatal "вывода матрицы шардов нет на диске ($MATRIX)"
+# Зависимости зонта — предпосылка, а не предмет: без них КАЖДЫЙ рендер отказал бы
+# по причине, к шардам не относящейся, и отказ ушёл бы находкой о дереве (код 1)
+# там, где условие не создано (код 2) — класс #1214, его судит
+# three-outcomes-distinguishable-test.sh. Проверка ДО первого рендера.
+require_umbrella_charts "$UMBRELLA"
+require_fresh_dep_charts "$UMBRELLA"
 
 # render <стек> [доводы helm…] — рендер цепочки стека; код — в HELM_RC.
 render() {
@@ -90,6 +97,11 @@ while IFS= read -r id; do
     what="шард $id, фаза $stack: $helm_line"
     render "$stack" "${words[@]}"
     if [ "$HELM_RC" -ne 0 ]; then
+      # Отказ о зависимостях — условие прогона (код 2), а не свойство шарда:
+      # подсказку и код решает общая реализация.
+      case "$HELM_ERR" in
+        *"missing in charts/ directory"*|*"dependency build"*) render_or_fatal "$what" ;;
+      esac
       helm_said "$what"
       fail "$what — стенд шарда не рендерится; задание шарда упадёт на подъёме"
     fi
