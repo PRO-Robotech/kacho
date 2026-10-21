@@ -479,49 +479,15 @@ jobs:
 
       # Матрица + производные строки (--set для helm, список образов) считаются
       # ЗДЕСЬ, один раз, из манифеста. Считать их в каждом шарде значило бы
-      # завести пять копий одной логики.
+      # завести пять копий одной логики. Вывод — deploy/scripts/e2e-shard-matrix.py,
+      # единственный: его же зовёт проба рендера стенда шарда
+      # (deploy/tests/helm/e2e-shard-stand-renders-test.sh), поэтому строка,
+      # которую получает `make dev-up DEV_UP_VALUES=…`, судится рендером до
+      # подъёма, а не впервые на нём (kacho#3274).
       - name: матрица из deploy/e2e-shards.json
         id: matrix
         run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          m = json.load(open("deploy/e2e-shards.json"))
-          gates, gi = m["gates"], m["gate_images"]
-          rows = []
-          for s in m["shards"]:
-              off = [g for g in gates if g not in s["components"]]
-              images = list(m["core_images"]) + [gi[c] for c in s["components"] if c in gi]
-              rows.append({
-                  "id": s["id"],
-                  "suites": " ".join(s["suites"]),
-                  # Компонент, не названный шардом, выключается ЯВНО. Умолчание
-                  # чарта — «включён», поэтому «не упомянул» означало бы «поднял».
-                  "helm": " ".join(f"--set {g}.enabled=false" for g in off),
-                  "images": " ".join(sorted(set(images))),
-                  # Сборка консоли выводится ИЗ ТОЙ ЖЕ строки, что и её выключение
-                  # (`off` выше), а не объявляется вторым местом: иначе стенд без
-                  # консоли и девять всё равно собранных образов разъехались бы
-                  # молча — и разъехались бы именно в тихую сторону, где расход
-                  # есть, а предмета у него нет.
-                  "build_ui": "0" if "uif" in off else "1",
-                  # Гейт посадки держит ЖЁСТКИЙ список ожидаемых сервисов, чтобы
-                  # не развернувшийся сервис не делал его зелёным молчанием.
-                  # Поэтому отсутствие называется явно — тем же способом, который
-                  # гейт для этого и завёл, и из той же карты gate_images.
-                  "skip": " ".join(sorted({gi[g] for g in off if g in gi})),
-                  # Домены, чью изоляцию Internal*-методов этот шард способен
-                  # проверить: у пробы ban #6 есть встречный контроль на внутреннем
-                  # листенере домена, и не развёрнутый домен ответить не может.
-                  # Полноту объединения по шардам утверждает assert-shard-coverage.py.
-                  # Значение карты — СПИСОК: один компонент способен дать больше
-                  # одного домена. `subscription` (поток изменений) служат пять
-                  # носителей сразу, и своего сервиса у него нет ни одного.
-                  "ban6": " ".join(sorted(set(m["core_ban6_domains"]).union(*(
-                      m["gate_ban6_domains"].get(c, []) for c in s["components"]
-                  ), set()))),
-              })
-          print("matrix=" + json.dumps({"shard": rows}, ensure_ascii=False))
-          PY
+          python3 deploy/scripts/e2e-shard-matrix.py >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
   # ─── ШАРД: свой кластер, свой стенд, свои суиты, строго по одной коллекции ──
