@@ -130,7 +130,11 @@ Check-runs одной sha приходят из разных наборов: с�
   Исключение вычислимо: матрица из одного литерального `include` даёт ровно
   одну ногу на запись, и её ноги судятся по вычисленным именам
   (`continuous-fuzz.yml`: `fuzz ${{ matrix.target }}` различает ноги, хотя
-  `mod`, `pkg`, `dir` не названы);
+  `mod`, `pkg`, `dir` не названы). Показ ноги — множество текстов, которыми
+  площадка может показать её значения: разбор PyYAML (YAML 1.1) и площадка
+  читают одну запись по-разному (голое `yes` у PyYAML — `True`). Нога со
+  значением, показ которого не вычислим (число, голая строка вида числа YAML
+  1.2), не вычисляется, и судит прежнее правило (`_shown_values`);
 * вызов переиспользуемого процесса не вычисляется и однозначным не считается;
 * ноль осмотренных джоб — нарушение, а не «нарушений нет».
 
@@ -180,6 +184,7 @@ import argparse
 import importlib.util
 import itertools
 import json
+import math
 import re
 import sys
 from dataclasses import dataclass
@@ -487,8 +492,9 @@ def _job_names(where: str, job_id: str, job: object) -> tuple[list[JobName], lis
     missing = [d for d in dims if d not in refs]
     if missing:
         legs = _include_only_legs(matrix, exprs)
-        if legs is not None:
-            return pattern, _colliding_legs(where, template, legs)
+        shown = _legs_shown(template, exprs, legs) if legs is not None else None
+        if legs is not None and shown is not None:
+            return pattern, _colliding_legs(where, template, legs, shown, refs)
         return pattern, [f"{where}: имя «{template}» не называет измерение матрицы "
                          f"{', '.join(missing)} — ноги по нему получат одно имя"]
 
@@ -510,11 +516,11 @@ def _job_names(where: str, job_id: str, job: object) -> tuple[list[JobName], lis
     return legs, []
 
 
-def _include_only_legs(matrix: dict, exprs: list[str]) -> list[dict] | None:
+def _include_only_legs(matrix: dict, exprs: list[str]) -> list[dict[str, object]] | None:
     """Ноги матрицы из одного литерального `include`: без иных измерений каждая
     запись — ровно одна нога. Вычислимо, лишь когда значения — скаляры без
     выражений, а имя ссылается голыми `matrix.<ключ>` на ключи КАЖДОЙ записи;
-    иначе ног не вычислить — None."""
+    иначе ног не вычислить — None. Ключи записи — строкой, как их пишет ссылка."""
     entries = matrix.get("include")
     if set(matrix) != {"include"} or not isinstance(entries, list) or not entries:
         return None
@@ -528,25 +534,116 @@ def _include_only_legs(matrix: dict, exprs: list[str]) -> list[dict] | None:
     refs = {m.group(1) for m in bare if m}
     if not all(refs <= {str(k) for k in e} for e in entries):
         return None
-    return entries
+    return [{str(k): v for k, v in e.items()} for e in entries]
 
 
-def _colliding_legs(where: str, template: str, legs: list[dict]) -> list[str]:
-    """Ноги, чьи имена совпадают в показе GitHub, — по находке на имя; находка
-    называет ключи, которыми эти ноги различаются, а имя — нет."""
-    by_name: dict[str, list[dict]] = {}
+# Показ скаляра площадкой из значения PyYAML не выводится: PyYAML читает YAML 1.1,
+# и одна запись даёт у него и у площадки разное (kacho#3322, опыты F5 и F6
+# приёмки: голое `yes` у PyYAML — `True`, а `1.0` и `1` — различные числа).
+# Поэтому значение даёт МНОЖЕСТВО текстов, которыми площадка может его показать, —
+# надмножество: лишний текст даёт лишнюю находку, недостающий — молчание.
+# `True` и `False` PyYAML даёт лишь из голых записей ниже, `None` — из голых
+# `~`, `null` и пустой; площадка показывает такую запись либо ею самой, либо
+# каноном своего типа (`true`, `false`, пустая строка) — оба входят в перечень.
+_SHOWN_TRUE = ("true", "True", "TRUE", "yes", "Yes", "YES", "on", "On", "ON")
+_SHOWN_FALSE = ("false", "False", "FALSE", "no", "No", "NO", "off", "Off", "OFF")
+_SHOWN_NULL = ("", "~", "null", "Null", "NULL")
+# Голая запись, которую YAML 1.2 читает числом (схема core). Строкой её PyYAML
+# оставляет, если его разбор 1.1 числа в ней не видит (`1e3`, `0o17`, `-.5`).
+_NUMBER_12 = re.compile(r"[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?"
+                        r"|0o[0-7]+|0x[0-9a-fA-F]+|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN)")
+_STR_TAG = "tag:yaml.org,2002:str"
+# Предел числа текстов одной ноги: девять показов на каждое булево измерение
+# имени. Выше — ногу не вычисляем, и судит прежнее правило.
+_SHOWN_LIMIT = 4096
+
+
+def _shown_values(v: object) -> tuple[str, ...] | None:
+    """Тексты, которыми площадка может показать скаляр ноги, либо None — показ не
+    вычислим.
+
+    * `bool` и `None` — перечни выше: PyYAML даёт их лишь из голых записей.
+    * Строка, которую разбор PyYAML прочёл бы голой как НЕ строку (`'1'`,
+      `'yes'`, `'1.0'`), записана в кавычках, а запись в кавычках — строка при
+      любом разборе: показ — она сама.
+    * Иная строка, похожая на число YAML 1.2, могла быть голой: показ числа —
+      формат площадки, он здесь не вычисляется.
+    * Число и прочие типы разбора (дата) показа не имеют: голые `1`, `01`, `1_0`
+      дают у PyYAML одно значение, у площадки — разный текст."""
+    if isinstance(v, bool):
+        return _SHOWN_TRUE if v else _SHOWN_FALSE
+    if v is None:
+        return _SHOWN_NULL
+    if not isinstance(v, str):
+        return None
+    if yaml.resolver.Resolver().resolve(yaml.nodes.ScalarNode, v, (True, False)) != _STR_TAG:
+        return (v,)
+    if _NUMBER_12.fullmatch(v):
+        return None
+    return (v,)
+
+
+def _legs_shown(template: str, exprs: list[str],
+                legs: list[dict[str, object]]) -> list[frozenset[str]] | None:
+    """Показ каждой ноги — множество обрезанных `provider_cut` текстов имени, либо
+    None, когда хотя бы одна нога не вычисляется (см. `_shown_values`)."""
+    parts = _EXPR.split(template)
+    keys = [m.group(1) for m in (_BARE_MATRIX_REF.match(x) for x in exprs) if m]
+    shown = []
     for leg in legs:
-        text = _EXPR.sub(
-            lambda m: _scalar(leg[_BARE_MATRIX_REF.match(m.group(0)[3:-2]).group(1)]), template)
-        by_name.setdefault(provider_cut(text), []).append(leg)
+        values = [_shown_values(leg[k]) for k in keys]
+        if any(v is None for v in values):
+            return None
+        if math.prod(len(v) for v in values if v is not None) > _SHOWN_LIMIT:
+            return None
+        shown.append(frozenset(
+            provider_cut(parts[0] + "".join(v + p for v, p in zip(combo, parts[1:])))
+            for combo in itertools.product(*(v for v in values if v is not None))))
+    return shown
+
+
+_ABSENT = object()
+
+
+def _colliding_legs(where: str, template: str, legs: list[dict[str, object]],
+                    shown: list[frozenset[str]], named: set[str]) -> list[str]:
+    """Ноги, чьи показы могут совпасть, — по находке на связную группу; находка
+    называет общий текст показа и ключи, которыми эти ноги различаются: сперва
+    не названные именем, иначе названные, но показанные одним текстом."""
+    group = list(range(len(legs)))
+
+    def root(i: int) -> int:
+        while group[i] != i:
+            group[i] = group[group[i]]
+            i = group[i]
+        return i
+
+    for i, j in itertools.combinations(range(len(legs)), 2):
+        if shown[i] & shown[j]:
+            group[root(i)] = root(j)
+    members: dict[int, list[int]] = {}
+    for i in range(len(legs)):
+        members.setdefault(root(i), []).append(i)
     breaches = []
-    for text, same in by_name.items():
-        if len(same) < 2:
+    for idx in sorted(members.values()):
+        if len(idx) < 2:
             continue
-        keys = sorted({str(k) for leg in same for k in leg
-                       if len({_scalar(o.get(k)) for o in same}) > 1})
-        breaches.append(f"{where}: имя «{template}» не называет измерение матрицы "
-                        f"{', '.join(keys) or '(записи равны)'} — ноги по нему получат "
+        seen: dict[str, int] = {}
+        for i in idx:
+            for t in shown[i]:
+                seen[t] = seen.get(t, 0) + 1
+        text = min(t for t, n in seen.items() if n > 1)
+        same = [legs[i] for i in idx]
+        differ = sorted({k for leg in same for k in leg
+                         if len({(type(v), v) for v in (o.get(k, _ABSENT) for o in same)}) > 1})
+        unnamed = [k for k in differ if k not in named]
+        if unnamed:
+            why = f"не называет измерение матрицы {', '.join(unnamed)}"
+        elif differ:
+            why = f"показывает разные значения измерения {', '.join(differ)} одним текстом"
+        else:
+            why = "не различает записей матрицы: они равны"
+        breaches.append(f"{where}: имя «{template}» {why} — ноги по нему получат "
                         f"одно имя «{text}»")
     return breaches
 

@@ -498,6 +498,99 @@ def test_include_only_legs_are_judged_by_their_shown_names() -> None:
     assert any("jobs.fuzz" in b and "mod" in b for b in breaches), breaches
 
 
+def test_a_job_named_by_its_key_outside_the_request_breaks_the_premise() -> None:
+    """kacho#3322, опыт X1 приёмки: джоба без `name:` показывается ключом. Ключ
+    джобы запроса, повторённый джобой процесса вне запроса, — одно имя проверки.
+    Джобы без `name:` в дереве нет, поэтому вход синтетический — тот же ключ в
+    `ui.yml` и в каждом процессе вне запроса. Близнец — копия вне запроса под
+    своим `name:`."""
+    job = {"runs-on": "ubuntu-latest", "steps": [{"run": "true"}]}
+    for where in OUTSIDE:
+        wf = tree_workflows()
+        wf[UI]["jobs"]["bare-key"] = dict(job)
+        wf[where]["jobs"]["bare-key"] = dict(job)
+        owner = where.rsplit("/", 1)[1]
+        breaches = premise(wf).breaches
+        assert any("bare-key" in b and owner in b and "ui.yml" in b for b in breaches), \
+            (where, breaches)
+        twin = tree_workflows()
+        twin[UI]["jobs"]["bare-key"] = dict(job)
+        twin[where]["jobs"]["bare-key"] = {**job, "name": "bare-key вне запроса"}
+        assert premise(twin).breaches == (), (where, premise(twin).breaches)
+
+
+def _fuzz_legs(source: str) -> dict[str, object]:
+    """Дерево, где ноги `continuous-fuzz.yml` заменены записями из текста YAML:
+    скаляр разбирает тот же PyYAML, что и решатель, — из ЗАПИСИ, а не из значения."""
+    wf = tree_workflows()
+    wf[FUZZ]["jobs"]["fuzz"]["strategy"]["matrix"] = {"include": yaml.safe_load(source)}
+    return wf
+
+
+def test_include_legs_shown_alike_by_the_platform_break_the_premise() -> None:
+    """kacho#3322, опыты F5 и F6 приёмки. PyYAML читает YAML 1.1, и голые `yes`,
+    `on`, `~` у него — `True` и `None`; площадка показывает ту же запись своим
+    текстом. Показ ноги поэтому выводится не из значения разбора, а из множества
+    записей, которые могли его дать. Число из голой записи показа не имеет вовсе:
+    `1.0` и `1` у PyYAML различны, а площадка выводит число своим форматом, и
+    голое `1e3` PyYAML оставляет строкой. Такая нога не вычисляется, и судит
+    прежнее правило: имя не называет `pkg`.
+
+    Близнецы меняют один факт — запись в кавычках. Её показ равен тексту при
+    любом разборе, и различные тексты различны."""
+    shown_alike = {
+        "yes ⇄ 'yes'": ("- {target: yes, pkg: p1}\n- {target: 'yes', pkg: p2}\n", "fuzz yes"),
+        "on ⇄ 'on'": ("- {target: on, pkg: p1}\n- {target: 'on', pkg: p2}\n", "fuzz on"),
+        "true ⇄ 'true'": ("- {target: true, pkg: p1}\n- {target: 'true', pkg: p2}\n",
+                          "fuzz true"),
+        "~ ⇄ ''": ("- {target: ~, pkg: p1}\n- {target: '', pkg: p2}\n", "fuzz "),
+    }
+    for case, (source, shown) in shown_alike.items():
+        breaches = premise(_fuzz_legs(source)).breaches
+        assert any("jobs.fuzz" in b and "pkg" in b and f"одно имя «{shown}»" in b
+                   for b in breaches), (case, breaches)
+    not_computed = {
+        "1.0 ⇄ 1": "- {target: 1.0, pkg: p1}\n- {target: 1, pkg: p2}\n",
+        "1 ⇄ '1'": "- {target: 1, pkg: p1}\n- {target: '1', pkg: p2}\n",
+        "1e3 ⇄ '1000'": "- {target: 1e3, pkg: p1}\n- {target: '1000', pkg: p2}\n",
+    }
+    for case, source in not_computed.items():
+        breaches = premise(_fuzz_legs(source)).breaches
+        assert any("jobs.fuzz" in b and "не называет измерение матрицы" in b and "pkg" in b
+                   for b in breaches), (case, breaches)
+    twins = {
+        "'1' ⇄ '2'": "- {target: '1', pkg: p1}\n- {target: '2', pkg: p2}\n",
+        "'1.0' ⇄ '1'": "- {target: '1.0', pkg: p1}\n- {target: '1', pkg: p2}\n",
+        "yes ⇄ 'no'": "- {target: yes, pkg: p1}\n- {target: 'no', pkg: p2}\n",
+        "'yes' ⇄ 'no'": "- {target: 'yes', pkg: p1}\n- {target: 'no', pkg: p2}\n",
+    }
+    for case, source in twins.items():
+        assert premise(_fuzz_legs(source)).breaches == (), (case, premise(_fuzz_legs(source)))
+
+
+def test_include_legs_are_compared_in_their_cut_form() -> None:
+    """Имя ноги длиннее 100 байт площадка показывает первыми 97 байтами: две цели,
+    различные лишь после них, дают одну проверку. Близнец — те же цели, различные
+    в начале."""
+    long = "Т" * 60
+    source = f"- {{target: {long}A, pkg: p1}}\n- {{target: {long}B, pkg: p2}}\n"
+    breaches = premise(_fuzz_legs(source)).breaches
+    assert any("jobs.fuzz" in b and "pkg" in b and "одно имя «fuzz ТТТ" in b
+               for b in breaches), breaches
+    twin = f"- {{target: A{long}, pkg: p1}}\n- {{target: B{long}, pkg: p2}}\n"
+    assert premise(_fuzz_legs(twin)).breaches == (), premise(_fuzz_legs(twin)).breaches
+
+
+def test_an_include_leg_without_the_named_key_is_judged_by_the_prior_rule() -> None:
+    """Запись без ключа, на который ссылается имя, ногу не вычисляет: ссылку
+    площадка раскрывает пустой строкой, и вычислять её обход не берётся. Судит
+    прежнее правило — имя не называет `pkg`, — а не трасса `KeyError`."""
+    source = "- {target: FuzzA, pkg: p1}\n- {pkg: p2}\n"
+    breaches = premise(_fuzz_legs(source)).breaches
+    assert any("jobs.fuzz" in b and "не называет измерение матрицы" in b and "pkg" in b
+               for b in breaches), breaches
+
+
 def test_a_same_named_job_in_the_same_workflow_breaks_the_premise() -> None:
     """Инъекция внутри одного процесса: вторая джоба под именем `golangci-lint`.
     Близнец — то же тело под другим именем."""
