@@ -52,11 +52,11 @@ type AuthorizeCheckInput struct {
 	// Action — `<domain>.<resource>.<verb>` ("vpc.networks.create"). Required.
 	Action string
 
-	// RequiredRelation — explicit FGA relation from the permission catalog.
-	// When non-empty, IAM honors it as-is instead of deriving from the
-	// action verb. Required for admin-only RPCs whose `*.list`/`*.get` verb
-	// would otherwise resolve to `viewer` and slip through the
-	// `cluster.viewer = user:*` cascade.
+	// RequiredRelation — явное отношение FGA из каталога прав. Непустое служба
+	// прав берёт как есть, не выводя отношение из глагола действия. Обязательно
+	// для RPC только для администратора: их глагол `*.list`/`*.get` иначе дал бы
+	// `viewer` и прошёл бы по системной выдаче
+	// `cluster.viewer = system_class:authenticated`.
 	RequiredRelation string
 
 	// ResourceType — FGA object type ("vpc_network" / "project" / "*").

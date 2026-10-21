@@ -254,6 +254,11 @@ func renderOwnLaneRequestFacts(t *testing.T, set []string) ([]laneRequestFacts, 
 		// Умолчания подчарта читаются ЗАНОВО на каждый стенд: `mergeValues`
 		// правит карту на месте.
 		declared := map[string]any{"kaname": readYAML(t, filepath.Join(kanameSubchart(t), "values.yaml"))}
+		// База зонта (`values.yaml`) — под каждой цепочкой: helm читает её при
+		// любой установке. Без неё подчарт получал бы `global` одних профилей
+		// цепочки, то есть не то, что получает на стенде (единое объявление
+		// адресата полосы реестра живёт в базе, kacho#3274).
+		declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, "values.yaml")))
 		for _, p := range stacksTbl[name] {
 			declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, p)))
 		}

@@ -99,6 +99,14 @@ data:
            умолчанием процесса: второе объявление того же предмета, молча
            расходившееся с именем, которое реестр называет докер-клиенту. */}}
       {{- $laneService := include "kaname.laneServiceAud" . }}
+      {{- /* Анонимный субъект — то же единое объявление, что у реестра
+           (kaname.anonymousClientId). Условие блока НЕ расширяется им: без
+           `issuer` и `service` полосы нет, и значение, отрендеренное в пустой
+           блок, было бы принято и не прочитано — поэтому такой рендер отказывает. */}}
+      {{- $anonClient := include "kaname.anonymousClientId" . }}
+      {{- if and $anonClient (not (or $rt.issuer $laneService)) }}
+      {{- fail (printf "kaname: анонимный субъект докерной полосы объявлен (registry.anonymousSubjectId узла платформы в global = %q), а самой полосы нет — ни issuer, ни service. Анонимный токен чеканит полоса /iam/token; объявите адресат полосы (serviceAud зонта) либо снимите anonymousSubjectId." $anonClient) }}
+      {{- end }}
       {{- if or $rt.issuer $laneService }}
       # Docker Registry v2 token shim. `service` — адресат, которому полоса чеканит
       # `aud`; расхождение с тем, что docker шлёт в `?service=`, ломает login (#321).
@@ -108,6 +116,9 @@ data:
         {{- end }}
         {{- with $laneService }}
         service: {{ . | quote }}
+        {{- end }}
+        {{- with $anonClient }}
+        anonymous-client-id: {{ . | quote }}
         {{- end }}
       {{- end }}
 

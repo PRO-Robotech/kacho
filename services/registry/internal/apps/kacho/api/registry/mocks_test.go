@@ -30,6 +30,7 @@ type mockRepo struct {
 	updateFn func(ctx context.Context, spec registry.UpdateSpec, mirror func(*domain.Registry) domain.RegisterIntent) (*domain.Registry, error)
 	markFn   func(ctx context.Context, id string) (*domain.Registry, error)
 	deleteFn func(ctx context.Context, id string, intent domain.RegisterIntent) error
+	countsFn func(ctx context.Context, registryIDs []string) (map[string]int32, error)
 
 	// Записанные вызовы для ассертов.
 	insertIntent domain.RegisterIntent
@@ -53,6 +54,13 @@ func (m *mockRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Re
 		return m.listFn(ctx, q)
 	}
 	return nil, "", nil
+}
+
+func (m *mockRepo) RepositoryCounts(ctx context.Context, registryIDs []string) (map[string]int32, error) {
+	if m.countsFn != nil {
+		return m.countsFn(ctx, registryIDs)
+	}
+	return map[string]int32{}, nil
 }
 
 func (m *mockRepo) Insert(ctx context.Context, r *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, domain.RegisterIntent, error) {

@@ -183,13 +183,15 @@ func (ArtifactType) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_registry_v1_registry_proto_rawDescGZIP(), []int{2}
 }
 
-// Visibility — публичность репозитория (overlay-authoritative на Repository;
+// Visibility — поштучная публикация репозитория (overlay-authoritative на Repository;
 // сид-дефолт на Registry.default_visibility). Дефолт PRIVATE (fail-safe).
 // PUBLIC ⟺ FGA-кортеж `system_class:anonymous v_get registry_repository:<reg>/<repo>`
 // (анонимный pull через data-plane). ЛЮБОЙ путь, где принципал сам приводит ресурс к PUBLIC
 // (per-repo flip, create-with-PUBLIC, default_visibility→PUBLIC), требует registry
-// admin (D-6). Аноним к PRIVATE|absent-repo → uniform 404 (public-ность НЕ
-// existence-oracle).
+// admin (D-6). У чтения без входа два пути, и это поле — лишь первый: второй — выдача
+// роли `registry.public.read` классу на реестр под гейтами выдачи iam (REG-PUB-1 Р3);
+// такая выдача значение этого поля не меняет. Аноним к PRIVATE|absent-repo → uniform
+// 404 (public-ность НЕ existence-oracle).
 type Visibility int32
 
 const (
@@ -320,17 +322,30 @@ type Registry struct {
 	Labels map[string]string `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Output-only: базовый OCI-endpoint namespace, напр. registry.kacho.local/<id>.
 	Endpoint string `protobuf:"bytes,7,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	// Output-only: число repositories в namespace (проекция из zot, не источник истины).
+	// Output-only: число репозиториев реестра на момент чтения — заявленных через
+	// CreateRepository (включая пустые) либо появившихся первым push и ещё не снятых
+	// (DeleteRepository; удаление последнего тега у незаявленного репозитория). Считается
+	// по состоянию сервиса: строка наложения либо строка регистрации, имя из обеих — один
+	// раз; содержимое движка в число не входит. Это те же репозитории, что перечисляет
+	// ListRepositories этого реестра, без сужения правом вызывающего: перечень отдаёт лишь
+	// репозитории, видимые вызывающему, число — все. Заполняется на Get и List; в ответе
+	// операции Create — 0 (реестр новый).
 	RepositoryCount int32 `protobuf:"varint,8,opt,name=repository_count,json=repositoryCount,proto3" json:"repository_count,omitempty"`
 	// Состояние жизненного цикла.
 	Status RegistryStatus `protobuf:"varint,10,opt,name=status,proto3,enum=kacho.cloud.registry.v1.RegistryStatus" json:"status,omitempty"`
 	// Дефолтная публичность для НОВЫХ repo реестра (REG-1 F5, ранее default_visibility) —
 	// сид Repository.visibility на CreateRepository, когда явное visibility не задано
-	// (mutable через Update, дефолт PRIVATE / fail-safe). Единственный registry-level
-	// рычаг видимости — сам Registry top-level `visibility` НЕ несёт (F1). Переход
-	// defaultRepositoryVisibility→PUBLIC требует registry admin (D-6: любой путь к PUBLIC —
-	// admin-gated). Смена НЕ перекрашивает существующие repo (per-repo
-	// Repository.visibility остаётся authoritative).
+	// (mutable через Update, дефолт PRIVATE / fail-safe). Это рычаг ПОШТУЧНОЙ публикации
+	// repo; признака публичности у самого Registry нет (F1). Переход
+	// defaultRepositoryVisibility→PUBLIC требует registry admin (D-6: путь, которым
+	// принципал сам приводит repo к PUBLIC, — под admin). Смена НЕ перекрашивает
+	// существующие repo (per-repo Repository.visibility остаётся authoritative).
+	//
+	// Чтение без входа даёт и второй путь, мимо этого поля: выдача роли
+	// `registry.public.read` классу `system_class:anonymous` с целью «этот реестр»
+	// открывает реестр и все его repo, включая заведённые позже. Её гейт — право
+	// выдать в iam, а не D-6; отзыв выдачи снимает чтение со всех repo разом
+	// (REG-PUB-1 Р2, Р3).
 	DefaultRepositoryVisibility Visibility `protobuf:"varint,9,opt,name=default_repository_visibility,json=defaultRepositoryVisibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"default_repository_visibility,omitempty"`
 	// region_id — REGIONAL placement-якорь реестра (REG-1 F4). Cross-domain ref на
 	// geo.Region (TEXT, без FK: DB-per-service). Обязателен на Create (peer-validate

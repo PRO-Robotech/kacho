@@ -73,11 +73,10 @@ import (
 type AuthzCheckInput struct {
 	Subject string
 	Action  string
-	// RequiredRelation — explicit FGA relation from the catalog. When
-	// non-empty, IAM honors this as-is instead of
-	// deriving from action verb. Required for admin-only RPCs whose
-	// `*.list`/`*.get` verb would resolve to `viewer` and slip through
-	// the `cluster.viewer = user:*` cascade.
+	// RequiredRelation — явное отношение FGA из каталога. Непустое служба прав
+	// берёт как есть, не выводя отношение из глагола действия. Обязательно для
+	// RPC только для администратора: их глагол `*.list`/`*.get` дал бы `viewer`
+	// и прошёл бы по системной выдаче `cluster.viewer = system_class:authenticated`.
 	RequiredRelation string
 	ResourceType     string
 	ResourceID       string
@@ -990,13 +989,12 @@ func (m *AuthzMiddleware) phaseSubject(ctx context.Context, dr decisionRequest, 
 // declare "the edge does not narrow this" without also declaring "and it need not
 // know who is calling".
 //
-// The alternative this replaces was worse than nothing: those rows named `viewer`
-// on the `cluster` singleton, a relation the cluster bootstrap deliberately grants
-// to `user:*` so every tenant can read the global reference catalog (regions,
-// zones, disk types). The Check ran, cost a round-trip, and admitted every
-// authenticated subject — a control with the shape of authorization and none of
-// the substance, plus a liveness coupling to a tuple that has nothing to do with
-// the RPC.
+// Заменённое было хуже, чем ничего: эти строки называли `viewer` на синглтоне
+// `cluster` — отношение, которое начальная выдача кластера намеренно даёт классу
+// `system_class:authenticated`, чтобы глобальный справочник (регионы, зоны, типы
+// дисков) читал каждый арендатор. Проверка шла, стоила обращения и пропускала
+// каждого вошедшего субъекта — форма авторизации без её содержания, да ещё
+// зависимость живости от факта, не имеющего к RPC отношения.
 func (m *AuthzMiddleware) phaseScopeFiltered(dr decisionRequest, entry CatalogEntry) (decision, bool) {
 	if !entry.ScopeFiltered {
 		return decision{}, false
@@ -1169,8 +1167,8 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	// AuthorizeService.Check отбивает с "no path: unscoped resource"
 	// (authorize_service.go блокирует req.Resource.ID == "*"). Тут
 	// substitute'им wildcard на канонический singleton id, чтобы Check
-	// шел на объект якоря, где tuple-cascade
-	// `define viewer: [user, user:*, ...]` действительно работает.
+	// шел на объект якоря, где `define viewer: [user, service_account,
+	// system_class] ...` выполняется системной выдачей классу `authenticated`.
 	if resourceType == "cluster" && resourceID.IsWildcard() {
 		resourceID = ResourceID(catalogderive.ClusterSingletonID)
 	}

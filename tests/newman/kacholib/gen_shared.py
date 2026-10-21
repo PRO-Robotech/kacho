@@ -1751,7 +1751,7 @@ def retry_until_authorized(step, budget: int, interval_ms: int,
         "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
         # Добавка набора в ГОЛОВУ ожидания: проверка, которая обязана отработать
         # ДО того, как шаг начнёт жечь бюджет. Пусто у тех, кто её не заводил.
-        *(_RETRY_LANE_HEAD if lane_head else ()),
+        *(_retry_lane_head(step.path, getattr(step, "pre_script", ())) if lane_head else ()),
         "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
         "  pm.environment.set('_authRetryCount', '0');",
         "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
@@ -1908,15 +1908,152 @@ def retry_until_present(step, id_env_var, budget: int, interval_ms: int, ledger=
 # шаг — их в дереве 2894, — и тринадцать строк объяснения на каждый дали бы
 # стотысячный прирост коллекций, ничего не сообщив прогону. В скрипт идёт то, что
 # читает разбирающий ПАДЕНИЕ; объяснение — тому, кто правит генератор.
-_RETRY_LANE_HEAD = (
+#
+# ХВОСТОВАЯ КОСАЯ АДРЕСА — НЕ НЕЗАХВАЧЕННАЯ ПЕРЕМЕННАЯ (kacho#3324). С kacho#3257
+# генератор отправляет хвостовую косую как есть — последним пустым сегментом
+# (`path_segments_as_sent`), и законный адрес `/v2/<repo>/blobs/uploads/` (открытие
+# загрузки Registry v2) страж, судивший ЛЮБОЙ пустой сегмент, принимал за пустую
+# переменную: шесть шагов `push-*-open` сборки #3309 получили отказ при ответе 202.
+# Во время исполнения два случая неразличимы — пустая переменная в конце пути даёт
+# тот же пустой последний сегмент, — различает их только ШАБЛОН адреса шага, и знает
+# его генератор. Поэтому вариант стража выбирается здесь, по адресу шага: у адреса,
+# который сам кончается косой, пустой ПОСЛЕДНИЙ сегмент законен, у прочих — отказ,
+# как прежде; пустой ВНУТРЕННИЙ сегмент и уцелевшая подстановка — отказ всегда.
+# Мягкий вариант — ТОЛЬКО шагу, чей адрес на исполнении и есть шаблон: если
+# предварительный скрипт переписывает `pm.request.url` иначе, чем подстановкой
+# своего же шаблона (заливка блоба уходит по захваченному `Location`), пустой
+# последний сегмент значит «переписывать было нечем» — незахваченная переменная, и
+# такой шаг остаётся на строгом варианте (приёмка #3324: мягкий вариант у
+# `push-*-put` превращал один отказ в 81 холостой повтор).
+# У шагов без хвостовой косой голова побайтово прежняя. Обе стороны и мутанты
+# держит проба `tests/newman/scripts/retry_lane_head_test.py`.
+_RETRY_LANE_TRAILING_MARK = (
+    "// хвостовая косая — литерал адреса шага: пустой ПОСЛЕДНИЙ сегмент законен (kacho#3324)."
+)
+
+
+def _ends_with_literal_slash(path: str) -> bool:
+    """Адрес шага сам кончается косой — последний сегмент «как отправлен» пуст
+    литералом шаблона, а не пустой переменной. Сегменты — тем же производителем,
+    что сериализует путь (`path_segments_as_sent`); запрос отрезается, как у края."""
+    segs = path_segments_as_sent((path or "").split("?")[0])
+    return bool(segs) and segs[-1] == ""
+
+
+# РАЗРЕШАЮЩИЙ ПЕРЕЧЕНЬ, А НЕ ЗАПРЕЩАЮЩИЙ (приёмка #3324, второй круг). Перечень форм
+# ЗАПИСИ адреса пропускал любую форму, которой в нём не было (`pm.request.url +=`,
+# `pm.request['url'] =`, псевдоним запроса, `Object.assign`, деструктуризация, цепочка
+# через перевод строки — 8 из 8), и незахваченная переменная снова уходила в повтор.
+# Поэтому здесь перечислено ДОПУСТИМОЕ, а всё прочее — строгий вариант. Сомнение
+# решается в строгую сторону: лишний строгий вариант стоит одного отказа на
+# неудачном захвате, пропущенный — ослабленной проверки.
+#
+# Допустимо (после изъятия формы стража адреса плоскости данных):
+#   * обращения к `pm` только через точку и только к членам, кроме `request`, —
+#     кроме трёх форм ниже; `pm` как значение (псевдоним, деструктуризация,
+#     аргумент), `pm[...]`, `this`, `globalThis`, `eval`, `Function` — строгий;
+#   * `pm.request.headers.<метод>(…)` — заголовки адреса не меняют;
+#   * `pm.request.url.toString()` — чтение в строку (страж подстановки набора);
+#   * `pm.request.update({body: …})` — аргумент начинается с `body:` и не несёт
+#     ни `url`, ни `method`, ни вычисляемого ключа, ни развёртки.
+_CFG_URL_DECL = re.compile(
+    r"const __cfgUrl = pm\.environment\.get\(('[^'\\]*')\) \|\| "
+    r"pm\.variables\.get\(\1\) \|\| '';")
+_PM_ESCAPES = re.compile(r"\b(?:this|globalThis|eval|Function)\b|\bpm\s*\[|[.\w$]\s*\.\s*pm\b")
+
+
+def _balanced_args(text: str) -> Optional[str]:
+    """Текст от открывающей скобки до парной ей закрывающей; None — пары нет."""
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return text[:i + 1]
+    return None
+
+
+def _pm_request_use_is_allowed(after: str) -> bool:
+    """`after` — текст сразу за `pm.request`; допустима ли эта форма обращения."""
+    if re.match(r"\s*\.\s*headers\s*\.\s*[A-Za-z_$][\w$]*\s*\(", after):
+        return True
+    if re.match(r"\s*\.\s*url\s*\.\s*toString\s*\(\s*\)", after):
+        return True
+    upd = re.match(r"\s*\.\s*update\s*(?=\()", after)
+    if upd:
+        arg = _balanced_args(after[upd.end():])
+        return bool(arg and re.match(r"\(\s*\{\s*body\s*:", arg)
+                    and not re.search(r"\burl\b|\bmethod\b|\[|\.\.\.", arg))
+    return False
+
+
+def _address_is_step_template(path: str, pre_lines) -> bool:
+    """Адрес шага на исполнении — его собственный шаблон: предварительный скрипт
+    не трогает `pm.request` ничем, кроме форм разрешающего перечня выше, а адрес
+    пишет только формой стража плоскости данных
+    (`pm.request.url = __cfgUrl + pm.variables.replaceIn('<этот шаблон>');`)."""
+    rest = "\n".join(pre_lines or ())
+    lawful = re.compile(r"pm\.request\.url = __cfgUrl \+ pm\.variables\.replaceIn\("
+                        + re.escape(js_str(path or "")) + r"\);")
+    if lawful.search(rest):
+        # Подстановка законна, лишь пока `__cfgUrl` — базовый адрес из окружения,
+        # объявленный ровно этой формой и нигде не переписанный.
+        if len(lawful.findall(rest)) != 1 or len(_CFG_URL_DECL.findall(rest)) != 1:
+            return False
+        rest = _CFG_URL_DECL.sub("", lawful.sub("", rest))
+        if re.search(r"__cfgUrl\s*(?:[-+*/|&]?=(?!=)|\+\+|--)", rest):
+            return False
+    if _PM_ESCAPES.search(rest):
+        return False
+    for m in re.finditer(r"\bpm\b", rest):
+        tail = rest[m.end():]
+        member = re.match(r"\s*\.\s*([A-Za-z_$][\w$]*)", tail)
+        if not member:
+            return False
+        if member.group(1) != "request":
+            continue
+        if not _pm_request_use_is_allowed(tail[member.end():]):
+            return False
+    return True
+
+
+# Исполняемая строка мягкого варианта: по ней, а не по комментарию-метке, перепись
+# коллекций судит, какой вариант шаг получил на деле.
+_RETRY_LANE_LENIENT_EMPTY = "  if (v === '') { return _ri !== _rpath.length - 1; }"
+_RETRY_LANE_STRICT_EMPTY = "  if (v === '') { return true; }"
+
+
+def _lenient_trailing_slash(path: str, pre_lines) -> bool:
+    """Мягкий вариант стража: адрес шага сам кончается косой И на исполнении
+    остаётся своим шаблоном."""
+    return _ends_with_literal_slash(path) and _address_is_step_template(path, pre_lines)
+
+
+def _retry_lane_head(path: str, pre_lines=()) -> tuple:
+    """Голова полосы ожидания для адреса шага `path` (см. прозу выше)."""
+    if _lenient_trailing_slash(path, pre_lines):
+        some = ("const _rblank = _rpath.some(function (v, _ri) {",
+                _RETRY_LANE_LENIENT_EMPTY)
+        mark = (_RETRY_LANE_TRAILING_MARK,)
+    else:
+        some = ("const _rblank = _rpath.some(function (v) {",
+                _RETRY_LANE_STRICT_EMPTY)
+        mark = ()
+    return _RETRY_LANE_HEAD_TOP + mark + some + _RETRY_LANE_HEAD_TAIL
+
+
+_RETRY_LANE_HEAD_TOP = (
     "",
     "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
     "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
     "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
     "  return String(s && s.value !== undefined ? s.value : s);",
     "});",
-    "const _rblank = _rpath.some(function (v) {",
-    "  if (v === '') { return true; }",
+)
+
+_RETRY_LANE_HEAD_TAIL = (
     "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
     "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
     "});",

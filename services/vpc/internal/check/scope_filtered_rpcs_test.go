@@ -41,7 +41,8 @@ func TestScopeFilteredRPCs_MatchesMap(t *testing.T) {
 //   - InternalNetworkInterfaceService/ListByInstance — инстансы называет вызывающий,
 //     а ответ касается интерфейсов, у каждого из которых свой владелец. Прежний
 //     cluster-scoped `viewer` пропускал КАЖДОГО аутентифицированного субъекта
-//     (bootstrap пишет `cluster:<root>#viewer@user:*` ради глобального справочника),
+//     (начальная выдача пишет `cluster:<root>#viewer@system_class:authenticated`
+//     ради глобального справочника),
 //     то есть был формой без содержания. Видимость решается в nicinternal per-object.
 //
 // Публичные List (NetworkService/List и соседи) сюда НЕ входят намеренно: у них есть

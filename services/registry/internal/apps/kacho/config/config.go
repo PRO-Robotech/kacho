@@ -417,15 +417,16 @@ type Config struct {
 	// (CWE-319). Параллель Config.TokenAcceptance. В dev игнорируется.
 	DataplaneTLSTerminatedExternally bool `envconfig:"KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY" default:"false"`
 
-	// AnonymousSubjectID — the anonymous principal id (kaname AnonymousClientID: the
-	// `sub` the /iam/token shim puts into the anonymous token it mints) the data-plane
-	// resolves to the system class `system_class:anonymous` for anonymous public pull
-	// (RG-1 D-7; приёмка kaname SC-39). A VALID anon Bearer whose sub equals this id
-	// reads only PUBLIC repos (публикация — выдача классу anonymous) and can never
-	// write (B03/B14). Пусто (default) → anonymous pull DISABLED (secure-by-default:
-	// анонимный /token не сконфигурирован ⇒ никакой токен не резолвится в класс).
-	// MUST match kaname's configured AnonymousClientID and be a RESERVED id (no real
-	// principal shares it).
+	// AnonymousSubjectID — идентификатор анонимного принципала: `sub`, который
+	// полоса `/iam/token` службы доступа ставит в чеканимый ею анонимный токен
+	// (`api-server.registry-token.anonymous-client-id`, приёмка kaname SC-39).
+	// Плоскость данных переводит его в класс `system_class:anonymous` и читает
+	// ровно то, что выдано этому классу: поштучно опубликованные репозитории (RG-1
+	// D-7) и реестры, открытые выдачей роли `registry.public.read` (REG-PUB-1).
+	// Писать такой токен не может ничем (B03/B14). Пусто (умолчание) — анонимный
+	// поток выключен: ни один токен в класс не переводится. Значение одно на обе
+	// стороны (`global.kacho.registry.anonymousSubjectId` в зонте); форму
+	// порождённого идентификатора отвергает страж старта (AnonymousSubject).
 	AnonymousSubjectID string `envconfig:"KACHO_REGISTRY_ANONYMOUS_SUBJECT_ID" default:""`
 
 	// EndpointBase — tenant-facing base OCI-endpoint namespace. Output-only поле

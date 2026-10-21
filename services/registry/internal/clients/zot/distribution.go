@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
 
@@ -87,9 +88,17 @@ func (c *Client) DeleteTag(ctx context.Context, registryID, repository, tag stri
 	return delErr
 }
 
-// NamespaceEmpty сообщает, пуст ли namespace реестра (нет ни одного repo с префиксом
-// <registryID>/). zot недоступен → ErrUnavailable (fail-closed: Delete-precondition
-// НЕ трактует ошибку как «пусто»).
+// NamespaceEmpty сообщает, пуст ли namespace реестра: ни у одного repo с префиксом
+// <registryID>/ нет ни одного тега. Судится СОДЕРЖИМОЕ, а не каталог: каталог движка
+// (zot v2.1.20) помнит имя repo после снятия последнего тега и имя с одной открытой
+// загрузкой, а снять такое имя через API движка нельзя — маршрута удаления repo у него
+// нет. Проверка по каталогу поэтому отказывала в удалении опустошённого реестра
+// навсегда (kacho#3327). Предикат тот же, что у RepositoryEmpty (DeleteRepository):
+// реестр пуст ровно тогда, когда пуст каждый его repo.
+//
+// zot недоступен либо теги хоть одного repo не прочитаны → ErrUnavailable (fail-closed:
+// Delete-precondition НЕ трактует ошибку как «пусто»). Найденный тег — ответ «непусто»
+// независимо от сбоев соседних чтений: содержимое доказано.
 func (c *Client) NamespaceEmpty(ctx context.Context, registryID string) (bool, error) {
 	if err := c.ready(); err != nil {
 		return false, err
@@ -98,18 +107,57 @@ func (c *Client) NamespaceEmpty(ctx context.Context, registryID string) (bool, e
 	if err != nil {
 		return false, err
 	}
-	return len(repos) == 0, nil
+	return c.noneTagged(ctx, repos)
 }
 
-// RemoveNamespace снимает storage-namespace реестра в zot. namespace-объекта в zot
-// нет (репо адресуются полным путём), а Delete допускается только для ПУСТОГО
-// namespace (precondition REG-08) — снимать нечего. Проверяет пустоту и завершается;
-// zot недоступен → ErrUnavailable.
+// noneTagged читает теги каждого repo ограниченным fan-out'ом (zotFanout) и сообщает,
+// что ни у одного тегов нет. После первого найденного тега новые чтения не начинаются;
+// начатые доходят до конца сами — без отмены контекста, чтобы отменённые соседи не
+// писали в журнал ложных отказов движка.
+func (c *Client) noneTagged(ctx context.Context, fullRepos []string) (bool, error) {
+	var tagged atomic.Bool
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(zotFanout)
+	for _, full := range fullRepos {
+		if tagged.Load() {
+			break
+		}
+		g.Go(func() error {
+			if tagged.Load() {
+				return nil
+			}
+			tags, terr := c.repoTags(gctx, full)
+			if terr != nil {
+				return terr
+			}
+			if len(tags) > 0 {
+				tagged.Store(true)
+			}
+			return nil
+		})
+	}
+	werr := g.Wait()
+	if tagged.Load() {
+		return false, nil
+	}
+	if werr != nil {
+		return false, werr
+	}
+	return true, nil
+}
+
+// RemoveNamespace — шаг снятия storage-namespace в async-Delete. Отдельного объекта
+// namespace в zot нет (repo адресуются полным путём), маршрута удаления repo — тоже:
+// у движка есть лишь DELETE манифеста, блоба и загрузки, а перечислить блобы и
+// загрузки repo через API нельзя. Поэтому шаг подтверждает пустоту по содержимому
+// (NamespaceEmpty) и завершается; имена без тегов остаются движку — его сборщик мусора
+// снимает неиспользуемые блобы и устаревшие загрузки после gcDelay, а repo, чьи блобы
+// сняты все, — вместе с ними (zot v2.1.20, pkg/storage/gc/gc.go, removeUnreferencedBlobs).
+// Непусто → ErrFailedPrecondition; zot недоступен → ErrUnavailable.
 func (c *Client) RemoveNamespace(ctx context.Context, registryID string) error {
 	if err := c.ready(); err != nil {
 		return err
 	}
-	// Delete прошёл precondition пустого namespace; физически удалять нечего.
 	empty, err := c.NamespaceEmpty(ctx, registryID)
 	if err != nil {
 		return err

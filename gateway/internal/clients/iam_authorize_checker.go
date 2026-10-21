@@ -39,11 +39,12 @@ func (a *AuthzChecker) Check(ctx context.Context, in middleware.AuthzCheckInput)
 	res, err := a.inner.Check(ctx, AuthorizeCheckInput{
 		Subject: in.Subject,
 		Action:  in.Action,
-		// Forward the catalog's explicit FGA relation. Without it IAM would
-		// fall back to verb→relation derivation, so admin-only RPCs
-		// (required_relation=system_admin) whose verb is `list`/`get` would
-		// derive to `viewer` and slip through the `cluster.viewer=user:*`
-		// cascade (privilege escalation), while non-CRUD verbs would fail closed.
+		// Явное отношение из каталога прав передаётся дальше. Без него служба прав
+		// вывела бы отношение из глагола: RPC только для администратора
+		// (required_relation=system_admin) с глаголом `list`/`get` получил бы
+		// `viewer` и прошёл бы по системной выдаче
+		// `cluster.viewer=system_class:authenticated` (повышение привилегий), а
+		// глаголы вне CRUD отказывали бы закрыто.
 		RequiredRelation: in.RequiredRelation,
 		ResourceType:     in.ResourceType,
 		ResourceID:       in.ResourceID,

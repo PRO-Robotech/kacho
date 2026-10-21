@@ -165,7 +165,7 @@ func TestModelParity_EveryRequiredRelationIsDeclared(t *testing.T) {
 // (announce-state репортит только data plane), поэтому:
 //
 //   - тип subject'а — ТОЛЬКО `service_account`: ни `user`, ни `group#member`,
-//     ни wildcard `user:*`; человеко-/группо-subject физически невозможно
+//     ни системный класс `system_class`; человеко-/группо-subject физически невозможно
 //     записать в такой факт (модель его не допускает) → тенант не получит
 //     его ни через роль, ни через группу;
 //   - отношение НЕ выводится из tier'а (`or editor`/`or admin`/`or viewer`) —

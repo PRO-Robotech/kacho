@@ -44,11 +44,11 @@ func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 		{name: "боевой профиль не доверяет никому", value: "", peers: "", sans: "", mustSay: knob, mustName: sansKnob},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			env, listen := ka1EdgeEnv(t, "production")
+			env := ka1EdgeEnv(t, "production")
 			env[knob] = c.value
 			env[peersKnob] = c.peers
 			env[sansKnob] = c.sans
-			got := ka1RunEdge(t, env, listen)
+			got := ka1RunEdge(t, env)
 			if !got.exited || got.code == 0 {
 				t.Fatalf("процесс обязан отказать в старте; завершился=%v код=%d healthz=%d\n%s",
 					got.exited, got.code, got.healthz, ka1Tail(got.journal))
@@ -65,9 +65,9 @@ func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 		"якорь звеньев = якорь установки": func(e map[string]string) { e[anchorKnob] = e["KACHO_API_GATEWAY_MTLS_CA_FILE"] },
 	} {
 		t.Run(name, func(t *testing.T) {
-			env, listen := ka1EdgeEnv(t, "production")
+			env := ka1EdgeEnv(t, "production")
 			mutate(env)
-			got := ka1RunEdge(t, env, listen)
+			got := ka1RunEdge(t, env)
 			if !got.exited || got.code == 0 {
 				t.Fatalf("процесс обязан отказать в старте; завершился=%v код=%d healthz=%d\n%s",
 					got.exited, got.code, got.healthz, ka1Tail(got.journal))
@@ -82,11 +82,11 @@ func TestTrustedProxyCircleIsJudgedAtStart(t *testing.T) {
 		"близнец: разработка, ничего не объявлено — старт":  {"dev", "", "", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			env, listen := ka1EdgeEnv(t, v[0])
+			env := ka1EdgeEnv(t, v[0])
 			env[knob] = v[1]
 			env[peersKnob] = v[2]
 			env[sansKnob] = v[3]
-			got := ka1RunEdge(t, env, listen)
+			got := ka1RunEdge(t, env)
 			if got.exited || got.healthz != http.StatusOK {
 				t.Fatalf("процесс обязан стартовать; завершился=%v код=%d\n%s", got.exited, got.code, ka1Tail(got.journal))
 			}

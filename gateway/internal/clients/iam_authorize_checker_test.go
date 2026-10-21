@@ -24,13 +24,14 @@ func (r *recordingAuthorizeClient) Check(_ context.Context, in clients.Authorize
 
 func (r *recordingAuthorizeClient) Close() error { return nil }
 
-// TestAuthzChecker_ForwardsRequiredRelation locks the bug where the adapter
-// bridging middleware.AuthzCheckInput → clients.AuthorizeCheckInput dropped
-// RequiredRelation. With it dropped, IAM falls back to verb→relation derivation,
-// so an admin-only RPC (required_relation=system_admin) whose verb is
-// `list`/`get` derives to `viewer` and slips through the `cluster.viewer=user:*`
-// cascade — a privilege-escalation hole — while non-CRUD verbs (issue/grant/…)
-// fail closed with "does not resolve to a known relation".
+// TestAuthzChecker_ForwardsRequiredRelation закрепляет дефект: переходник
+// middleware.AuthzCheckInput → clients.AuthorizeCheckInput терял
+// RequiredRelation. Без него служба прав выводит отношение из глагола, и RPC
+// только для администратора (required_relation=system_admin) с глаголом
+// `list`/`get` получает `viewer` и проходит по системной выдаче
+// `cluster.viewer=system_class:authenticated` — дыра повышения привилегий, — а
+// глаголы вне CRUD (issue/grant/…) отказывают закрыто с "does not resolve to a
+// known relation".
 func TestAuthzChecker_ForwardsRequiredRelation(t *testing.T) {
 	rec := &recordingAuthorizeClient{}
 	checker := clients.NewAuthzChecker(rec)

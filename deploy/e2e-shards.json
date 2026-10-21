@@ -36,7 +36,7 @@
     "",
     "Предикат, из которого это выведено (повторяемый):",
     "  git grep -lE 'consoleUrl|ui-future|:5173' -- \\",
-    "      'services/*/tests/newman/collections' 'gateway/tests/newman/collections'   → 0 при 72 коллекциях",
+    "      'services/*/tests/newman/collections' 'gateway/tests/newman/collections'   → 0 при 73 коллекциях",
     "",
     "То есть НИ ОДИН newman-запрос консоли не касается: newman ходит по HTTP в",
     "край, консоль — отдельная поверхность. При этом `dev-up` собирал девять её",
@@ -105,6 +105,29 @@
       "default_port": 18580,
       "scheme": "http",
       "why": "registry data plane (:8080)"
+    }
+  },
+
+  "_gate_off_values": [
+    "Значения, которые выключение компонента ОБЯЗАНО снять вместе с ним: шард,",
+    "не назвавший компонент, получает `--set <gate>.enabled=false` и следом",
+    "`--set-string <ключ>=<значение>` каждой пары записи. Вывод — один,",
+    "deploy/scripts/e2e-shard-matrix.py; ключ записи вне gates — его отказ.",
+    "",
+    "registry: общее значение анонимного субъекта плоскости данных объявлено в",
+    "базе зонта для всех стеков (приёмка REG-PUB-1 ред. 13, Р9 п. 3), а страж",
+    "зонта отказывает в рендере, когда оно задано при выключенном реестре",
+    "(сценарий 53 (г)): служба доступа выдавала бы анонимный токен, который",
+    "некому узнать. Шард без реестра поэтому снимает значение тем же доводом,",
+    "что и реестр, — это законный близнец 53 (г) из приёмки: «общее значение",
+    "пусто при выключенном реестре — код 0, анонимного потока нет ни на одной",
+    "стороне». Страж не ослаблен: выключенный реестр с заданным значением",
+    "по-прежнему отказ, и это утверждает близнец пробы",
+    "deploy/tests/helm/e2e-shard-stand-renders-test.sh на каждом таком шарде."
+  ],
+  "gate_off_values": {
+    "registry": {
+      "global.kacho.registry.anonymousSubjectId": ""
     }
   },
 
@@ -183,7 +206,7 @@
       "id": "edge",
       "suites": ["geo", "registry"],
       "components": ["registry", "pg-registry"],
-      "why": "8+5 коллекций / 479 запросов. Ни одна из двух суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, registry→registry). Самый лёгкий стенд. Суита api-gateway отсюда уехала на шард compute-storage (kacho#3238, kacho#3256): её коллекции system_class_anonymous_edge и system_class_subject_check ходят в compute, storage и vpc, которых этот стенд не поднимает."
+      "why": "8+6 коллекций / 651 запросов. Ни одна из двух суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, registry→registry и iam ядра). Самый лёгкий стенд. Суита api-gateway отсюда уехала на шард compute-storage (kacho#3238, kacho#3256): её коллекции system_class_anonymous_edge и system_class_subject_check ходят в compute, storage и vpc, которых этот стенд не поднимает."
     }
   ]
 }

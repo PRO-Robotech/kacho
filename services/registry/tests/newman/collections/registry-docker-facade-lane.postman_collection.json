@@ -53,8 +53,8 @@
   ],
   "item": [
     {
-      "name": "IBT-14-DOCKER-CHALLENGE-NAMES-THE-FACADE-HANDLE — Registry data-plane 401 challenge advertises the iam /iam/token handle (never the provider token endpoint), and that handle is a live gate",
-      "description": "class:SEC | class:CONF | class:NEG | priority:P0",
+      "name": "IBT-14-DOCKER-CHALLENGE-NAMES-THE-FACADE-HANDLE — Registry data-plane 401 challenge advertises the iam /iam/token handle (never the provider token endpoint), and that handle is a live gate: read-only anonymous token minted for the data plane's audience, garbage credentials refused with the same realm",
+      "description": "class:SEC | class:CONF | class:NEG | class:AUTHN | priority:P0",
       "item": [
         {
           "name": "dataplane-anonymous-challenge",
@@ -137,7 +137,7 @@
           ]
         },
         {
-          "name": "facade-names-the-same-audience-as-the-data-plane",
+          "name": "facade-default-audience-is-the-data-plane-audience",
           "request": {
             "method": "GET",
             "header": [
@@ -191,18 +191,21 @@
                   "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ сервиса').to.not.be.undefined;",
                   "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
                   "});",
-                  "pm.test('the handle challenges an anonymous caller (401)',",
-                  "  () => pm.expect(pm.response.code, pm.response.text()).to.eql(401));",
-                  "const _fwa = pm.response.headers.get('WWW-Authenticate') || '';",
-                  "const _fsvc = (_fwa.match(/service=\"([^\"]+)\"/) || [])[1] || '';",
-                  "pm.test('the handle NAMES the audience it mints for — its own default, not an echo: this request named none', () => {",
-                  "  pm.expect(_fsvc, 'WWW-Authenticate: ' + _fwa).to.be.a('string')",
-                  "    .with.length.greaterThan(0);",
-                  "});",
-                  "pm.test('BOTH sides of the lane name the SAME audience — the data plane tells it to the docker client, the facade mints it into aud', () => {",
-                  "  pm.expect(_fsvc, 'facade says \"' + _fsvc + '\", data plane says \"'",
+                  "pm.test('the handle issues an anonymous token to a caller with no credentials (REG-PUB-1 Р9 п. 3; 401 = anonymous flow off on this landing)',",
+                  "  () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "let _j = null; try { _j = pm.response.json(); } catch (e) { _j = null; }",
+                  "const _tok = (_j && (_j.token || _j.access_token)) || '';",
+                  "pm.test('the body carries the token as a three-segment JWS', () => pm.expect(_tok.split('.').length, 'body keys: ' + JSON.stringify(Object.keys(_j || {}))).to.eql(3));",
+                  "let _c = null;",
+                  "try {",
+                  "  const _cj = require('crypto-js');",
+                  "  const _b = _tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  _c = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b)));",
+                  "} catch (e) { _c = null; }",
+                  "pm.test('BOTH sides of the lane name the SAME audience — the data plane tells it to the docker client, the facade mints it into aud; this request named none, so aud is the facade default, not an echo', () => {",
+                  "  pm.expect(_c && _c.aud, 'facade aud ' + JSON.stringify(_c && _c.aud) + ', data plane says \"'",
                   "    + pm.environment.get('ibtServiceAud') + '\"')",
-                  "    .to.eql(pm.environment.get('ibtServiceAud'));",
+                  "    .to.eql([pm.environment.get('ibtServiceAud')]);",
                   "});"
                 ]
               }
@@ -210,7 +213,7 @@
           ]
         },
         {
-          "name": "facade-token-handle-is-a-gate-rya1",
+          "name": "facade-token-handle-serves-the-anonymous-pull-flow-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -301,23 +304,133 @@
                   "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ сервиса').to.not.be.undefined;",
                   "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
                   "});",
-                  "pm.test('the handle EXISTS and refuses an anonymous caller (404 = advertised but '",
-                  "  + 'not served; 200 = anonymous issuance)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(401));",
-                  "const _wa = pm.response.headers.get('WWW-Authenticate') || '';",
-                  "pm.test('the handle re-challenges with its own realm, and it is the same handle', () => {",
-                  "  const m = _wa.match(/realm=\"([^\"]+)\"/);",
-                  "  pm.expect(m && m[1], _wa).to.be.a('string');",
-                  "  const p = (m && m[1] || '').replace(/^[a-z]+:\\/\\/[^/]+/i, '');",
-                  "  pm.expect(p, 'the facade advertises ' + p + ' while the data plane advertises '",
-                  "    + pm.environment.get('ibtRealmPath')).to.eql(pm.environment.get('ibtRealmPath'));",
-                  "});"
+                  "pm.test('the handle EXISTS at the advertised address and serves the anonymous pull flow (404 = advertised but not served; 401 = anonymous flow off)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "let _j = null; try { _j = pm.response.json(); } catch (e) { _j = null; }",
+                  "const _tok = (_j && (_j.token || _j.access_token)) || '';",
+                  "pm.test('the body carries the token as a three-segment JWS', () => pm.expect(_tok.split('.').length, 'body keys: ' + JSON.stringify(Object.keys(_j || {}))).to.eql(3));",
+                  "let _c = null;",
+                  "try {",
+                  "  const _cj = require('crypto-js');",
+                  "  const _b = _tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  _c = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b)));",
+                  "} catch (e) { _c = null; }",
+                  "pm.test('the anonymous token is read-only: scope is exactly registry:pull', () => pm.expect(_c && _c.scope, JSON.stringify(_c)).to.eql('registry:pull'));",
+                  "pm.test('the token subject is the declared anonymous principal of the closed form, not a generated id', () => pm.expect(_c && _c.sub, JSON.stringify(_c)).to.be.a('string').and.match(/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "facade-token-handle-rejects-garbage-credentials-rya2",
+          "name": "facade-anonymous-push-request-still-gets-read-only-rya2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/token?service={{ibtServiceAud}}&scope=repository:ibt/{{runId}}:pull,push",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "token?service={{ibtServiceAud}}&scope=repository:ibt",
+                "{{runId}}:pull,push"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: anonymous (strip Authorization header)",
+                  "pm.request.headers.remove('Authorization');",
+                  "// HARNESS-CONFIG GUARD — iamRegistryTokenBaseUrl передаёт прогонщик (--env-var).",
+                  "// Нет значения = харнесс сломан, а НЕ законный режим: сперва упасть, потом пропустить.",
+                  "const __cfgUrl = pm.environment.get('iamRegistryTokenBaseUrl') || pm.variables.get('iamRegistryTokenBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/token?service={{ibtServiceAud}}&scope=repository:ibt/{{runId}}:pull,push');",
+                  "} else {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: iamRegistryTokenBaseUrl задана — docker lane — anonymous caller asking for a write verb', () => {",
+                  "    pm.expect.fail('iamRegistryTokenBaseUrl не задана — прогонщик (deploy/scripts/newman-parallel.sh --env-var) её не передал. Шаг исполнен быть не может, а проверка, которая не может исполниться, НЕ ВПРАВЕ быть молча выброшенной.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// Ждать можно ПРАВА на существующее имя, а не появление самого имени: адрес,",
+                  "// собранный из незахваченной переменной, окно видимости не наполнит никогда.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) {",
+                  "  if (v === '') { return true; }",
+                  "  var _d = v; try { _d = decodeURIComponent(v); } catch (e) { _d = v; }",
+                  "  return /\\{\\{[^}]*\\}\\}/.test(_d);",
+                  "});",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('facade docker-token handle, anonymous push request: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ сервиса').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('the anonymous flow answers a write request with a token, not an error', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "let _j = null; try { _j = pm.response.json(); } catch (e) { _j = null; }",
+                  "const _tok = (_j && (_j.token || _j.access_token)) || '';",
+                  "pm.test('the body carries the token as a three-segment JWS', () => pm.expect(_tok.split('.').length, 'body keys: ' + JSON.stringify(Object.keys(_j || {}))).to.eql(3));",
+                  "let _c = null;",
+                  "try {",
+                  "  const _cj = require('crypto-js');",
+                  "  const _b = _tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  _c = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b)));",
+                  "} catch (e) { _c = null; }",
+                  "pm.test('asking for push does not widen the anonymous token: scope is still exactly registry:pull', () => pm.expect(_c && _c.scope, JSON.stringify(_c)).to.eql('registry:pull'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "facade-token-handle-rejects-garbage-credentials-rya3",
           "request": {
             "method": "GET",
             "header": [
@@ -415,7 +528,15 @@
                   "  () => pm.expect(pm.response.code, pm.response.text()).to.eql(401));",
                   "pm.test('no token was handed out', () => {",
                   "  let j = null; try { j = pm.response.json(); } catch (e) { j = null; }",
-                  "  pm.expect(j && j.token, JSON.stringify(j)).to.be.oneOf([undefined, null]);",
+                  "  pm.expect(j && (j.token || j.access_token), JSON.stringify(j)).to.be.oneOf([undefined, null]);",
+                  "});",
+                  "const _wa = pm.response.headers.get('WWW-Authenticate') || '';",
+                  "pm.test('the handle re-challenges with its own realm, and it is the same handle', () => {",
+                  "  const m = _wa.match(/realm=\"([^\"]+)\"/);",
+                  "  pm.expect(m && m[1], 'WWW-Authenticate: ' + _wa).to.be.a('string');",
+                  "  const p = (m && m[1] || '').replace(/^[a-z]+:\\/\\/[^/]+/i, '');",
+                  "  pm.expect(p, 'the facade advertises ' + p + ' while the data plane advertises '",
+                  "    + pm.environment.get('ibtRealmPath')).to.eql(pm.environment.get('ibtRealmPath'));",
                   "});"
                 ]
               }
@@ -459,7 +580,7 @@
                   "if (__cfgUrl) {",
                   "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/ibt-nonsense-{{runId}}');",
                   "} else {",
-                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: iamRegistryTokenBaseUrl задана — docker lane — control proving the 401s above are the HANDLE answering, not a listener that refuses everything', () => {",
+                  "  pm.test('[УСЛОВИЕ НЕ СОЗДАНО] harness config: iamRegistryTokenBaseUrl задана — docker lane — control proving the answers above are the HANDLE answering, not a listener that answers every path alike', () => {",
                   "    pm.expect.fail('iamRegistryTokenBaseUrl не задана — прогонщик (deploy/scripts/newman-parallel.sh --env-var) её не передал. Шаг исполнен быть не может, а проверка, которая не может исполниться, НЕ ВПРАВЕ быть молча выброшенной.');",
                   "  });",
                   "  pm.execution.skipRequest();",
@@ -476,7 +597,7 @@
                   "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ сервиса').to.not.be.undefined;",
                   "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
                   "});",
-                  "pm.test('a path that is NOT the handle is 404, so the 401s above came from the handle itself', () => pm.expect(pm.response.code, pm.response.text()).to.eql(404));"
+                  "pm.test('a path that is NOT the handle is 404, so the answers above came from the handle itself', () => pm.expect(pm.response.code, pm.response.text()).to.eql(404));"
                 ]
               }
             }

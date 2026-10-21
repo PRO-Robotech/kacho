@@ -760,7 +760,7 @@ def seed() -> dict:
                              ["targetGroups"], ["update"])
     _, tok_crTgUpdater = subject(acctA, f"ps-cr-tgupd-{RID}",
                                  [(role_tgupd, P, projA1)] if role_tgupd else [])
-    _, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
+    sva_adminA, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
     _, tok_adminB = subject(acctB, f"ps-adm-b-{RID}", [(ROLE_ADMIN, A, acctB)])
     # The id is KEPT, not discarded. A suite that binds a role to a subject and then
     # reads with a token needs the id OF THAT TOKEN'S PRINCIPAL; an underscore here
@@ -986,6 +986,9 @@ def seed() -> dict:
         "projectB1Id": projB1,
         "existingAccountId": acctA,
         "svaAId": sva_saA,
+        # Учётка, стоящая за `jwtAccountAdminA`: набор registry выпускает ей базовое
+        # удостоверение и заливает им образы через плоскость данных (REG-PUB-1, П2).
+        "svaAccountAdminAId": sva_adminA,
         "svaNoGrantId": sva_nogrant,
         "svaPureNoGrantId": sva_purenob,
         "svaStorageCreateListOnlyId": sva_storcr,

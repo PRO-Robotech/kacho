@@ -21,23 +21,24 @@ import (
 	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 )
 
-// ListByInstance answers "which interfaces are bound to these instances" for the
-// compute-side mirror. The instance ids come from the caller, and the reply carries
-// the interface id, its subnet, its MAC and its resolved primary addresses.
+// ListByInstance отвечает на вопрос «какие интерфейсы привязаны к этим инстансам»
+// для зеркала на стороне compute. Идентификаторы инстансов называет вызывающий, а
+// ответ несёт идентификатор интерфейса, его подсеть, MAC и разрешённые основные
+// адреса.
 //
-// The per-RPC question that used to guard it was `viewer` on the singleton
-// `cluster:cluster_root`. That relation exists for the global reference
-// catalogue — regions, zones, disk types — and the cluster bootstrap writes
-// `cluster:<root>#viewer@user:*` precisely so that every authenticated subject can
-// read it. Asking it here therefore admitted every authenticated subject in the
-// cluster and then returned whatever instance ids they had named, from any project
-// and any account. Interface bindings are not reference data.
+// Прежде его стерёг вопрос на RPC — `viewer` на синглтоне `cluster:cluster_root`.
+// Это отношение глобального справочника (регионы, зоны, типы дисков), и начальная
+// выдача кластера пишет `cluster:<root>#viewer@system_class:authenticated` ровно для
+// того, чтобы его читал каждый аутентифицированный субъект. Вопрос здесь пропускал
+// каждого аутентифицированного субъекта кластера и отдавал те инстансы, которые он
+// назвал, из любого проекта и любого аккаунта. Привязки интерфейсов справочными
+// данными не являются.
 //
-// The answer is decided per returned interface instead: the page comes out of our own
-// database, and the model is asked which of that page's ids the subject may see
-// (`viewer ∪ v_list` on `vpc_network_interface:<id>`, batched). Same discipline as
-// every public List of this service — the visible set equals the check-allowed set,
-// and the cost follows the page rather than the population.
+// Теперь ответ решается по каждому возвращённому интерфейсу: страница читается из
+// своей базы, и модель спрашивается, какие идентификаторы ЭТОЙ страницы субъекту
+// видны (`viewer ∪ v_list` на `vpc_network_interface:<id>`, батчами). Та же
+// дисциплина, что у каждого публичного List службы: видимое множество равно
+// разрешённому проверкой, а цена следует за страницей, а не за населением.
 
 // fakeNICFilter — in-memory ListFilter recording how it was asked.
 type fakeNICFilter struct {

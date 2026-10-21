@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -19,6 +18,7 @@ import (
 	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/corelib/servicehost"
 	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // journal — журнал, который проба ЧИТАЕТ. Утверждать про «строку с причиной»
@@ -69,7 +69,9 @@ func TestDiagnosticSurfaceRisesAndServesExposition(t *testing.T) {
 	m := gwmetrics.New("test", "x")
 	m.RegisterAuthz(func() gwmetrics.AuthzSnapshot { return gwmetrics.AuthzSnapshot{} })
 
-	addr := freeAddr(t)
+	// Адрес поверхность занимает сама (профиль принимает строку): одолженный
+	// адрес ядро не выдаёт никому другому до конца пробы (kacho#3331).
+	addr := privateloopback.Lend(t)
 	desc, err := describeDiagnosticSurface(addr, m, servicecontract.ModeProduction, logger)
 	require.NoError(t, err)
 	require.True(t, desc.Enabled())
@@ -128,14 +130,3 @@ func TestDiagnosticSurfaceDeclaresItsPosture(t *testing.T) {
 // продукта #1407) и перестал быть мягким — неразборчивая метка теперь роняет
 // старт, называя ручку, а не молча выбирает режим за оператора. Пробы предмета
 // стоят в `posture_test.go`.
-
-// freeAddr — свободный адрес на петле. Фиксированный порт сделал бы пробу
-// зависимой от того, что ещё поднято на машине.
-func freeAddr(t *testing.T) string {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := l.Addr().String()
-	require.NoError(t, l.Close())
-	return addr
-}

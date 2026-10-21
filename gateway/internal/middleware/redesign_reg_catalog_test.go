@@ -93,11 +93,12 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 	// reads the page and narrows it per row (`viewer ∪ v_list` on each
 	// `iam_access_binding`), so there is no single object the edge could check.
 	//
-	// It previously declared `viewer` on the `cluster` singleton and called that a
-	// gate. It was not one: the cluster bootstrap grants `viewer` to `user:*` so
-	// every tenant can read the global reference catalogue, so the check passed for
-	// every authenticated subject. The row now says what actually happens, and the
-	// assertions below pin the difference rather than the wording.
+	// Прежде строка объявляла `viewer` на синглтоне `cluster` и называла это
+	// гейтом. Гейтом это не было: начальная выдача кластера даёт `viewer` классу
+	// `system_class:authenticated`, чтобы глобальный справочник читал каждый
+	// арендатор, и проверка проходила для каждого вошедшего субъекта. Теперь строка
+	// говорит, что происходит на деле, а утверждения ниже закрепляют разницу, а не
+	// формулировку.
 	t.Run("kaname.cloud.iam.v1.AccessBindingService/List", func(t *testing.T) {
 		entry, ok := c.Lookup("kaname.cloud.iam.v1.AccessBindingService/List")
 		require.True(t, ok)

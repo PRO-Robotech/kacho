@@ -45,6 +45,7 @@ import (
 
 	edgehealth "github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const (
@@ -83,32 +84,29 @@ func (l countingListener) Accept() (net.Conn, error) {
 	return c, err
 }
 
-// iamBackend — служба доступа на постоянном адресе, которую можно остановить и
-// поднять снова: тот же адрес, что у пода за сервисом кластера после переката.
+// iamBackend — служба доступа на постоянном адресе, которая сначала лежит, а
+// потом поднимается: тот же адрес, что у пода за сервисом кластера после
+// переката. Адрес удержан (kacho#3331): пока служба лежит, подключение
+// отвергается и занять адрес не может никто, а подъём — слушание на том же
+// сокете, без окна, в которое адрес займёт посторонний.
 type iamBackend struct {
 	addr     string
+	held     *privateloopback.Held
 	accepted atomic.Int64
 	gs       *grpc.Server
 }
 
 func newIAMBackend(t *testing.T) *iamBackend {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	b := &iamBackend{addr: lis.Addr().String()}
-	_ = lis.Close()
+	h := privateloopback.Hold(t)
+	b := &iamBackend{addr: h.Addr(), held: h}
 	t.Cleanup(b.stop)
 	return b
 }
 
 func (b *iamBackend) start(t *testing.T) {
 	t.Helper()
-	lis, err := net.Listen("tcp", b.addr)
-	if err != nil {
-		t.Fatalf("listen %s: %v", b.addr, err)
-	}
+	lis := b.held.Listen(t)
 	gs := grpc.NewServer()
 	iampb.RegisterAccessKeyServiceServer(gs, bridgeProbeKeys{})
 	iampb.RegisterAccountServiceServer(gs, bridgeProbeAccounts{})
