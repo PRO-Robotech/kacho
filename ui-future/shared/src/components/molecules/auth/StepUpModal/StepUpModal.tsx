@@ -52,6 +52,7 @@ import {
   LANE_REASON,
   LaneRefusal,
   NOT_BY_SUBSTANCE_TEXT,
+  backupCodeSetOf,
   loginLane,
   type Ceremony,
 } from "@shared/api/login-lane";
@@ -267,10 +268,13 @@ export function StepUpModal({ leave = (to) => window.location.replace(to) }: { l
     // Уровень после церемонии знает край по нашей сессии; консоли достаточно
     // перечитать личность и отпустить отвергнутый запрос на повтор.
     await auth?.refresh();
-    if (by === "lookup_secret" && typeof answer.backupCodesRemaining === "number") {
+    // Ответ повышения приходит без разбора: остаток берётся тем же разборщиком
+    // сводки, что и у чтения состояния, — одной формой (kaname#297, Р3).
+    const codeSet = by === "lookup_secret" ? backupCodeSetOf(answer.backupCodeSet) : null;
+    if (codeSet) {
       setAnnounce({
-        text: `Осталось запасных кодов: ${answer.backupCodesRemaining}`,
-        low: answer.backupCodesRemaining <= 2,
+        text: `Осталось запасных кодов: ${codeSet.remaining}`,
+        low: codeSet.remaining <= 2,
       });
     }
     pending?.resolve();

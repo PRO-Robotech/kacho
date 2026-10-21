@@ -155,6 +155,18 @@ export interface SignedIn {
 }
 
 /**
+ * Сводка набора запасных кодов — одна форма во всех ответах раздела второго
+ * фактора (kaname#297, Р2): кодов в ней нет никогда. `lastUsedAt` отсутствует,
+ * если из набора не тратили.
+ */
+export interface BackupCodeSet {
+  remaining: number;
+  total: number;
+  issuedAt?: string;
+  lastUsedAt?: string;
+}
+
+/**
  * Состояние способов второго фактора — в форме чтения службы (Ф12 Р4; моменты,
  * доступность ключей и перечень способов — SUA Р6). Ключ, которого ответ не нёс,
  * ОТСУТСТВУЕТ: у моментов отсутствие и есть смысл («не было»), у `accessKeys` и
@@ -163,8 +175,11 @@ export interface SignedIn {
  */
 export interface SecondFactorState {
   totp: { enrolled: boolean; confirmedAt?: string; pendingUntil?: string; lastUsedAt?: string };
-  /** Только у заведённого. */
-  backupCodes?: { remaining: number; total: number; issuedAt?: string; lastUsedAt?: string };
+  /**
+   * Только о прочитанном наборе (kaname#297, Р4): нет ключа — сводки нет, и
+   * экран остатка не выдумывает.
+   */
+  backupCodeSet?: BackupCodeSet;
   /** Включены ли ключи доступа на установке (SUA Р7). */
   accessKeys?: { available: boolean };
   /**
@@ -190,7 +205,8 @@ export interface Confirmed {
 export interface Ceremony {
   session: LaneSession;
   assurance: LaneAssurance;
-  backupCodesRemaining?: number;
+  /** Только у повышения запасным кодом: набор после траты (kaname#297, Р4). */
+  backupCodeSet?: BackupCodeSet;
 }
 
 /** Предъявление ключа доступа в церемонии повышения (SUA Р1): утверждение браузера. */
@@ -808,6 +824,21 @@ function objectOf(v: unknown): Record<string, unknown> | null {
 }
 
 /**
+ * Сводка набора запасных кодов (kaname#297, Р2): объект с числами `remaining` и
+ * `total`; иначе сводки нет — остатка консоль не выдумывает.
+ */
+export function backupCodeSetOf(v: unknown): BackupCodeSet | null {
+  const o = objectOf(v);
+  if (!o || typeof o.remaining !== "number" || typeof o.total !== "number") return null;
+  const set: BackupCodeSet = { remaining: o.remaining, total: o.total };
+  for (const k of ["issuedAt", "lastUsedAt"] as const) {
+    const t = optionalText(o, k);
+    if (t !== undefined) set[k] = t;
+  }
+  return set;
+}
+
+/**
  * Разбор чтения состояния второго фактора. Ключ, которого ответ не нёс, не
  * появляется; ключ не той формы — тоже: экран показывает только названное
  * службой. Ответ без `totp` — не тот ответ, и он отказ «не по существу», а не
@@ -830,14 +861,8 @@ function secondFactorStateOf({ res, text }: Answered): SecondFactorState {
     const v = optionalText(totp, k);
     if (v !== undefined) state.totp[k] = v;
   }
-  const codes = objectOf(body.backupCodes);
-  if (codes && typeof codes.remaining === "number" && typeof codes.total === "number") {
-    state.backupCodes = { remaining: codes.remaining, total: codes.total };
-    for (const k of ["issuedAt", "lastUsedAt"] as const) {
-      const v = optionalText(codes, k);
-      if (v !== undefined) state.backupCodes[k] = v;
-    }
-  }
+  const codeSet = backupCodeSetOf(body.backupCodeSet);
+  if (codeSet) state.backupCodeSet = codeSet;
   const keys = objectOf(body.accessKeys);
   if (keys && typeof keys.available === "boolean") state.accessKeys = { available: keys.available };
   if (Array.isArray(body.stepUpMethods)) state.stepUpMethods = body.stepUpMethods.filter(isStepUpFactor);

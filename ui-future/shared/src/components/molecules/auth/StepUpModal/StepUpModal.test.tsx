@@ -28,7 +28,7 @@ function stateWith(stepUpMethods: string[]): LaneAnswer {
     status: 200,
     body: {
       totp: { enrolled: true, confirmedAt: "2026-10-14T21:04:00Z" },
-      backupCodes: { remaining: 10, total: 10, issuedAt: "2026-10-14T21:04:00Z" },
+      backupCodeSet: { remaining: 10, total: 10, issuedAt: "2026-10-14T21:04:00Z" },
       accessKeys: { available: true },
       stepUpMethods,
     },
@@ -38,7 +38,7 @@ function stateWith(stepUpMethods: string[]): LaneAnswer {
 /** Чтение прежней формы (Ф12 Р4): перечня способов служба не называет. */
 const STATE_WITHOUT_METHODS: LaneAnswer = {
   status: 200,
-  body: { totp: { enrolled: true }, backupCodes: { remaining: 10, total: 10 } },
+  body: { totp: { enrolled: true }, backupCodeSet: { remaining: 10, total: 10 } },
 };
 
 const BEGIN: LaneAnswer = {
@@ -196,7 +196,18 @@ describe("окно подтверждения — каждый способ и �
   it("F8-S7-23 · запасной код: step-up с lookup_secret, остаток назван, окно закрыто, просьба разрешена", async () => {
     lane = installLane({
       "GET /iam/v1/auth/second-factor": stateWith(["lookup_secret", "totp"]),
-      "POST /iam/v1/auth/step-up": { status: 200, body: { ...(CEREMONY.body as object), backupCodesRemaining: 9 } },
+      "POST /iam/v1/auth/step-up": {
+        status: 200,
+        body: {
+          ...(CEREMONY.body as object),
+          backupCodeSet: {
+            remaining: 9,
+            total: 10,
+            issuedAt: "2026-10-14T21:04:00Z",
+            lastUsedAt: "2026-10-14T21:06:00Z",
+          },
+        },
+      },
     });
     render(<StepUpModal />);
     const granted = await open(() => requestStepUp("2"));
