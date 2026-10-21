@@ -242,6 +242,60 @@ test("F8-S7-23 · запасным кодом: остаток показан, о
   );
 });
 
+/** Ответ повышения — со сводкой набора, если служба её назвала (kaname#297, Р4). */
+function stepUpAnswer(page: Page) {
+  return page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === LANE.stepUp);
+}
+
+test("BCS-41 · окно повышения после запасного кода называет остаток из сводки набора", async ({ page }, testInfo) => {
+  // verifies #3308 — служба kaname#297 отдаёт остаток повышения одним путём,
+  // `backupCodeSet.remaining` (приёмка kaname «набор запасных кодов — одна
+  // форма», BCS-41). Находка сборки w14: на стенде с этой службой окно после
+  // траты кода остатка не называло. Близнец — следующая проба: способ «код из
+  // приложения», строки об остатке нет.
+  await withSeeded(
+    testInfo,
+    "BCS-41",
+    "С-ккл",
+    page.context(),
+    async (h) => {
+      const { s, w } = await openStepUpOnDelete(page, h);
+      await w.radio("Запасной код").check();
+      await w.backupCode.fill(h.factor!.backupCodes[0]);
+      const [raised] = await Promise.all([stepUpAnswer(page), w.confirm.click()]);
+      const body = (await raised.json()) as { backupCodeSet?: { remaining?: unknown } };
+      expect(raised.status(), `повышение запасным кодом не прошло: ${JSON.stringify(body)}`).toBe(200);
+      expect(body.backupCodeSet?.remaining, `служба не назвала остаток сводкой набора: ${JSON.stringify(body)}`).toBe(9);
+      await expect(page.getByText("Осталось запасных кодов: 9", { exact: true }), "окно называет остаток").toBeVisible();
+      await expect(s.keyDelete(h.keyName), "действие выполнено").toHaveCount(0);
+    },
+    { level: "1" },
+  );
+});
+
+test("BCS-41 · близнец: повышение кодом из приложения — строки об остатке запасных кодов нет", async ({ page }, testInfo) => {
+  // verifies #3308 — одно отличие от пробы выше: способ подтверждения. Набор
+  // глаголом не менялся, сводки в ответе нет (Р4), и окно об остатке молчит.
+  await withSeeded(
+    testInfo,
+    "BCS-41t",
+    "С-ккл",
+    page.context(),
+    async (h) => {
+      const { s, w } = await openStepUpOnDelete(page, h);
+      await w.radio("Код из приложения").check();
+      await w.code.fill(await nextStepCode(h.factor!.secret));
+      const [raised] = await Promise.all([stepUpAnswer(page), w.confirm.click()]);
+      const body = (await raised.json()) as Record<string, unknown>;
+      expect(raised.status(), `повышение кодом не прошло: ${JSON.stringify(body)}`).toBe(200);
+      expect(Object.keys(body), "у повышения кодом сводки набора нет (Р4)").not.toContain("backupCodeSet");
+      await expect(s.keyDelete(h.keyName), "действие выполнено").toHaveCount(0);
+      await expect(page.getByText(/Осталось запасных кодов/), "строки об остатке нет").toHaveCount(0);
+    },
+    { level: "1" },
+  );
+});
+
 test("F8-S7-25 · человек с паролем и ключом без кода заводит код через подтверждение ключом", async ({ page }, testInfo) => {
   // verifies #3230 — kacho#3196.
   await withSeeded(

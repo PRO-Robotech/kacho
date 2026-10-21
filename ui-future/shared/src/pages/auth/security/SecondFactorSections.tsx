@@ -59,7 +59,7 @@ export const SECOND_FACTOR_TEXT = {
 
 /** Способы кода, которыми служба примет снятие и перевыпуск сейчас: запасной — пока он есть. */
 function presentableCodes(state: SecondFactorState): SecondFactorMethod[] {
-  return CODE_METHODS.filter((m) => m === "totp" || (state.backupCodes?.remaining ?? 0) > 0);
+  return CODE_METHODS.filter((m) => m === "totp" || (state.backupCodeSet?.remaining ?? 0) > 0);
 }
 
 /** Отказ шага: поле кода — у поля, остальное — у раздела. */
@@ -453,11 +453,13 @@ export function SecondFactorSection({
         {
           key: "codes",
           name: "Запасные коды",
-          state: state.backupCodes ? `Осталось ${state.backupCodes.remaining} из ${state.backupCodes.total}` : "Нет",
-          added: state.backupCodes?.issuedAt ?? null,
-          lastUsed: state.backupCodes?.lastUsedAt ? (
-            <Moment at={state.backupCodes.lastUsedAt} />
-          ) : state.backupCodes && moments ? (
+          state: state.backupCodeSet
+            ? `Осталось ${state.backupCodeSet.remaining} из ${state.backupCodeSet.total}`
+            : "Нет",
+          added: state.backupCodeSet?.issuedAt ?? null,
+          lastUsed: state.backupCodeSet?.lastUsedAt ? (
+            <Moment at={state.backupCodeSet.lastUsedAt} />
+          ) : state.backupCodeSet && moments ? (
             "Ещё не использовались"
           ) : null,
           action: (
@@ -552,8 +554,8 @@ export function BackupCodesSection({
   let body: ReactNode = null;
   if (state && !state.totp.enrolled) {
     body = <Typography.Paragraph>{SECOND_FACTOR_TEXT.codesAbsent}</Typography.Paragraph>;
-  } else if (state?.backupCodes) {
-    const codes = state.backupCodes;
+  } else if (state?.backupCodeSet) {
+    const codes = state.backupCodeSet;
     const properties: CodesProperty[] = [];
     if (codes.issuedAt) properties.push({ name: "Выпущены", value: <Moment at={codes.issuedAt} /> });
     if (codes.lastUsedAt) {
