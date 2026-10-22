@@ -402,9 +402,81 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
       <<<"$(runner_objects t3102-probe newman img:1 '' deploy true v1.35.7 6 1.9.3)" >/dev/null; then
     ok "раннер: цепочка без администратора — его окружения в pod нет"; else bad "раннер: окружение администратора без секрета"; fi
   local vers
-  if vers="$(runner_versions HEAD 2>&1)" && [[ "$vers" =~ ^[0-9]+\ [0-9]+\ [0-9]+\.[0-9]+\.[0-9]+\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    ok "раннер: версии node, newman, grpcurl, playwright выведены из дерева HEAD ($vers)"
+  if vers="$(runner_versions HEAD 2>&1)" && [[ "$vers" =~ ^[0-9]+\ [0-9]+\ [0-9]+\.[0-9]+\.[0-9]+\ [0-9]+\.[0-9]+\.[0-9]+\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    ok "раннер: версии node, newman, grpcurl, playwright, buf выведены из дерева HEAD ($vers)"
   else bad "раннер: версии из дерева HEAD не выведены: $vers"; fi
+  # buf раннера newman (kacho#3346: в pod не было buf — проба ban #6 и наборы, собирающие
+  # дескрипторы `buf build proto`, не исполнялись). Версия — ключ `version:` шага
+  # bufbuild/buf-setup-action; шаг кончается на следующем «- », чужой `version:` не берётся.
+  local bstep bv brc q="'"
+  bstep='      - uses: bufbuild/buf-setup-action@3e33fea8596569a62fcaa33eb3880b6ac7098941  # v1.9.0
+        with:
+          version: 1.72.0
+          github_token: x
+      - uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5
+        with:
+          version: v1.35.0'
+  for twin in "0|1.72.0|шаг конвейера" "0|1.72.0|версия в кавычках" "1||ключа version у шага нет (version соседнего шага не берётся)" \
+              "1||второй шаг buf другой версии" "1||версия не X.Y.Z"; do
+    IFS='|' read -r want wv what <<<"$twin"
+    case "$what" in
+      "шаг конвейера") bv="$bstep" ;;
+      "версия в кавычках") bv="${bstep/version: 1.72.0/version: ${q}1.72.0${q}}" ;;
+      "ключа version"*) bv="${bstep/version: 1.72.0/}" ;;
+      "второй шаг"*) bv="$bstep"$'\n'"${bstep/1.72.0/1.71.0}" ;;
+      "версия не"*) bv="${bstep/1.72.0/1.72}" ;;
+    esac
+    brc=0; bv="$(buf_version <<<"$bv" 2>/dev/null)" || brc=$?
+    if [ "$brc" -eq "$want" ] && [ "$bv" = "$wv" ]; then ok "раннер: версия buf — $what: код $brc «$bv»"
+    else bad "раннер: версия buf — $what: код $brc «$bv», ждали $want «$wv»"; fi
+  done
+  if [ "$(runner_objects t3102-probe newman img:1 '' deploy true v1.35.7 6 1.9.3 abc 1.72.0 |
+          jq -r '.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.name == "RUNNER_BUF") | .value')" = 1.72.0 ]; then
+    ok "раннер: версия buf — в окружении pod (RUNNER_BUF)"; else bad "раннер: RUNNER_BUF нет в окружении pod"; fi
+  # Установка — функцией runner_buf ИЗ ТЕКСТА POD (первая строка RUNNER_POD_SH), загрузка
+  # подменена: выпуск — каталог-фикстура. Не поставлен — код 1, имя инструмента, в КАТАЛОГЕ пусто.
+  local bx bo
+  bx="$(mktemp -d)"
+  mkdir -p "$bx/rel" "$bx/stub" "$bx/bin"
+  # shellcheck disable=SC2016 # текст заглушки — её собственный
+  printf '#!/bin/sh\necho "${BUF_STUB_SAYS:-1.72.0}"\n' >"$bx/rel/buf-Linux-$(uname -m)"
+  ( cd "$bx/rel" && sha256sum "buf-Linux-$(uname -m)" ) >"$bx/rel/sha256.good"
+  sed 's/^[0-9a-f]*/'"$(printf '0%.0s' $(seq 64))"'/' "$bx/rel/sha256.good" >"$bx/rel/sha256.bad"
+  # shellcheck disable=SC2016 # текст заглушки — её собственный
+  printf '%s\n' '#!/bin/bash' 'o="" u=""' \
+    'while [ $# -gt 0 ]; do case "$1" in -o) o="$2"; shift 2 ;; https://*) u="$1"; shift ;; *) shift ;; esac; done' \
+    'f="${u##*/}"; [ "$f" != sha256.txt ] || f="$BUF_STUB_SUMS"' \
+    '[ -z "${BUF_STUB_GONE:-}" ] || [ "$f" = "$BUF_STUB_SUMS" ] || exit 22' \
+    '[ -f "$BUF_STUB_REL/$f" ] || exit 22' \
+    'if [ -n "$o" ]; then cat "$BUF_STUB_REL/$f" >"$o"; else cat "$BUF_STUB_REL/$f"; fi' >"$bx/stub/curl"
+  chmod +x "$bx/stub/curl"
+  # buf_probe ВЕРСИЯ [ОКРУЖЕНИЕ…] — код runner_buf из текста pod; вывод — $bx/out.
+  buf_probe() {
+    rm -f "$bx/bin/buf"
+    ( eval "$(head -n 1 <<<"$RUNNER_POD_SH")"
+      export PATH="$bx/stub:$PATH" BUF_STUB_REL="$bx/rel" BUF_STUB_SUMS=sha256.good
+      local e; for e in "${@:2}"; do export "${e?}"; done
+      runner_buf "$1" "$bx/bin" ) >"$bx/out" 2>&1
+  }
+  brc=0; buf_probe 1.72.0 || brc=$?
+  if [ "$brc" -eq 0 ] && [ "$("$bx/bin/buf" --version 2>&1)" = 1.72.0 ] && grep -qx 'buf 1.72.0' "$bx/out"; then
+    ok "раннер: buf выпуска с сошедшейся суммой — поставлен, называет 1.72.0"
+  else bad "раннер: buf с сошедшейся суммой — код $brc: $(tr '\n' ' ' <"$bx/out")"; fi
+  for twin in "BUF_STUB_SUMS=sha256.bad|сумма не сошлась" "BUF_STUB_GONE=1|выпуска нет" "BUF_STUB_SAYS=1.71.0|бинарь называет другую версию"; do
+    brc=0; buf_probe 1.72.0 "${twin%|*}" || brc=$?
+    bo="$(tr '\n' ' ' <"$bx/out")"
+    if [ "$brc" -ne 0 ] && [[ "$bo" == "buf 1.72.0:"* ]] && [ ! -e "$bx/bin/buf" ]; then ok "раннер: buf — ${twin##*|}: код $brc, «$bo», в каталоге пусто"
+    else bad "раннер: buf — ${twin##*|}: код $brc, «$bo», в каталоге $(ls "$bx/bin")"; fi
+  done
+  brc=0; buf_probe 1.72 || brc=$?
+  if [ "$brc" -ne 0 ] && grep -q '^buf: версия конвейера' "$bx/out" && [ ! -e "$bx/bin/buf" ]; then ok "раннер: buf — версия не X.Y.Z: код $brc, загрузки нет"
+  else bad "раннер: buf — версия не X.Y.Z: код $brc, $(tr '\n' ' ' <"$bx/out")"; fi
+  rm -rf "$bx"
+  # Вызов в тексте pod: вид newman ставит buf, неуспех — «не выполнилось» с именем инструмента.
+  # shellcheck disable=SC2016 # образец — дословный текст pod
+  if [[ "$RUNNER_POD_SH" == *'runner_buf "$RUNNER_BUF" /usr/local/bin > /work/buf.log 2>&1 || { tail -n 3 /work/buf.log; unmet "buf $RUNNER_BUF"; }'* ]]; then
+    ok "раннер: текст pod вида newman ставит buf, неуспех — unmet «buf <версия>» (125)"
+  else bad "раннер: текст pod не ставит buf либо неуспех не назван unmet"; fi
   local prc=0
   ( env -u KUBERNETES_SERVICE_HOST bash "$HERE/stand-ns.sh" pod-forward t3102-probe ) >/dev/null 2>&1 || prc=$?
   if [ "$prc" -eq 2 ]; then ok "pod-forward вне pod — отказ 2 до обращения к кластеру"; else bad "pod-forward вне pod: код $prc, ждали 2"; fi
@@ -1651,7 +1723,10 @@ cmd_run() {
 #                 образ playwright версии пина `@playwright/test` ui-future/e2e (chromium —
 #                 его). Версии читаются из ДЕРЕВА головы (runner_versions), второго
 #                 объявления нет; kubectl pod — клиент машины тем же потоком (той же
-#                 архитектуры), иначе загрузка версии сервера кластера с суммой;
+#                 архитектуры), иначе загрузка версии сервера кластера с суммой; newman —
+#                 ещё buf версии шага bufbuild/buf-setup-action того же файла (наборы и
+#                 проба ban #6 берут дескрипторы из `buf build proto`) с суммой выпуска
+#                 (RUNNER_BUF_SH); не поставлен — 125 с именем инструмента;
 #   исходники     `git archive` головы рабочей копии потоком в pod (образы — ревизии REF, их
 #                 расхождение судит ref_guard подъёма); незакоммиченная правка — отказ 2 до подъёма;
 #   окружение     тем же cmd_forward изнутри pod (`pod-forward`): происхождение консоли
@@ -1670,10 +1745,34 @@ cmd_run() {
 #                 целиком — «не выполнилось», не красное.
 # Срок pod — STAND_RUNNER_DEADLINE (с, умолчание 10800), готовности — STAND_RUNNER_READY_WAIT.
 # ГРАНИЦА: инструменты pod ставятся из сети на каждом прогоне (apt, dl.k8s.io с суммой,
-# npm, выпуск grpcurl) — 1–3 мин; образ раннера с ними — отдельный предмет.
+# npm, выпуски grpcurl и buf) — 1–3 мин; образ раннера с ними — отдельный предмет.
 STAND_RUNNER_KINDS="newman browser"
 RUNNER_POD=stand-runner
 RUNNER_DEADLINE="${STAND_RUNNER_DEADLINE:-10800}"
+
+# Текст pod: buf версии конвейера в КАТАЛОГ (аргументы: ВЕРСИЯ КАТАЛОГ). Сумма — строка
+# бинаря из sha256.txt того же выпуска (та же форма, что у тяжёлого слота воркспейса);
+# поставленный бинарь обязан назвать ровно эту версию. Код 1 — не поставлен, причина — с
+# именем инструмента, в КАТАЛОГЕ ничего не остаётся. Отдельным текстом — ради самопроверки,
+# которая исполняет его с подменённой загрузкой.
+read -r -d '' RUNNER_BUF_SH <<'POD'
+set -uo pipefail
+v="$1" bin="$2"
+[[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "buf: версия конвейера «$v» не в форме X.Y.Z"; exit 1; }
+case "$(uname -m)" in x86_64) a=x86_64 ;; aarch64) a=aarch64 ;; *) echo "buf: архитектура $(uname -m)"; exit 1 ;; esac
+f="buf-Linux-$a" u="https://github.com/bufbuild/buf/releases/download/v$v"
+d="$(mktemp -d)" || { echo "buf: каталог загрузки не заведён"; exit 1; }
+trap 'rm -rf "$d"' EXIT
+( cd "$d" && curl -fsSL --retry 3 --speed-limit 50000 --speed-time 60 -o "$f" "$u/$f" &&
+  curl -fsSL --retry 3 --max-time 60 -o sums "$u/sha256.txt" &&
+  grep -E "^[0-9a-f]{64}  $f\$" sums | sha256sum -c --quiet --strict - ) ||
+  { echo "buf $v: выпуск $f не получен либо сумма не сошлась с sha256.txt выпуска"; exit 1; }
+chmod 0755 "$d/$f" || { echo "buf $v: бинарь выпуска не исполним"; exit 1; }
+got="$("$d/$f" --version 2>&1 | head -n 1)"
+[ "$got" = "$v" ] || { echo "buf $v: бинарь выпуска называет версию «$got»"; exit 1; }
+install -m 0755 "$d/$f" "$bin/buf" || { echo "buf $v: не поставлен в $bin"; exit 1; }
+echo "buf $v"
+POD
 
 # Текст, который исполняет pod. Ждёт исходники (/work/.go), ставит инструменты, поднимает
 # проброс изнутри, исполняет команду, пишет код в /work/.rc и ждёт, пока машина заберёт
@@ -1721,9 +1820,11 @@ else
 fi
 case "$RUNNER_KIND" in
   newman)
-    say "инструменты: grpcurl $RUNNER_GRPCURL, newman@$RUNNER_NEWMAN"
+    say "инструменты: grpcurl $RUNNER_GRPCURL, newman@$RUNNER_NEWMAN, buf $RUNNER_BUF"
     curl -fsSL --retry 3 --speed-limit 50000 --speed-time 60 "https://github.com/fullstorydev/grpcurl/releases/download/v$RUNNER_GRPCURL/grpcurl_${RUNNER_GRPCURL}_linux_$ga.tar.gz" |
       tar -xz -C /usr/local/bin grpcurl || unmet "grpcurl $RUNNER_GRPCURL"
+    runner_buf "$RUNNER_BUF" /usr/local/bin > /work/buf.log 2>&1 || { tail -n 3 /work/buf.log; unmet "buf $RUNNER_BUF"; }
+    say "buf $(buf --version 2>&1 | head -n 1)"
     npm i -g "newman@$RUNNER_NEWMAN" > /work/npm.log 2>&1 || { tail -n 5 /work/npm.log; unmet "newman@$RUNNER_NEWMAN"; }
     say "newman $(newman --version)" ;;
   browser)
@@ -1750,22 +1851,41 @@ say "команда завершилась кодом $rc"
 bash /src/deploy/scripts/stand-ns.sh unforward "$KACHO_STAND_NS" > /dev/null 2>&1
 finish "$rc"
 POD
+# runner_buf — тот же текст RUNNER_BUF_SH, что исполняет самопроверка: pod получает его функцией.
+RUNNER_POD_SH="runner_buf() { bash -c $(printf '%q' "$RUNNER_BUF_SH") runner-buf \"\$@\"; }"$'\n'"$RUNNER_POD_SH"
 
-# runner_versions SHA — «node newman grpcurl playwright» из дерева ревизии: каждая величина
+# buf_pin — версия buf из текста e2e-newman.yml (stdin): ключ `version:` шага
+# bufbuild/buf-setup-action — до начала следующего шага; печатает различные значения.
+buf_pin() {
+  awk '/uses:[[:space:]]*bufbuild\/buf-setup-action@/ { s = 1; next }
+       s && /^[[:space:]]*-[[:space:]]/ { s = 0 }
+       s && /^[[:space:]]*version:/ { v = $2; gsub(/["\047]/, "", v); print v }' | sort -u
+}
+
+# buf_version — buf_pin, ровно одна версия формы X.Y.Z, иначе отказ (код 1) с причиной.
+buf_version() {
+  local v
+  v="$(buf_pin)"
+  [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { warn "buf конвейера (version шага bufbuild/buf-setup-action) — не одна версия X.Y.Z: «$(tr '\n' ' ' <<<"$v")»"; return 1; }
+  printf '%s\n' "$v"
+}
+
+# runner_versions SHA — «node newman grpcurl playwright buf» из дерева ревизии: каждая величина
 # ровно одна и в своей форме, иначе отказ (код 1) с названной причиной.
 runner_versions() {
-  local sha="$1" wf pkg node newman grpc pw
+  local sha="$1" wf pkg node newman grpc pw buf
   wf="$(git -C "$REPO_ROOT" show "$sha:.github/workflows/e2e-newman.yml" 2>/dev/null)" || { warn "e2e-newman.yml ревизии $sha не прочитан"; return 1; }
   pkg="$(git -C "$REPO_ROOT" show "$sha:ui-future/e2e/package.json" 2>/dev/null)" || { warn "ui-future/e2e/package.json ревизии $sha не прочитан"; return 1; }
   node="$(grep -oE "node-version: *['\"]?[0-9]+['\"]?" <<<"$wf" | grep -oE '[0-9]+' | sort -u)"
   newman="$(grep -oE 'newman@[0-9]+' <<<"$wf" | cut -d@ -f2 | sort -u)"
   grpc="$(grep -oE 'grpcurl/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/' <<<"$wf" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sort -u)"
   pw="$(jq -r '(.devDependencies // {})["@playwright/test"] // (.dependencies // {})["@playwright/test"] // empty' <<<"$pkg")"
+  buf="$(buf_version <<<"$wf")" || return 1
   [[ "$node" =~ ^[0-9]+$ ]] || { warn "node конвейера newman — не одна мажорная версия: «$(tr '\n' ' ' <<<"$node")»"; return 1; }
   [[ "$newman" =~ ^[0-9]+$ ]] || { warn "newman конвейера — не одна мажорная версия: «$(tr '\n' ' ' <<<"$newman")»"; return 1; }
   [[ "$grpc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { warn "grpcurl конвейера — не одна версия: «$(tr '\n' ' ' <<<"$grpc")»"; return 1; }
   [[ "$pw" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { warn "пин @playwright/test — не точная версия: «$pw»"; return 1; }
-  printf '%s %s %s %s\n' "$node" "$newman" "$grpc" "$pw"
+  printf '%s %s %s %s %s\n' "$node" "$newman" "$grpc" "$pw" "$buf"
 }
 
 # runner_image ВИД NODE PLAYWRIGHT — образ раннера.
@@ -1867,13 +1987,13 @@ runner_fetch() {
   return 1
 }
 
-# runner_objects NS ВИД ОБРАЗ СЕКРЕТ КАТАЛОГ КОМАНДА KUBECTL NEWMAN GRPCURL — учётка, роль,
+# runner_objects NS ВИД ОБРАЗ СЕКРЕТ КАТАЛОГ КОМАНДА KUBECTL NEWMAN GRPCURL [SHA [BUF]] — учётка, роль,
 # привязка и pod раннера (список JSON для kubectl apply). Всё — в пространстве NS.
 runner_objects() {
   local mem=3Gi
   [ "$2" != browser ] || mem=6Gi
   jq -n --arg ns "$1" --arg kind "$2" --arg image "$3" --arg secret "$4" --arg dir "$5" --arg cmd "$6" \
-    --arg kver "$7" --arg newman "$8" --arg grpc "$9" --arg sha "${10:-}" --arg host "$(ns_host "$1")" --arg sh "$RUNNER_POD_SH" \
+    --arg kver "$7" --arg newman "$8" --arg grpc "$9" --arg sha "${10:-}" --arg buf "${11:-}" --arg host "$(ns_host "$1")" --arg sh "$RUNNER_POD_SH" \
     --arg name "$RUNNER_POD" --arg ls "$LABEL_STAND" --argjson deadline "$RUNNER_DEADLINE" --arg mem "$mem" '
     def meta: {name: $name, namespace: $ns, labels: {($ls): "test", "app.kubernetes.io/name": $name}};
     def env($n; $v): {name: $n, value: $v};
@@ -1896,7 +2016,7 @@ runner_objects() {
         hostAliases: [{ip: "127.0.0.1", hostnames: [$host]}],
         containers: [{name: "run", image: $image, command: ["bash", "-c", $sh], workingDir: "/src",
           env: ([env("RUNNER_KIND"; $kind), env("RUNNER_DIR"; $dir), env("RUNNER_CMD"; $cmd),
-                 env("RUNNER_KUBECTL"; $kver), env("RUNNER_NEWMAN"; $newman), env("RUNNER_GRPCURL"; $grpc), env("RUNNER_SHA"; $sha),
+                 env("RUNNER_KUBECTL"; $kver), env("RUNNER_NEWMAN"; $newman), env("RUNNER_GRPCURL"; $grpc), env("RUNNER_BUF"; $buf), env("RUNNER_SHA"; $sha),
                  env("KACHO_STAND_NS"; $ns), env("KACHO_NAMESPACE"; $ns), env("KACHO_STAND_NS_WORKDIR"; "/work/stand"),
                  env("HOME"; "/work/home"), env("CI"; "true")]
                 + (if $secret == "" then [] else [adm("KACHO_CLOUD_ADMIN_EMAIL"; "email"), adm("KACHO_CLOUD_ADMIN_PASSWORD"; "password")] end)),
@@ -1996,14 +2116,14 @@ runner_explain() {
 # runner_run NS REF КОМАНДА… — исполнить команду в pod раннера (раздел выше). Код — код
 # команды; 125 — не исполнялась.
 runner_run() {
-  local ns="$1" ref="$2" sha vers node newman grpc pw image kver rel secret out rc="" phase miss=0
+  local ns="$1" ref="$2" sha vers node newman grpc pw buf image kver rel secret out rc="" phase miss=0
   shift 2
   # Исходники — коммит рабочей копии (пробы и их окружение — его), образы — ревизии REF
   # (правило их расхождения — ref_guard подъёма); правки вне коммита pod не увидел бы — их
   # отклонил cmd_run до подъёма.
   sha="$(git -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" || { warn "голова рабочей копии не разрешается"; return "$RUN_UNMET"; }
   vers="$(runner_versions "$sha")" || return "$RUN_UNMET"
-  read -r node newman grpc pw <<<"$vers"
+  read -r node newman grpc pw buf <<<"$vers"
   kver="$(kubectl version -o json --request-timeout=30s 2>/dev/null | jq -r '.serverVersion.gitVersion // empty')"
   [[ "$kver" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { warn "версия сервера кластера не прочитана («$kver») — kubectl pod не выбрать"; return "$RUN_UNMET"; }
   image="$(runner_image "$RUN_RUNNER" "$node" "$pw")"
@@ -2013,7 +2133,7 @@ runner_run() {
   out="${RUN_OUT:-$WORK_ROOT/out/$ns}"
   mkdir -p "$out" || { warn "каталог отчётов $out не заведён"; return "$RUN_UNMET"; }
   local objs
-  objs="$(runner_objects "$ns" "$RUN_RUNNER" "$image" "$secret" "$rel" "$(printf '%q ' "$@")" "$kver" "$newman" "$grpc" "$sha")" ||
+  objs="$(runner_objects "$ns" "$RUN_RUNNER" "$image" "$secret" "$rel" "$(printf '%q ' "$@")" "$kver" "$newman" "$grpc" "$sha" "$buf")" ||
     { warn "объекты раннера не построены"; return "$RUN_UNMET"; }
   runner_judge "$ns" <<<"$objs" >&2 || { warn "форма объектов раннера не прошла суд (выше)"; return "$RUN_UNMET"; }
   stand_nodes "раннер $RUN_RUNNER"
