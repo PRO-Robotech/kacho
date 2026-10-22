@@ -559,7 +559,8 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
     # shellcheck disable=SC2030,SC2031 # подмены живут лишь в подоболочке пробы
     ( PATH="$tx/bin:$PATH" TOOL_WORK="$tx/work" TOOL_WAIT=10
       tool_apply() { cat >/dev/null; }
-      tool_ready() { return 0; }
+      # Образ pod сборки — тот, что build_tool отдал бы кластеру: самопроверка судит его ниже.
+      tool_ready() { jq -r '.items[1].spec.containers[0].image' <<<"$2" >"$tx/image"; }
       tool_phase() { echo Running; }
       # kubectl — по форме настоящего: exec без -i не передаёт stdin команде pod (tool_put обязан
       # нести -i), забор (tool_exec) идёт без него.
@@ -581,8 +582,9 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   local tsame=0; cmp -s "$tx/work/tracked.txt" <(git -C "$REPO_ROOT" ls-files) || tsame=$?
   if [ "$trc" -eq 0 ] && [ "$tsame" -eq 0 ] && [ "$(cat "$tx/st/bin/stand-ns")" = standns-bin ] &&
      [ "$(cat "$tx/st/bin/module-manifests-configmap")" = producer-bin ] && [ "$(cat "$tx/st/bin/godeps.json")" = '[]' ] &&
-     [ "$(cat "$tx/st/bin/product-names")" = names-bin ] && [ ! -s "$tx/trap" ] && [ -s "$tx/work/src/go.mod" ] && [ -e "$tx/work/untracked.txt" ]; then
-    ok "инструменты подъёма: собраны в pod кластера, суммы сверены, go на машине (ловушка) не звался, дерево и перечни git ls-files — в pod, запись замыкания забрана"
+     [ "$(cat "$tx/st/bin/product-names")" = names-bin ] && [ ! -s "$tx/trap" ] && [ -s "$tx/work/src/go.mod" ] && [ -e "$tx/work/untracked.txt" ] &&
+     [ "$(cat "$tx/image" 2>/dev/null)" = "$TOOL_IMAGE" ]; then
+    ok "инструменты подъёма: собраны в pod кластера, суммы сверены, go на машине (ловушка) не звался, дерево и перечни git ls-files — в pod, запись замыкания забрана, образ pod — закреплённый дайджестом TOOL_IMAGE"
   else bad "инструменты подъёма: код $trc, ловушка «$(tr '\n' ' ' <"$tx/trap")», $(tail -n 2 "$tx/out" | tr '\n' ' ')"; fi
   for twin in "build-fail|сборка в pod отказала|не собраны" "sum-bad|сумма забранного не сумма pod|не доставлен целым"; do
     trc=0; tool_probe "${twin%%|*}" || trc=$?
@@ -594,6 +596,21 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   if [ "$(tool_go_version "$tx/a.mod")" = 1.26.9 ] && [ "$(tool_go_version "$tx/b.mod")" = 1.26.0 ] && ! tool_go_version "$tx/c.mod" >/dev/null 2>&1; then
     ok "инструменты подъёма: версия Go — toolchain go.mod, иначе go, нет обеих — отказ"
   else bad "инструменты подъёма: версия Go из go.mod выведена неверно"; fi
+  # Образ сборки — корень доверия бинарей, исполняемых машиной (⛔ приёмки w14): дайджест,
+  # версия — из go.mod. Законный — объявление дерева на go.mod дерева; близнецы — тег без
+  # дайджеста и объявление другой версии — отказ без образа.
+  local timg trc2
+  if timg="$(tool_image "$REPO_ROOT/go.mod" 2>&1)" && [[ "$timg" == *"@sha256:"* ]] && [ "$timg" = "$TOOL_IMAGE" ]; then
+    ok "инструменты подъёма: образ сборки — объявление дерева, закреплён дайджестом, версия равна go.mod ($timg)"
+  else bad "инструменты подъёма: образ сборки дерева не принят: $timg"; fi
+  for twin in "mirror.gcr.io/library/golang:1.26.9|не закреплён дайджестом" \
+              "mirror.gcr.io/library/golang:1.26.0@sha256:$(printf '0%.0s' {1..64})|объявлен для Go 1.26.0" \
+              "mirror.gcr.io/library/golang:1.26.9@sha256:abc|не закреплён дайджестом"; do
+    trc2=0; timg="$(TOOL_IMAGE="${twin%%|*}" tool_image "$tx/a.mod" 2>&1)" || trc2=$?
+    if [ "$trc2" -ne 0 ] && [[ "$timg" == *"${twin##*|}"* ]] && [[ "$timg" != *$'\n'mirror* ]]; then
+      ok "инструменты подъёма: близнец образа «${twin%%|*}» — отказ: ${twin##*|}"
+    else bad "инструменты подъёма: близнец образа «${twin%%|*}» — код $trc2: $timg"; fi
+  done
   local to; to="$(tool_objects t3102-tool-abc123 3102 t3102-probe mirror.gcr.io/library/golang:1.26.9 amd64 2999-01-01T00:00:00Z)"
   if jq -e --arg ls "$LABEL_STAND" '
       ([.items[].kind] == ["Namespace", "Pod"])
@@ -746,7 +763,13 @@ ns_state() {
 #                 (kacho.io/stand=test, задача, срок TOOL_TTL_MIN мин) — перепись его видит,
 #                 `census --expired` снимает; снимается сразу после забора и ловушкой подъёма;
 #   образ         golang версии toolchain (иначе go) go.mod рабочей копии — её же ставит
-#                 конвейер (setup-go, go-version-file: go.mod), зеркалом Docker Hub; GOTOOLCHAIN=local;
+#                 конвейер (setup-go, go-version-file: go.mod), зеркалом Docker Hub; GOTOOLCHAIN=local.
+#                 Закреплён ДАЙДЖЕСТОМ индекса образа — объявление одно, TOOL_IMAGE ниже; его
+#                 версия обязана совпасть с go.mod (иначе отказ до первой записи на кластере).
+#                 Это КОРЕНЬ ДОВЕРИЯ кода, который машина исполняет: бинари собраны кластером
+#                 из этого образа, а сумма, посчитанная в pod и сверенная на машине, — сверка
+#                 ПЕРЕДАЧИ, а не подлинности (кто управляет образом или pod, тот управляет и
+#                 бинарём, и его суммой). Модули — `-mod=readonly` по go.sum, GOSUMDB по умолчанию;
 #   pod           Pod Security restricted: не root, токен учётки не монтируется, возможности
 #                 сброшены, предел памяти; срок — STAND_TOOL_DEADLINE;
 #   исходники     файлы рабочей копии — отслеживаемые и новые неигнорируемые, ровно перечни
@@ -762,6 +785,11 @@ TOOL_WORK=/work
 TOOL_DEADLINE="${STAND_TOOL_DEADLINE:-1800}"
 TOOL_WAIT="${STAND_TOOL_WAIT:-900}"
 TOOL_TTL_MIN=60
+# Образ сборки инструментов — тег версии Go и дайджест индекса образа (OCI image index,
+# все архитектуры). Дайджест — ответ реестра на манифест тега: зеркало mirror.gcr.io и
+# registry-1.docker.io назвали один и тот же (2026-10-22, задача kacho#3353). Смена
+# toolchain в go.mod — смена этой строки тем же изменением: tool_image сверяет версии.
+TOOL_IMAGE="mirror.gcr.io/library/golang:1.26.10@sha256:672c944cfd07599b5f1bb179869270cdc94c6254e41db4d431259693cb286b82"
 TOOL_NS=""
 # «имя=пакет» — что собирается и под каким именем ложится в каталог bin стенда.
 STAND_TOOLS="stand-ns=./tools/standns/cmd/stand-ns module-manifests-configmap=./tools/modulemanifests/cmd/module-manifests-configmap product-names=./tools/productnames/cmd/product-names"
@@ -794,6 +822,18 @@ tool_go_version() {
   [ -n "$v" ] || v="$(sed -n 's/^go \([0-9][0-9.]*\)$/\1/p' "$1" | head -n 1)"
   [[ "$v" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { warn "версия Go в $1 не прочитана («$v»)"; return 1; }
   printf '%s\n' "$v"
+}
+
+# tool_image GO.MOD — образ сборки: TOOL_IMAGE в форме «golang:<версия>@sha256:<64 hex>», версия
+# — та, что требует GO.MOD (tool_go_version). Тег без дайджеста либо иная версия — код 1.
+tool_image() {
+  local ver re='^mirror\.gcr\.io/library/golang:([0-9]+\.[0-9]+(\.[0-9]+)?)@sha256:[0-9a-f]{64}$'
+  ver="$(tool_go_version "$1")" || return 1
+  [[ "$TOOL_IMAGE" =~ $re ]] ||
+    { warn "образ сборки «$TOOL_IMAGE» не закреплён дайджестом (golang:<версия>@sha256:<64 hex>) — код из него на машине не исполняется"; return 1; }
+  [ "${BASH_REMATCH[1]}" = "$ver" ] ||
+    { warn "образ сборки объявлен для Go ${BASH_REMATCH[1]}, а $1 требует $ver — обнови TOOL_IMAGE (тег и дайджест индекса golang:$ver) тем же изменением"; return 1; }
+  printf '%s\n' "$TOOL_IMAGE"
 }
 
 # tool_arch — GOARCH машины: бинарь исполняется здесь, собирается там.
@@ -875,9 +915,8 @@ tool_drop() {
 build_tool() {
   local out="$1/bin" stand="$2" task="$3" ver arch image tns objs i rc="" phase t name want got try
   mkdir -p "$out" || return 1
-  ver="$(tool_go_version "$REPO_ROOT/go.mod")" || return 1
+  image="$(tool_image "$REPO_ROOT/go.mod")" || return 1
   arch="$(tool_arch)" || return 1
-  image="mirror.gcr.io/library/golang:$ver"
   tns="t$task-tool-$(printf '%s %s %s' "$stand" "$$" "$(date +%s%N)" | sha256sum | cut -c1-6)"
   ns_valid "$tns" >/dev/null || { warn "имя пространства сборки «$tns» не по правилу"; return 1; }
   for i in "create namespaces" "delete namespaces" "create pods -n $tns" "create pods --subresource=exec -n $tns"; do
