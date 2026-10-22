@@ -398,6 +398,49 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
     ok "забор отчётов: перечень pod не собран — код $frc, а не «путей 0»"
   else bad "забор отчётов: перечень pod не собран — код $frc: $(tr '\n' ' ' <"$fx/fetch.out")"; fi
   rm -rf "$fx"
+  # Шаг условия машины (kacho#3348): просьба pod исполняется командой строки ведомости с
+  # исполнителем machine; инъекция — строка убрана (либо исполнитель pod, либо аргумент с
+  # «-») → 125 без исполнения: проба прочтёт «условие не создано», а не зелёное.
+  local cx crc co
+  cx="$(mktemp -d)"
+  mkdir -p "$cx/work/cond" "$cx/repo/s" "$cx/stand"
+  printf '#!/usr/bin/env bash\necho "ran ns=$KACHO_STAND_NS state=$KACHO_STAND_COND_STATE args=$*"\n' >"$cx/repo/s/cond.sh"
+  # cond_probe ВЕДОМОСТЬ ПРОСЬБА — код ответа pod; вывод ответа — в $cx/out.
+  cond_probe() {
+    rm -f "$cx/work/cond/"*; printf '%b\n' "$2" >"$cx/work/cond/r1.req"
+    printf '%b\n' "$1" >"$cx/ledger"
+    ( RUNNER_WORK="$cx/work" REPO_ROOT="$cx/repo" WORK_ROOT="$cx/stand" STAND_CONDITIONS="$cx/ledger"
+      runner_exec() { shift; "$@"; }
+      runner_put() { sh -c 'cat > "$1.tmp" && mv "$1.tmp" "$1"' put "$2"; }
+      runner_conds t3102-probe ) >"$cx/log" 2>&1
+    cat "$cx/work/cond/r1.out" >"$cx/out" 2>/dev/null
+    cat "$cx/work/cond/r1.rc" 2>/dev/null || echo none
+  }
+  crc="$(cond_probe 'rot\tmachine\twrite: x\ts/cond.sh\tr' 'rot\twrite\tset\tK2,K1\tkacho-wrap-rotate-ab12')"; co="$(cat "$cx/out")"
+  if [ "$crc" = 0 ] && [ "$co" = "ran ns=t3102-probe state=$cx/stand/t3102-probe/cond/rot args=write set K2,K1 kacho-wrap-rotate-ab12" ] &&
+     [ ! -e "$cx/work/cond/r1.req" ]; then
+    ok "шаг условия машины: строка ведомости machine — исполнена своим пространством и каталогом, ответ 0 в pod"
+  else bad "шаг условия машины: строка machine — код $crc, ответ «$co» ($(tr '\n' ' ' <"$cx/log"))"; fi
+  for twin in 'other\tmachine\tw\ts/cond.sh\tr|строка убрана' 'rot\tpod\tw\ts/cond.sh\tr|исполнитель pod'; do
+    crc="$(cond_probe "${twin%|*}" 'rot\twrite\tset\tK2,K1\tk')"; co="$(cat "$cx/out")"
+    if [ "$crc" = 125 ] && [[ "$co" == *"не объявлен в ведомости"* ]]; then
+      ok "шаг условия машины: инъекция «${twin##*|}» — 125 без исполнения (условие не создано, не зелёное)"
+    else bad "шаг условия машины: инъекция «${twin##*|}» — код $crc, ответ «$co»"; fi
+  done
+  crc="$(cond_probe 'rot\tmachine\tw\ts/cond.sh\tr' 'rot\twrite\tset\tK2\t--ns\tkacho')"; co="$(cat "$cx/out")"
+  if [ "$crc" = 125 ] && [[ "$co" == *"вне формы слова"* ]] && [[ "$co" != *ran* ]]; then
+    ok "шаг условия машины: аргумент «--ns» из просьбы pod — 125 без исполнения"
+  else bad "шаг условия машины: аргумент «--ns» — код $crc, ответ «$co»"; fi
+  rm -rf "$cx"
+  co="$(STAND_CONDITIONS="$HERE/stand-conditions.tsv" cond_command wrap-rotate)"
+  if [ -f "$REPO_ROOT/$co" ] && [ "$co" = deploy/scripts/stand-second-factor-wrap-rotate.sh ]; then
+    ok "ведомость условий: wrap-rotate — шаг машины, команда есть в дереве"
+  else bad "ведомость условий: wrap-rotate не шаг машины либо команды «$co» нет"; fi
+  if jq -e '[.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.name == "KACHO_STAND_COND_DIR") | .value] == ["/work/cond"]' \
+      <<<"$(runner_objects t3102-probe browser img:1 '' ui-future/e2e true v1.35.7 6 1.9.3)" >/dev/null &&
+     [[ "$RUNNER_POD_SH" == *'mkdir -p "$HOME" "$KACHO_STAND_NS_WORKDIR" "$KACHO_STAND_COND_DIR"'* ]]; then
+    ok "раннер: каталог просьб машине /work/cond — в окружении pod и заведён текстом pod"
+  else bad "раннер: каталога просьб машине нет в окружении либо тексте pod"; fi
   if jq -e '[.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.name | startswith("KACHO_CLOUD_ADMIN"))] | length == 0' \
       <<<"$(runner_objects t3102-probe newman img:1 '' deploy true v1.35.7 6 1.9.3)" >/dev/null; then
     ok "раннер: цепочка без администратора — его окружения в pod нет"; else bad "раннер: окружение администратора без секрета"; fi
@@ -1734,6 +1777,11 @@ cmd_run() {
 #                 на петлю pod (hostAliases), сам проброс — kubectl учёткой pod;
 #   администратор из секрета стенда в окружение pod (secretKeyRef, optional): величины на
 #                 диск машины и в её журнал не ложатся (kacho#3338);
+#   запись        условия, которому нужна запись на стенде (Ф12-35: секрет обёртки и перекат
+#                 службы доступа), учётка pod не получает: pod просит машину файлом в
+#                 /work/cond, машина исполняет строку ведомости stand-conditions.tsv с
+#                 исполнителем machine своим контекстом -client (runner_conds), pod судит
+#                 исход сам; строки нет — 125, «условие не создано» (kacho#3348);
 #   отчёты        файлами из pod в --out (умолчание .stand-ns/out/<ns>/ — каталог стенда
 #                 снимает down, отчёт переживает его): newman — каталоги out наборов,
 #                 browser — results*.json, selection.json, test-results (trace), playwright-report;
@@ -1797,7 +1845,7 @@ fetched() {
 }
 finish() { echo "$1" > /work/.rc.tmp && mv /work/.rc.tmp /work/.rc; fetched; exit "$1"; }
 unmet() { say "УСЛОВИЕ НЕ СОЗДАНО: $* — команда НЕ исполнялась (125)"; finish 125; }
-mkdir -p "$HOME" "$KACHO_STAND_NS_WORKDIR"
+mkdir -p "$HOME" "$KACHO_STAND_NS_WORKDIR" "$KACHO_STAND_COND_DIR"
 for _ in $(seq 1 300); do [ -e /work/.go ] && break; sleep 2; done
 [ -e /work/.go ] || { say "исходники не доставлены за 600 с"; exit 125; }
 case "$(uname -m)" in x86_64) ka=amd64 ga=x86_64 ;; aarch64) ka=arm64 ga=arm64 ;; *) unmet "архитектура $(uname -m)" ;; esac
@@ -1912,6 +1960,57 @@ RUNNER_WORK=/work
 
 # runner_exec NS АРГУМЕНТЫ… — исполнить в pod раннера. Самопроверка подменяет её фикстурой.
 runner_exec() { local ns="$1"; shift; kubectl -n "$ns" exec "$RUNNER_POD" -c run -- "$@"; }
+# runner_put NS ПУТЬ — stdin в файл pod (через «.tmp» и mv: читатель не видит половины).
+runner_put() { kubectl -n "$1" exec -i "$RUNNER_POD" -c run -- sh -c 'cat > "$1.tmp" && mv "$1.tmp" "$1"' put "$2"; }
+
+# ── УСЛОВИЯ С ЗАПИСЬЮ — ШАГ МАШИНЫ (kacho#3346, kacho#3348) ──────────────────────
+# Учётка pod только читает (runner_judge); условие, которому нужна запись, pod просит
+# машину: «<id>.req» в /work/cond — строка «имя<TAB>аргументы…». Машина исполняет команду
+# строки ведомости STAND_CONDITIONS с исполнителем machine — аргументы просьбы argv-ом,
+# без оболочки, каждый в форме слова без «-» впереди; пространство — только своё (env
+# KACHO_STAND_NS), каталог условия — в рабочем каталоге стенда (его снимает down). Ответ —
+# «<id>.out» (хвост вывода) и «<id>.rc»; строки нет либо аргумент вне формы — 125 без
+# исполнения: проба читает «условие не создано», а не зелёное.
+STAND_CONDITIONS="${STAND_CONDITIONS:-$HERE/stand-conditions.tsv}"
+
+# cond_command ИМЯ — команда строки ведомости с исполнителем machine; строки нет — код 1.
+cond_command() {
+  awk -F'\t' -v n="$1" '!/^#/ && NF >= 4 && $1 == n && $2 == "machine" { print $4; f = 1; exit } END { exit !f }' "$STAND_CONDITIONS"
+}
+
+# runner_conds NS — исполнить просьбы pod, лежащие сейчас; печатает исход каждой.
+runner_conds() {
+  local ns="$1" id line cmd rc out a
+  local -a ids f
+  mapfile -t ids < <(runner_exec "$ns" sh -c 'cd "$1" 2>/dev/null || exit 0; for f in *.req; do [ -e "$f" ] && echo "${f%.req}"; done' ls "$RUNNER_WORK/cond" </dev/null 2>/dev/null)
+  for id in "${ids[@]}"; do
+    [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || { warn "просьба pod с именем вне формы «$id» — пропущена"; continue; }
+    line="$(runner_exec "$ns" cat "$RUNNER_WORK/cond/$id.req" </dev/null 2>/dev/null)" || continue
+    runner_exec "$ns" mv "$RUNNER_WORK/cond/$id.req" "$RUNNER_WORK/cond/$id.taken" </dev/null >/dev/null 2>&1 || continue
+    IFS=$'\t' read -r -a f <<<"$line"
+    rc=0 out=""
+    if [ "${#f[@]}" -lt 1 ] || ! cmd="$(cond_command "${f[0]}")"; then
+      rc=125 out="шаг условия «${f[0]:-}» не объявлен в ведомости $(basename "$STAND_CONDITIONS") с исполнителем machine — не исполнялся"
+    else
+      for a in "${f[@]:1}"; do
+        [[ "$a" =~ ^[A-Za-z0-9][A-Za-z0-9.,_:=-]{0,127}$ ]] || { rc=125 out="аргумент просьбы «$a» вне формы слова — шаг ${f[0]} не исполнялся"; break; }
+      done
+      if [ "$rc" -eq 0 ]; then
+        if mkdir -p "$WORK_ROOT/$ns/cond/${f[0]}" && chmod 700 "$WORK_ROOT/$ns/cond" "$WORK_ROOT/$ns/cond/${f[0]}"; then
+          log "шаг условия машины по просьбе pod: ${f[*]}"
+          out="$(KACHO_STAND_NS="$ns" KACHO_STAND_COND_STATE="$WORK_ROOT/$ns/cond/${f[0]}" \
+            timeout "${STAND_COND_TIMEOUT:-900}" bash "$REPO_ROOT/$cmd" "${f[@]:1}" </dev/null 2>&1)"; rc=$?
+        else
+          rc=125 out="каталог условия ${f[0]} в рабочем каталоге стенда не заведён — шаг не исполнялся"
+        fi
+      fi
+    fi
+    log "шаг условия ${f[0]:-?} (просьба $id): код $rc"
+    { printf '%s\n' "$out" | tail -n 40 | runner_put "$ns" "$RUNNER_WORK/cond/$id.out" &&
+      printf '%s\n' "$rc" | runner_put "$ns" "$RUNNER_WORK/cond/$id.rc"; } >/dev/null 2>&1 ||
+      warn "ответ на просьбу $id в pod не доставлен — pod прочтёт «условие не создано» по сроку"
+  done
+}
 
 # Текст pod: перечень отчётов «размер сумма путь» — то, что машина обязана получить. Собирается
 # ДО передачи, из файлов по шаблонам runner_globs (раскрывает оболочка pod); тот же состав
@@ -2017,7 +2116,7 @@ runner_objects() {
         containers: [{name: "run", image: $image, command: ["bash", "-c", $sh], workingDir: "/src",
           env: ([env("RUNNER_KIND"; $kind), env("RUNNER_DIR"; $dir), env("RUNNER_CMD"; $cmd),
                  env("RUNNER_KUBECTL"; $kver), env("RUNNER_NEWMAN"; $newman), env("RUNNER_GRPCURL"; $grpc), env("RUNNER_BUF"; $buf), env("RUNNER_SHA"; $sha),
-                 env("KACHO_STAND_NS"; $ns), env("KACHO_NAMESPACE"; $ns), env("KACHO_STAND_NS_WORKDIR"; "/work/stand"),
+                 env("KACHO_STAND_NS"; $ns), env("KACHO_NAMESPACE"; $ns), env("KACHO_STAND_NS_WORKDIR"; "/work/stand"), env("KACHO_STAND_COND_DIR"; "/work/cond"),
                  env("HOME"; "/work/home"), env("CI"; "true")]
                 + (if $secret == "" then [] else [adm("KACHO_CLOUD_ADMIN_EMAIL"; "email"), adm("KACHO_CLOUD_ADMIN_PASSWORD"; "password")] end)),
           resources: {requests: {cpu: "500m", memory: "1Gi"}, limits: {memory: $mem}},
@@ -2155,6 +2254,7 @@ runner_run() {
     rc="$(kubectl -n "$ns" exec "$RUNNER_POD" -c run -- cat /work/.rc 2>/dev/null)"
     [[ "$rc" =~ ^[0-9]+$ ]] && break
     rc=""
+    runner_conds "$ns"
     phase="$(kubectl -n "$ns" get pod "$RUNNER_POD" -o jsonpath='{.status.phase}' 2>/dev/null)"
     case "$phase" in
       Running|Pending) miss=0 ;;

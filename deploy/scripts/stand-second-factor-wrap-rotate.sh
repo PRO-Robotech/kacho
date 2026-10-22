@@ -22,6 +22,10 @@
 #       строка — «errors=<число>»
 #   stand-second-factor-wrap-rotate.sh limit [--ns NS]
 #       предел неверных предъявлений на адрес, который читает процесс
+#   stand-second-factor-wrap-rotate.sh write set KEYS KEY | write restore KEY
+#       ЗАПИСЬ условия — шаг МАШИНЫ по просьбе pod раннера (раздел «ПОД РАННЕРА»):
+#       секрет, перекат, готовность конечных точек; каталог состояния — KEY под
+#       KACHO_STAND_COND_STATE, пространство — только KACHO_STAND_NS
 #
 # Цель: make -C deploy stand-second-factor-wrap-rotate KEYS=… STATE=… [NS=…]
 # Читатель: ui-future/e2e/specs/second-factor-wrap-rotation.spec.ts.
@@ -76,6 +80,27 @@
 # экспортирует `stand-ns.sh run`; конвейер консоли ставит их шагу проб. Адрес
 # не назван — код 2 до первой записи: угаданный адрес судил бы другой маршрут.
 #
+# ── ПОД РАННЕРА: ЗАПИСЬ — ШАГ МАШИНЫ (kacho#3346, kacho#3348) ─────────────────
+#
+# В pod раннера (`stand-ns.sh run --runner`) учётка `stand-runner` только читает:
+# объекты, журналы, проброс, exec (судья роли stand-ns.sh `runner_judge`). Запись
+# условия — правка секрета и перекат службы — ей не дана и не даётся. Поэтому
+# там `set` и `restore` делятся надвое:
+#
+#   запись    просьба машине файлом в KACHO_STAND_COND_DIR pod («<имя>.req»:
+#             строка «wrap-rotate<TAB>set<TAB>KEYS<TAB>KEY»); машина (цикл
+#             `runner_run` stand-ns.sh) исполняет строку ведомости условий
+#             `stand-conditions.tsv` — этот скрипт `write …` своим контекстом
+#             -client — и кладёт рядом «<имя>.out» и «<имя>.rc»;
+#   исход     pod судит сам, своей учёткой: готовность края, маршрут посева
+#             изнутри pod, самоотчёт старта каждого живого пода.
+#
+# Машина не ответила за KACHO_WRAP_MACHINE_WAIT (с, умолчание 480) либо ответила
+# не нулём — код 3: условие не создано, проба — «не выполнилось», а не зелёное.
+# Pod раннера опознаётся тремя фактами сразу: учётка pod (файл пространства
+# учётки) называет NS, KACHO_STAND_COND_DIR есть, а KUBECONFIG и ~/.kube/config —
+# нет (kubectl без контекста иначе как учёткой pod говорить не может).
+#
 # ── МАТЕРИАЛ КЛЮЧЕЙ ───────────────────────────────────────────────────────────
 #
 # Величины не печатаются и в аргументы kubectl не уходят: K1 и K2 лежат в DIR
@@ -106,7 +131,7 @@ die()  { printf 'ABORT: wrap-rotate — %s\n' "$1" >&2; exit "${2:-2}"; }
 log()  { printf '=== wrap-rotate: %s\n' "$*" >&2; }
 
 usage() {
-  sed -n '7,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  sed -n '7,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -119,6 +144,17 @@ case "$CMD" in
   set|cell|errors) [ $# -ge 1 ] || usage; ARG="$1"; shift ;;
   restore|limit) ;;
   self-test) ;;
+  write)
+    # Аргументы шага машины — из просьбы pod: ни --ns, ни --state (пространство —
+    # только KACHO_STAND_NS машины, каталог — только под KACHO_STAND_COND_STATE).
+    [ $# -ge 2 ] || usage
+    WOP="$1"; shift
+    case "$WOP" in
+      set) [ $# -eq 2 ] || die "write set: ждались KEYS KEY, получено $#"; ARG="$1"; WKEY="$2"; shift 2 ;;
+      restore) [ $# -eq 1 ] || die "write restore: ждался KEY, получено $#"; WKEY="$1"; shift ;;
+      *) die "write: операция «$WOP» вне set, restore" ;;
+    esac
+    [[ "$WKEY" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || die "write: ключ состояния «$WKEY» не имя каталога" ;;
   *) usage ;;
 esac
 NS="" STATE=""
@@ -134,8 +170,23 @@ NS="${NS:-${KACHO_STAND_NS:-kacho}}"
 
 # ── КЛАСТЕР ───────────────────────────────────────────────────────────────────
 
-CTX=""
+CTX="" IN_POD=0
+POD_NS_FILE="${KACHO_WRAP_POD_NS_FILE:-/var/run/secrets/kubernetes.io/serviceaccount/namespace}"
+TNS_RE='^t[0-9]+-[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+
+# in_runner_pod — вызов идёт в pod раннера своего пространства (раздел «ПОД РАННЕРА»).
+in_runner_pod() {
+  [ -n "${KUBERNETES_SERVICE_HOST:-}" ] && [ -n "${KACHO_STAND_COND_DIR:-}" ] && [ -d "$KACHO_STAND_COND_DIR" ] &&
+    [ -z "${KACHO_CLIENT_CONTEXT:-}" ] && [ -z "${KUBECONFIG:-}" ] && [ ! -e "${HOME:-/nonexistent}/.kube/config" ] &&
+    [ -r "$POD_NS_FILE" ] && [ "$(cat "$POD_NS_FILE")" = "$NS" ] && [[ "$NS" =~ $TNS_RE ]]
+}
+
 pick_context() {
+  if in_runner_pod; then
+    CTX="" IN_POD=1
+    EDGE_VIA="port-forward"
+    return
+  fi
   if [ -n "${KACHO_CLIENT_CONTEXT:-}" ]; then
     [[ "$NS" =~ ^t[0-9]+-[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] ||
       die "пространство «$NS» на названном внешнем кластере не тестовое (t<номер>-<коротко>): рабочий стенд площадки скрипт не трогает"
@@ -164,7 +215,10 @@ print(((c.get("clusters") or [{}])[0].get("cluster") or {}).get("server", ""))
   EDGE_VIA="${EDGE_READY_VIA:-proxy}"
 }
 
-k() { command kubectl --context "$CTX" -n "$NS" "$@"; }
+k() {
+  if [ "$IN_POD" = 1 ]; then command kubectl -n "$NS" "$@"; return; fi
+  command kubectl --context "$CTX" -n "$NS" "$@"
+}
 
 # ── ЧТО ЧИТАЕТ ПРОЦЕСС ───────────────────────────────────────────────────────
 
@@ -297,8 +351,40 @@ json.dump({"data": {sys.argv[2]: base64.b64encode(v).decode()}}, open(sys.argv[3
     die "перекат $DEPLOY не стал готов за $ROLLOUT_TIMEOUT: $(tail -1 <<<"$out")" 3
   fi
   endpoints_ready || die "конечные точки служб $DEPLOY не готовы после переката (выше)" 3
+}
+
+# verify_applied — готовность края и маршрута посева после переката: та половина,
+# что судит исход (в pod раннера — его учёткой и его маршрутом).
+verify_applied() {
   edge_ready || die "край не готов после переката $DEPLOY (выше)" 3
   route_ready || die "маршрут посева $ROUTE_URL не готов после переката $DEPLOY (выше)" 3
+}
+
+# machine_step OP [ARG] — запись условия просьбой машине (раздел «ПОД РАННЕРА»).
+# Печатает вывод машины; её код не 0 либо ответа нет за предел — код 3 (условие не создано).
+MACHINE_WAIT="${KACHO_WRAP_MACHINE_WAIT:-480}"
+machine_step() {
+  local dir="$KACHO_STAND_COND_DIR" id req i rc out
+  [[ "$MACHINE_WAIT" =~ ^[0-9]+$ ]] || die "KACHO_WRAP_MACHINE_WAIT=«$MACHINE_WAIT» — не число секунд"
+  id="wrap-rotate-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+  req="$(printf 'wrap-rotate\twrite\t%s' "$1")"
+  [ $# -lt 2 ] || req="$req$(printf '\t%s' "$2")"
+  req="$req$(printf '\t%s' "$(basename "$STATE")")"
+  printf '%s\n' "$req" >"$dir/$id.req.tmp" && mv "$dir/$id.req.tmp" "$dir/$id.req" ||
+    die "просьба машине не записана в $dir" 3
+  log "запись условия — шаг машины: просьба $id ($*), ждём ответа до $MACHINE_WAIT с"
+  for ((i = 0; i < MACHINE_WAIT; i++)); do
+    [ -e "$dir/$id.rc" ] && break
+    sleep 1
+  done
+  if [ ! -e "$dir/$id.rc" ]; then
+    rm -f "$dir/$id.req"
+    die "условие не создано: шаг машины «wrap-rotate $*» не исполнен за $MACHINE_WAIT с — просьбу никто не взял (машина не служит ведомости условий stand-conditions.tsv)" 3
+  fi
+  rc="$(cat "$dir/$id.rc")"; out="$(cat "$dir/$id.out" 2>/dev/null)"
+  printf '%s\n' "$out" >&2
+  [ "$rc" = 0 ] || die "условие не создано: шаг машины «wrap-rotate $*» завершился кодом $rc (вывод выше)" 3
+  printf '%s\n' "$out"
 }
 
 # ── МАРШРУТ ПОСЕВА ────────────────────────────────────────────────────────────
@@ -472,6 +558,12 @@ PYEP
 # конфигурации, в котором выбранный контекст единственный.
 edge_ready() {
   local cfg rc
+  if [ "$IN_POD" = 1 ]; then
+    # Учётка pod: kubectl без файла конфигурации говорит лишь ею (in_runner_pod).
+    EDGE_READY_VIA="$EDGE_VIA" bash "$HERE/wait-edge-ready.sh" "$NS" "$EDGE_DEPLOY" \
+      "${EDGE_READY_ATTEMPTS:-60}" "${EDGE_READY_INTERVAL:-2}" "${EDGE_READY_STREAK:-3}" >&2
+    return
+  fi
   cfg="$(mktemp)" || return 1
   command kubectl config view --minify --flatten --context "$CTX" >"$cfg" 2>/dev/null || { rm -f "$cfg"; log "контекст $CTX не выписан"; return 1; }
   KUBECONFIG="$cfg" EDGE_READY_VIA="$EDGE_VIA" bash "$HERE/wait-edge-ready.sh" "$NS" "$EDGE_DEPLOY" \
@@ -507,27 +599,54 @@ print(last)
   printf 'wrap-rotate: keys=%s pods=%s list=%s\n' "$keys" "$count" "$list"
 }
 
+# check_keys KEYS — перечень проверяется до первой записи: ошибочное имя не трогает
+# ни секрета, ни состояния.
+check_keys() {
+  local keys="$1" n
+  case ",$keys," in *,,*) die "перечень «$keys»: пустое имя" ;; esac
+  [ -n "$keys" ] || die "перечень пуст: назови K1 и/или K2 через запятую"
+  for n in ${keys//,/ }; do case "$n" in K1|K2) ;; *) die "перечень «$keys»: имя «$n» вне словаря K1, K2" ;; esac; done
+}
+
 cmd_set() {
   local keys="$1" value
   need_state
   pick_context
   load_target
   route_address
-  # Перечень проверяется до первой записи: ошибочное имя не трогает ни секрета, ни состояния.
-  case ",$keys," in *,,*) die "перечень «$keys»: пустое имя" ;; esac
-  [ -n "$keys" ] || die "перечень пуст: назови K1 и/или K2 через запятую"
-  local n; for n in ${keys//,/ }; do case "$n" in K1|K2) ;; *) die "перечень «$keys»: имя «$n» вне словаря K1, K2" ;; esac; done
+  check_keys "$keys"
+  if [ "$IN_POD" = 1 ]; then
+    machine_step set "$keys" >/dev/null
+    verify_applied
+    report "$keys"
+    return
+  fi
   prepare_keys
   value="$(mktemp "$STATE/value.XXXXXX")" || die "файл величины не заведён"
   (compose "$keys" >"$value") || { rm -f "$value"; exit 2; }
   log "секрет $SECRET ← перечень $keys; перекат $DEPLOY в $NS (контекст $CTX)"
   apply_value "$value"
   rm -f "$value"
+  verify_applied
   report "$keys"
 }
 
 cmd_restore() {
   need_state
+  if in_runner_pod; then
+    local out
+    pick_context
+    load_target
+    route_address
+    out="$(machine_step restore)" || exit $?
+    if [[ "$out" == *"wrap-rotate-write: nothing"* ]]; then
+      log "ключ стенда до пробы не сохранялся — восстанавливать нечего"
+      return 0
+    fi
+    verify_applied
+    report "K1"
+    return
+  fi
   if [ ! -s "$STATE/K1" ]; then
     log "ключ стенда до пробы не сохранялся — восстанавливать нечего"
     rm -rf "${STATE:?}"/* 2>/dev/null
@@ -538,8 +657,45 @@ cmd_restore() {
   route_address
   log "секрет $SECRET ← ключ стенда до пробы; перекат $DEPLOY в $NS (контекст $CTX)"
   apply_value "$STATE/K1"
+  verify_applied
   report "K1"
   rm -rf "${STATE:?}"/*
+}
+
+# cmd_write — шаг МАШИНЫ (раздел «ПОД РАННЕРА»): только запись и перекат, своим
+# контекстом -client; исход судит pod. Пространство — KACHO_STAND_NS машины, каталог
+# состояния — KACHO_STAND_COND_STATE/KEY; в pod раннера и без контекста — отказ.
+cmd_write() {
+  [ -n "${KACHO_CLIENT_CONTEXT:-}" ] || die "write — шаг машины стенда проб: KACHO_CLIENT_CONTEXT не задан (его экспортирует stand-ns.sh run)"
+  ! in_runner_pod || die "write — шаг машины: в pod раннера записи нет (учётка pod только читает)"
+  [ -n "${KACHO_STAND_COND_STATE:-}" ] || die "write: KACHO_STAND_COND_STATE не задан — ключ стенда до пробы хранить негде"
+  [ -n "${KACHO_STAND_NS:-}" ] && [ "$NS" = "$KACHO_STAND_NS" ] || die "write: пространство — только KACHO_STAND_NS машины"
+  STATE="$KACHO_STAND_COND_STATE/$WKEY"
+  need_state
+  pick_context
+  load_target
+  case "$WOP" in
+    set)
+      local value
+      check_keys "$ARG"
+      prepare_keys
+      value="$(mktemp "$STATE/value.XXXXXX")" || die "файл величины не заведён"
+      (compose "$ARG" >"$value") || { rm -f "$value"; exit 2; }
+      log "шаг машины: секрет $SECRET ← перечень $ARG; перекат $DEPLOY в $NS"
+      apply_value "$value"
+      rm -f "$value"
+      echo "wrap-rotate-write: done list=$ARG" ;;
+    restore)
+      if [ ! -s "$STATE/K1" ]; then
+        rm -rf "${STATE:?}"
+        echo "wrap-rotate-write: nothing"
+        return 0
+      fi
+      log "шаг машины: секрет $SECRET ← ключ стенда до пробы; перекат $DEPLOY в $NS"
+      apply_value "$STATE/K1"
+      rm -rf "${STATE:?}"
+      echo "wrap-rotate-write: done list=K1" ;;
+  esac
 }
 
 cmd_cell() {
@@ -645,5 +801,6 @@ case "$CMD" in
   cell)    cmd_cell "$ARG" ;;
   errors)  cmd_errors "$ARG" ;;
   limit)   cmd_limit ;;
+  write)   cmd_write ;;
   self-test) usage ;;
 esac
