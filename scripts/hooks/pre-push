@@ -287,6 +287,70 @@ if [ "$push_refs_draft" -gt 0 ]; then
     echo "          Черновиком она не считается: у не-черновой ссылки есть читатель, и вердикт ей нужен." >&2
 fi
 
+# НЕПРОВЕРЕННЫХ ВЕРШИН НЕТ — НАБОРЫ НЕ НУЖНЫ (kacho-workspace#1288, #3336).
+#
+# Ветка, заведённая на sha, которую этот хук уже судил зелёным, судилась бы
+# второй раз над тем же деревом. Вопрос «есть ли среди отправляемых вершин
+# не судившаяся» решает `prepush-new-commits.sh` (0 — нет, 1 — есть, 2 — судить
+# нечего); проверенное — его запись, которую хук пополняет после зелёного прогона
+# (`record_verified` ниже), а НЕ ветки удалённого: черновик, обход, форк и снятая
+# на сервере ссылка публикуют непроверенное. Предиката рядом нет либо он ответил
+# не 0 — прогон идёт как прежде: ускорение не отнимает проверку. Стоит после
+# ветви одних удалений и черновиков, до диапазона. Держит
+# scripts/hooks/prepush-new-commits-inject.sh.
+if [ -n "$push_input" ] && [ -f "$ROOT/scripts/hooks/prepush-new-commits.sh" ]; then
+    nc_out="$(bash "$ROOT/scripts/hooks/prepush-new-commits.sh" <<< "$push_input" 2>&1)" && nc_rc=0 || nc_rc=$?
+    if [ "$nc_rc" -eq 0 ]; then
+        printf 'pre-push: %s\n' "${nc_out//$'\n'/$'\npre-push: '}" >&2
+        echo "pre-push: все вершины уже проверены этим хуком — наборы не нужны" >&2
+        postcondition_note
+        exit 0
+    fi
+fi
+# KACHO_PREPUSH_SKIP_ONLY=1 — хук зовут ЛИШЬ ради ветви выше: переходник слота воркспейса
+# (heavy-slot.sh, kacho-workspace#1288) спросил запись машины и пустил хук здесь, а наборы
+# идут Job-ом во внешнем кластере. Дошли сюда — наборы нужны: 79, и переходник уводит хук в
+# Job, а не гонит наборы на машине мимо слота.
+if [ "${KACHO_PREPUSH_SKIP_ONLY:-0}" = "1" ]; then
+    echo "pre-push: KACHO_PREPUSH_SKIP_ONLY=1, а непроверенная вершина есть — наборы здесь не идут (79)" >&2
+    exit 79
+fi
+
+# record_verified — вершина этой отправки в запись проверенного; зовётся ТОЛЬКО
+# на зелёном прогоне без невыполненных. Хук судит ДИАПАЗОН, а не дерево целиком,
+# поэтому вершина проверена, лишь когда диапазон покрыл всю её работу: первая
+# отправка от точки интеграции (`<база>...<вершина>`, база выведена, а не названа
+# `KACHO_TRUNK_REF`), либо дописывание `<прежняя>..<вершина>`, где прежняя голова
+# сама в записи либо в стволе. Дописывание поверх отправленного в обход —
+# не записывается: обойдённое не судилось ни разу. Запись не удалась — отправку
+# это не останавливает: следующая отправка лишь погонит наборы.
+range_covered() {
+    local r prev
+    [ -z "${KACHO_TRUNK_REF:-}" ] || return 1
+    [ -n "$push_ranges" ] || return 1
+    for r in $push_ranges; do
+        case "$r" in
+            *...*) ;;
+            *..*)
+                prev="${r%%..*}"
+                bash "$ROOT/scripts/hooks/prepush-new-commits.sh" --recorded "$prev" ||
+                    git merge-base --is-ancestor "$prev" refs/remotes/origin/main 2> /dev/null ||
+                    return 1
+                ;;
+            *) return 1 ;;
+        esac
+    done
+}
+record_verified() {
+    [ -n "$push_tips_uniq" ] && [ -f "$ROOT/scripts/hooks/prepush-new-commits.sh" ] || return 0
+    if ! range_covered; then
+        echo "   вершина в запись проверенного НЕ внесена: диапазон ($push_ranges) не покрывает всю её работу" >&2
+        return 0
+    fi
+    bash "$ROOT/scripts/hooks/prepush-new-commits.sh" --record "$push_tips_uniq" >&2 ||
+        echo "   запись проверенной вершины не удалась — следующая отправка погонит наборы" >&2
+}
+
 # ЧТО ИМЕННО УЕЗЖАЕТ — СПРАШИВАЕМ У GIT, А НЕ ВЫВОДИМ ИЗ ИМЕНИ ВЕТКИ.
 #
 # git передаёт хуку на вход строки `<local_ref> <local_sha> <remote_ref>
@@ -666,5 +730,6 @@ postcondition_note
 if [ "${skipped:-0}" -gt 0 ]; then
     echo "== pre-push: отказов нет, но НЕ выполнено ${skipped} — отправляю с этой оговоркой"
 else
+    record_verified
     echo "== pre-push: локальные проверки зелёные (не выполненных нет) — отправляю"
 fi
