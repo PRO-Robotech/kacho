@@ -218,12 +218,13 @@ func TestDataplane_RG1_B14_AnonTokenPushNewRepo_403Denied(t *testing.T) {
 		"anon push-new resolves to system_class:anonymous and is checked for v_create (denied)")
 }
 
-// TestDataplane_RG1_AnonDisabled_TokenResolvesAsOrdinaryPrincipal — secure-by-default:
-// with anonymous pull DISABLED (WithAnonymousSubject NOT called / empty), a token whose
-// sub equals the anon client id resolves as an ordinary principal (service_account),
-// NOT the wildcard — it never silently gains public-read. A PUBLIC repo (whose grant is
-// system_class:anonymous only) then denies it → 404.
-func TestDataplane_RG1_AnonDisabled_TokenResolvesAsOrdinaryPrincipal(t *testing.T) {
+// TestDataplane_RG1_AnonDisabled_TokenRefusedByForm — secure-by-default: при
+// ВЫКЛЮЧЕННОМ анонимном потоке (WithAnonymousSubject НЕ вызван либо пуст) токен, чей
+// sub равен анонимному идентификатору клиента, молча анонимного класса не получает и,
+// поскольку анонимный идентификатор не порождённой формы (kaname#908 это запрещает),
+// не является принципалом ни одного класса: отказ до любого Check (kacho#3305), а не
+// сведение к service_account:<анонимный идентификатор>.
+func TestDataplane_RG1_AnonDisabled_TokenRefusedByForm(t *testing.T) {
 	az := &subjectAuthz{allow: map[string]bool{
 		"system_class:anonymous v_get " + publicRepoObject: true, // only the anonymous class is granted
 	}}
@@ -233,10 +234,9 @@ func TestDataplane_RG1_AnonDisabled_TokenResolvesAsOrdinaryPrincipal(t *testing.
 	h := newTestHandler(&fakeVerifier{subject: anonClientID}, az, be, fw, &fakeRepoReg{})
 
 	rec := doReq(h, http.MethodGet, "/v2/reg-A/public/manifests/v1", true)
-	require.Equal(t, http.StatusNotFound, rec.Code,
-		"anon disabled → anon-shaped token resolves as ordinary principal, not system_class:anonymous → PUBLIC repo denies → 404")
-	require.True(t, az.hasSubject("service_account:"+anonClientID),
-		"anon disabled → token resolves by id-prefix (service_account), not the wildcard")
-	require.False(t, az.hasSubject("system_class:anonymous"), "anon disabled → the anonymous class is never used")
+	require.Equal(t, http.StatusUnauthorized, rec.Code,
+		"anon disabled → the anon id is not of the generated form → no subject → refused (kacho#3305)")
+	require.Contains(t, rec.Header().Get("WWW-Authenticate"), `error="invalid_token"`)
+	require.Empty(t, az.checks(), "anon disabled → no Check at all: neither the class nor service_account:<anon id>")
 	require.Equal(t, 0, fw.count())
 }

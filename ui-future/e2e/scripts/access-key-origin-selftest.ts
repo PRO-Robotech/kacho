@@ -46,6 +46,9 @@ import {
   type EdgeMode,
   type Outcome,
 } from "./access-key-origin-canary/names.ts";
+// Текст отказа происхождения — тот, что утверждает живая проба F7-44-edge:
+// один источник с ней, смена у производителя ведёт за собой обе.
+import { ORIGIN_NOT_IN_LIST } from "../specs/access-key-texts.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const GATE = path.join(here, "..", "..", "..", ".github", "scripts", "assert-console-probes-verdict.py");
@@ -65,8 +68,6 @@ function check(ok: boolean, what: string): void {
 
 const USER = "usr-origin-canary";
 const KEY = "ak-origin-canary";
-/** Текст отказа происхождения — тот, что утверждает живая проба F7-44-edge. */
-const ORIGIN_REFUSAL_TEXT = "credential origin is not in the declared list";
 
 const revoked: string[] = [];
 
@@ -95,7 +96,7 @@ const edge = http.createServer((req, res) => {
       if (mode === "refuse-origin") {
         return send(400, {
           code: 3,
-          message: ORIGIN_REFUSAL_TEXT,
+          message: ORIGIN_NOT_IN_LIST,
           details: [
             { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "ORIGIN_NOT_ALLOWED", domain: "iam.kacho.cloud" },
           ],

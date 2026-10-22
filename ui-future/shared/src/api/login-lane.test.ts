@@ -615,7 +615,12 @@ describe("F8-S6 · смена адреса почты в клиенте поло
         status: 200,
         body: {
           totp: { enrolled: true, confirmedAt: "2026-10-14T21:00:00Z", lastUsedAt: "2026-10-14T21:05:00Z" },
-          backupCodes: { remaining: 9, total: 10, issuedAt: "2026-10-14T21:00:00Z", lastUsedAt: "2026-10-14T21:06:00Z" },
+          backupCodeSet: {
+            remaining: 9,
+            total: 10,
+            issuedAt: "2026-10-14T21:00:00Z",
+            lastUsedAt: "2026-10-14T21:06:00Z",
+          },
           accessKeys: { available: false },
           stepUpMethods: ["lookup_secret", "passkey", "totp"],
         },
@@ -623,7 +628,7 @@ describe("F8-S6 · смена адреса почты в клиенте поло
     });
     expect(await loginLane.secondFactorState()).toEqual({
       totp: { enrolled: true, confirmedAt: "2026-10-14T21:00:00Z", lastUsedAt: "2026-10-14T21:05:00Z" },
-      backupCodes: { remaining: 9, total: 10, issuedAt: "2026-10-14T21:00:00Z", lastUsedAt: "2026-10-14T21:06:00Z" },
+      backupCodeSet: { remaining: 9, total: 10, issuedAt: "2026-10-14T21:00:00Z", lastUsedAt: "2026-10-14T21:06:00Z" },
       accessKeys: { available: false },
       stepUpMethods: ["lookup_secret", "totp"],
     });

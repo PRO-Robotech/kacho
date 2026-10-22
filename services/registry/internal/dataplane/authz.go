@@ -37,10 +37,11 @@ func repositoryObjectFull(fullName string) string {
 }
 
 // fgaSubject — FGA subject-строка из JWT `sub` (Kachō principal id). Делегирует
-// единому domain.FGASubjectForPrincipalID: тип по id-prefix (согласован с control-plane
-// FGASubjectFromPrincipal), КРОМЕ configured anonymous principal id (anonSubjectID),
-// который резолвится в класс "system_class:anonymous" (RG-1 D-7; приёмка kaname SC-39).
-// Пустой anonSubjectID — анонимный поток выключен.
+// единому domain.FGASubjectForPrincipalID: тип — по форме и виду идентификатора
+// (согласован с control-plane FGASubjectFromPrincipal), КРОМЕ configured anonymous
+// principal id (anonSubjectID), который резолвится в класс "system_class:anonymous"
+// (RG-1 D-7; приёмка kaname SC-39). Пустой anonSubjectID — анонимный поток выключен.
+// "" — субъекта нет: ServeHTTP отвечает 401 до любого Check (kacho#3305).
 func fgaSubject(sub, anonSubjectID string) string {
 	return domain.FGASubjectForPrincipalID(sub, anonSubjectID)
 }

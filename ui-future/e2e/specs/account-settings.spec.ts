@@ -72,6 +72,7 @@ function settingsScreen(page: Page) {
       submit: password.getByRole("button", { name: "Сменить пароль" }),
       refusal: password.getByRole("alert"),
     },
+    backup: backup,
     factor: {
       region: factor,
       enroll: factor.getByRole("button", { name: "Настроить приложение-аутентификатор", exact: true }),
@@ -572,9 +573,43 @@ test("F8-26 · состояние второго фактора прочитан
   });
 });
 
+test("BCS-40 · экран безопасности показывает остаток запасных кодов из сводки набора", async ({ page }, testInfo) => {
+  // verifies #3308 — служба kaname#297 отдаёт состояние набора одной формой,
+  // `backupCodeSet` ответа чтения (приёмка kaname «набор запасных кодов — одна
+  // форма», BCS-40). Находка сборки w14: на стенде с этой службой раздел
+  // «Запасные коды» показывал «Нет» и не давал перевыпуска, а строка способа —
+  // «Нет» у заведённого фактора. Утверждается то, что видит человек: остаток в
+  // обоих местах экрана — тот, что назвала служба.
+  await withHuman(
+    testInfo,
+    "BCS-40",
+    page.context(),
+    async () => {
+      const status = page.waitForResponse(
+        (r) => new URL(r.url()).pathname === LANE.secondFactor && r.request().method() === "GET",
+      );
+      const s = await openSettings(page);
+      const body = (await (await status).json()) as { backupCodeSet?: { remaining?: unknown; total?: unknown } };
+      expect(body.backupCodeSet, `служба не назвала сводку набора: ${JSON.stringify(body)}`).toEqual(
+        expect.objectContaining({ remaining: 10, total: 10 }),
+      );
+      const row = s.factor.region.getByRole("row", { name: /Запасные коды/ });
+      await expect(row, "строка «Запасные коды» способов второго фактора").toContainText("Осталось 10 из 10");
+      await expect(s.backup, "раздел «Запасные коды» — остаток набора").toContainText("Осталось 10 из 10");
+      await expect(
+        s.backup.getByRole("button", { name: "Выпустить новые коды", exact: true }),
+        "у прочитанного набора перевыпуск доступен",
+      ).toBeVisible();
+    },
+    { secondFactor: true },
+  );
+});
+
 test("F8-27 · заведение второго фактора доводится до подтверждения и запасных кодов", async ({ page }, testInfo) => {
   // verifies #1274 — единственное предъявление кода по времени у этого человека
   // и есть предмет сценария (Р9, ось 4).
+  // verifies #3308 — BCS-42: показ один раз — десять кодов, элементы массива
+  // `backupCodes` ответа подтверждения (kaname#297: массив остаётся массивом).
   await withHuman(testInfo, "F8-27", page.context(), async () => {
     const census = ceremonyCensus(page.context());
     const s = await openSettings(page);
@@ -587,6 +622,7 @@ test("F8-27 · заведение второго фактора доводитс
     const [confirmed] = await Promise.all([lanePost(page, LANE.confirm), s.factor.confirm.click()]);
     expect(confirmed.status(), `подтверждение не прошло: ${await confirmed.text()}`).toBe(200);
     const { backupCodes } = (await confirmed.json()) as { backupCodes: string[] };
+    expect(backupCodes, "ответ подтверждения несёт десять кодов").toHaveLength(10);
     for (const code of backupCodes) await expect(s.factor.saved).toContainText(code);
     await expect(s.factor.saved, "не предупреждено, что коды показаны один раз").toContainText(
       "показываются один раз",
@@ -712,6 +748,9 @@ test("F8-30 · снятие второго фактора с подтвержд�
 
 test("F8-31 · перечеканка запасных кодов", async ({ page }, testInfo) => {
   // verifies #1274
+  // verifies #3308 — BCS-42: перечеканка показывает десять новых кодов из
+  // `backupCodes` своего ответа; до неё раздел даёт перевыпуск лишь при сводке
+  // набора `backupCodeSet` (kaname#297) — на w14 кнопки не было.
   await withHuman(
     testInfo,
     "F8-31",
@@ -725,6 +764,7 @@ test("F8-31 · перечеканка запасных кодов", async ({ pag
       expect(res.status(), `перечеканка не прошла: ${await res.text()}`).toBe(200);
       expect(methodOf(res), "форма назвала не тот способ").toBe("lookup_secret");
       const { backupCodes } = (await res.json()) as { backupCodes: string[] };
+      expect(backupCodes, "ответ перечеканки несёт десять кодов").toHaveLength(10);
       for (const code of backupCodes) await expect(s.factor.saved).toContainText(code);
       await expect(s.factor.saved, "не предупреждено, что прежний набор недействителен").toContainText(
         "Прежние запасные коды больше недействительны",
