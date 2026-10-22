@@ -78,8 +78,9 @@ function renderTable() {
   return render(<ResourceTable rows={rows} columns={cols()} rowKey={(r) => r.id} complete />);
 }
 
+/** Обёртки клеток ДАННЫХ — в теле таблицы; у заголовков колонок обёртка своя (ниже). */
 function clips(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLElement>(`.${CELL_CLIP_CLASS}`));
+  return Array.from(document.querySelectorAll<HTMLElement>(`tbody .${CELL_CLIP_CLASS}`));
 }
 
 describe("клетка данных — одна строка у КАЖДОЙ строки и КАЖДОЙ колонки", () => {
@@ -141,6 +142,60 @@ describe("клетка данных — одна строка у КАЖДОЙ с
     fireEvent.mouseOver(cell);
 
     expect(cell).toHaveAttribute("title", "очень длинное описание таблицы маршрутов");
+  });
+});
+
+describe("заголовок колонки не шире, чем колонке отведено", () => {
+  // Заголовок не переносится (index.css, `.kc-table` шапка), и без предела его
+  // длина становилась ШИРИНОЙ колонки поверх объявленной: «Последнее
+  // предъявление способа входа» при объявленных 200 точках раздвигал столбец до
+  // трёхсот, таблица сессий переставала помещаться на экране «Безопасность», и
+  // срок «Действует до» уезжал под закреплённый столбец действий (kacho#3230).
+  function sized(): Column<Row>[] {
+    return [
+      { header: "Имя", cell: (r) => <span>{r.name}</span> },
+      { header: "Последнее предъявление способа входа", cell: (r) => <span>{r.description}</span>, width: 200 },
+      { header: "Описание", cell: (r) => <span>{r.description}</span> },
+      { header: "", cell: () => <button type="button">⋯</button> },
+    ];
+  }
+
+  it("заголовок с объявленной шириной обрезается её пределом, как клетка той же колонки", () => {
+    render(<ResourceTable rows={rows} columns={sized()} rowKey={(r) => r.id} complete />);
+    const head = screen.getByRole("columnheader", { name: "Последнее предъявление способа входа" });
+    const clip = head.querySelector<HTMLElement>(`.${CELL_CLIP_CLASS}`);
+    expect(clip).not.toBeNull();
+    expect(clip!.style.maxWidth).toBe(`${200 - CELL_INSET}px`);
+    expect(clip!.style.whiteSpace).toBe("nowrap");
+    expect(clip!.style.textOverflow).toBe("ellipsis");
+  });
+
+  it("закреплённая колонка — пределом своей закреплённой ширины, обычная — общим", () => {
+    render(<ResourceTable rows={rows} columns={sized()} rowKey={(r) => r.id} complete />);
+    const identity = screen.getByRole("columnheader", { name: "Имя" }).querySelector<HTMLElement>(`.${CELL_CLIP_CLASS}`);
+    const plain = screen.getByRole("columnheader", { name: "Описание" }).querySelector<HTMLElement>(`.${CELL_CLIP_CLASS}`);
+    expect(identity!.style.maxWidth).toBe(`${260 - CELL_INSET}px`);
+    expect(plain!.style.maxWidth).toBe(`${CELL_MAX_WIDTH}px`);
+  });
+
+  it("обрезанный заголовок договаривает подсказка при наведении", () => {
+    render(<ResourceTable rows={rows} columns={sized()} rowKey={(r) => r.id} complete />);
+    const clip = screen
+      .getByRole("columnheader", { name: "Последнее предъявление способа входа" })
+      .querySelector<HTMLElement>(`.${CELL_CLIP_CLASS}`)!;
+    Object.defineProperty(clip, "scrollWidth", { value: 300, configurable: true });
+    Object.defineProperty(clip, "clientWidth", { value: 184, configurable: true });
+
+    fireEvent.mouseOver(clip);
+
+    expect(clip).toHaveAttribute("title", "Последнее предъявление способа входа");
+  });
+
+  it("заголовок служебного столбца не обёрнут — в нём нечего обрезать", () => {
+    render(<ResourceTable rows={rows} columns={sized()} rowKey={(r) => r.id} complete />);
+    const heads = Array.from(document.querySelectorAll<HTMLElement>("thead th"));
+    const wrapped = heads.filter((th) => th.querySelector(`.${CELL_CLIP_CLASS}`) !== null);
+    expect(wrapped.map((th) => th.textContent)).toEqual(["Имя", "Последнее предъявление способа входа", "Описание"]);
   });
 });
 

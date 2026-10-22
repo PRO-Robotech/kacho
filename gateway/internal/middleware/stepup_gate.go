@@ -59,6 +59,13 @@ var (
 type PermissionRequirement struct {
 	RequiredACRMin string // "" → no step-up requirement (Check fails open on it)
 
+	// AdmitsAnonymous — строка каталога допускает вызывающего без личности до
+	// решения (CatalogEntry.AdmitsAnonymous, приёмка kaname
+	// anonymous-and-authenticated-are-subject-classes.md, Р6). Читает его слой
+	// аутентификации: пропуск без удостоверения выносит он, а не следующий слой.
+	// Ступень пола его не читает — для неё «0» по-прежнему «требования нет».
+	AdmitsAnonymous bool
+
 	// MFAMaxAge — окно свежести церемонии. 0 → требования нет.
 	//
 	// ПРОИЗВОДИТЕЛЯ У НЕГО НА ЭТОМ КРАЕ НЕТ, И ЭТО РЕШЕНИЕ, А НЕ ПРОПУСК

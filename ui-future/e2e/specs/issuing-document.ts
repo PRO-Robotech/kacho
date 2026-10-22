@@ -190,3 +190,89 @@ export async function substituteDocumentReads(
   await session.send("Fetch.enable", { patterns: [{ urlPattern: `*${read.path}*`, requestStage: "Request" }] });
   return reads;
 }
+
+/** Ответ обращения, выпущенного документом: статус и байты тела — снятые браузером. */
+export interface DocumentAnswer {
+  status: number;
+  body: string;
+}
+
+/**
+ * Ответ обращения `method path`, которое выпустит СЛЕДУЮЩИЙ документ главного
+ * кадра, — первое такое его обращение.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПРЕДМЕТ (kacho#3238, прогон на t3238-sc @63500f861, F8-17)
+ *
+ * Ожидание ответа, поставленное перед `page.reload()` (`page.waitForResponse`),
+ * ловит первый подходящий ответ ЛЮБОГО документа — и обращение о сессии
+ * (`/iam/v1/auth/me`) выпускает каждый документ каркаса. Уходящая панель
+ * выпустила своё за 32 мс до перезагрузки, ожидание отдало его, а тело
+ * уходящего документа браузер снял вместе с ним: `Network.getResponseBody` —
+ * «No resource with given identifier found». Проба читала не тот документ, о
+ * котором утверждала, и падала тем, как быстро уходит панель.
+ *
+ * Документ — загрузчик (`loaderId`) записи браузера о выпуске, а не момент
+ * прихода события: следующий документ — загрузчик первого перехода главного
+ * кадра после вызова. Тело снимается по окончании загрузки обращения — документ,
+ * выпустивший его, к этому моменту жив: он и есть следующий.
+ *
+ * Слушатели ставятся ДО перехода: помощник зовётся и дожидается до
+ * `page.reload()` / `page.goto()`, его ответ читается после.
+ */
+export async function answerOfNextDocument(
+  documents: IssuingDocuments,
+  read: { method: string; path: string },
+): Promise<{ answer: Promise<DocumentAnswer> }> {
+  const { session } = documents;
+  const { frameTree } = await session.send("Page.getFrameTree");
+  const mainFrameId = frameTree.frame.id;
+  let loader: string | null = null;
+  let target: string | null = null;
+  let status: number | null = null;
+  const answer = new Promise<DocumentAnswer>((resolve, reject) => {
+    session.on("Network.requestWillBeSent", (e) => {
+      if (loader === null) {
+        if (e.type === "Document" && e.frameId === mainFrameId) loader = e.loaderId;
+        return;
+      }
+      if (target !== null || e.loaderId !== loader || e.request.method !== read.method) return;
+      let path: string;
+      try {
+        path = new URL(e.request.url).pathname;
+      } catch {
+        return;
+      }
+      if (path === read.path) target = e.requestId;
+    });
+    session.on("Network.responseReceived", (e) => {
+      if (e.requestId === target) status = e.response.status;
+    });
+    session.on("Network.loadingFinished", (e) => {
+      if (e.requestId !== target) return;
+      session
+        .send("Network.getResponseBody", { requestId: e.requestId })
+        .then((got) => {
+          resolve({
+            status: status ?? 0,
+            body: got.base64Encoded ? Buffer.from(got.body, "base64").toString("utf8") : got.body,
+          });
+        })
+        .catch((err: unknown) => {
+          reject(
+            new Error(
+              `${read.method} ${read.path} следующего документа: тело не снято — ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          );
+        });
+    });
+    session.on("Network.loadingFailed", (e) => {
+      if (e.requestId === target) {
+        reject(new Error(`${read.method} ${read.path} следующего документа: ответа нет — ${e.errorText}`));
+      }
+    });
+  });
+  // Ответ читает зовущий; отказ до чтения не должен всплыть неперехваченным.
+  answer.catch(() => undefined);
+  return { answer };
+}

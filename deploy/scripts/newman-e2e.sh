@@ -5,14 +5,15 @@
 #
 # Replaces the manual "seed tokens by hand" path with a deterministic,
 # committed flow:
-#   1. port-forward api-gateway public (:18080) + internal-rest (:18081) +
-#      kaname-internal (:19091)
+#   1. port-forward api-gateway public + internal-rest + kaname-internal — on ports
+#      of THIS run (free ones from the kernel unless GW_PORT / GW_INTERNAL_PORT /
+#      IAM_INTERNAL_PORT … are set; kacho#3246), each forward checked alive
 #   2. seed auth fixtures via tests/authz-fixtures/setup.sh (idempotent):
 #      mints non-expiring dev JWTs, upserts users, accounts/projects, grants
 #      cluster-admin (SQL backdoor), seeds VPC networks, and PATCHES every
 #      service's newman environment (existingProjectId, jwt*, …).
-#   3. run the requested service's newman collection(s): {{baseUrl}} → :18080,
-#      {{internalBaseUrl}} → :18081 (Internal*-RPC живут ТОЛЬКО там — ban #6).
+#   3. run the requested service's newman collection(s): {{baseUrl}} → public forward,
+#      {{internalBaseUrl}} → internal-rest forward (Internal*-RPC живут ТОЛЬКО там — ban #6).
 #   4. tear down the port-forwards on exit.
 #
 # Usage (after `make dev-up`):
@@ -24,31 +25,122 @@
 # environment-agnostic — same script seeds + runs in CI and locally.
 set -euo pipefail
 
+# ── САМОПРОВЕРКА (kacho#3246): `newman-e2e.sh --self-test` ────────────────────
+#
+# Прогонщик заводится в мире подменных kubectl/newman/grpcurl, где проброс к
+# названному порту Service не встаёт (`bind: address already in use` — так он
+# отказывает на общей машине). Утверждается:
+#   A. проброс не встал — выход 2 «ПРОГОН НЕДЕЙСТВИТЕЛЕН», причина из журнала
+#      этого проброса, до посева прогон не доходит;
+#   B. БЛИЗНЕЦ: все пробросы живы — страж молчит, прогон идёт дальше (в подменном
+#      мире он останавливается на отсутствии секрета — то есть ПОСЛЕ стража);
+#   C. порты, не заданные ручками, у прогона свои: попарно различны, и второй прогон
+#      получает другой набор (постоянные порты делили бы два прогона на одной машине).
+if [ "${1:-}" = "--self-test" ]; then
+  set +e   # исход каждой проверки читается кодом, а не обрывом самопроверки
+  _st_dir="$(mktemp -d)"; trap 'rm -rf "$_st_dir"' EXIT
+  mkdir -p "$_st_dir/bin"
+  cat >"$_st_dir/bin/kubectl" <<'FAKE'
+#!/usr/bin/env bash
+# Подменный kubectl: port-forward живёт, пока его не снимут, либо отказывает
+# привязкой, когда порт Service равен FAKE_PF_FAIL_REMOTE; прочее — отказ.
+for a in "$@"; do
+  if [ "$a" = port-forward ]; then
+    last="${*: -1}"
+    if [ -n "${FAKE_PF_FAIL_REMOTE:-}" ] && [ "${last##*:}" = "$FAKE_PF_FAIL_REMOTE" ]; then
+      echo "Unable to listen on port ${last%%:*}: bind: address already in use" >&2; exit 1
+    fi
+    exec sleep 60
+  fi
+done
+exit 1
+FAKE
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$_st_dir/bin/newman"
+  cp "$_st_dir/bin/newman" "$_st_dir/bin/grpcurl"
+  chmod +x "$_st_dir/bin/"*
+  _st_fail=0; _st_n=0
+  _st_check() { _st_n=$((_st_n+1)); if [ "$2" = 0 ]; then echo "ок    $1"; else echo "ОТКАЗ $1"; _st_fail=$((_st_fail+1)); fi; }
+  _st_run() {  # <FAKE_PF_FAIL_REMOTE> → вывод в $_st_dir/out, код в _st_rc
+    env -u GW_PORT -u GW_INTERNAL_PORT -u GW_TLS_PORT -u IAM_INTERNAL_PORT -u IAM_JWKS_PORT \
+        -u IAM_REGTOKEN_PORT -u OWN_REST_PORT -u OWN_INTERNAL_REST_PORT -u MAILBOX_PORT \
+        PATH="$_st_dir/bin:$PATH" FAKE_PF_FAIL_REMOTE="$1" SETUP_NS=t0-selftest \
+        timeout 60 bash "${BASH_SOURCE[0]}" api-gateway none >"$_st_dir/out" 2>&1
+    _st_rc=$?
+  }
+  _st_run 8081
+  grep -q "ПРОГОН НЕДЕЙСТВИТЕЛЕН: проброс не встал" "$_st_dir/out" && [ "$_st_rc" = 2 ] \
+    && ! grep -q "seeding auth fixtures" "$_st_dir/out"
+  _st_check "A: проброс не встал — выход 2 до посева (код $_st_rc)" $?
+  grep -q "address already in use" "$_st_dir/out"
+  _st_check "A: причина взята из журнала ЭТОГО проброса" $?
+  _st_run ""
+  ! grep -q "ПРОГОН НЕДЕЙСТВИТЕЛЕН" "$_st_dir/out" && grep -q "FATAL: секрета" "$_st_dir/out"
+  _st_check "B: пробросы живы — страж молчит, прогон идёт дальше (код $_st_rc)" $?
+  _st_ports="$(sed -n 's/^\[e2e\] порты прогона: //p' "$_st_dir/out")"
+  _st_ok=1
+  if [ "$(wc -w <<<"$_st_ports")" = 9 ] && [ "$(tr ' ' '\n' <<<"$_st_ports" | sort -u | wc -l)" = 9 ]; then _st_ok=0; fi
+  _st_check "C: девять портов прогона попарно различны («$_st_ports»)" "$_st_ok"
+  _st_run ""
+  _st_ports2="$(sed -n 's/^\[e2e\] порты прогона: //p' "$_st_dir/out")"
+  _st_ok=1
+  if [ -n "$_st_ports2" ] && [ "$_st_ports2" != "$_st_ports" ]; then _st_ok=0; fi
+  _st_check "C: второй прогон получил СВОИ порты, а не те же постоянные («$_st_ports2»)" "$_st_ok"
+  [ "$_st_fail" = 0 ] || { echo "--- вывод последнего прогона:"; cat "$_st_dir/out"; }
+  echo "перепись: проверок исполнено $_st_n, отказов $_st_fail"
+  [ "$_st_n" -gt 0 ] && [ "$_st_fail" = 0 ]; exit $?
+fi
+
+# ── ПОРТЫ ПРОБРОСА — СВОИ У ПРОГОНА (kacho#3246) ──────────────────────────────
+#
+# Порты были постоянными (18080, 18081, 19091 …), а на машине одновременно идут до
+# трёх прогонов слота newman, каждый против СВОЕГО пространства стенда. Второй
+# прогон не мог привязать занятый порт, его проброс умирал, а запросы уходили в
+# проброс ПЕРВОГО — к чужому стенду: наблюдалось «tls: unknown certificate
+# authority» на чеканке (лист этого стенда предъявлен чужой службе) и «no op id: {}»
+# посева F8-S7-80 (пустой ответ вместо ответа края). Порт, не заданный ручкой,
+# теперь берётся у ядра свободным, все девять — одним вызовом, чтобы они не совпали
+# между собой. Ручки прежние и по-прежнему перекрывают.
+read -r _fp1 _fp2 _fp3 _fp4 _fp5 _fp6 _fp7 _fp8 _fp9 < <(python3 -c '
+import socket
+ss = [socket.socket() for _ in range(9)]
+for s in ss:
+    s.bind(("127.0.0.1", 0))
+print(" ".join(str(s.getsockname()[1]) for s in ss))
+')
+
 SVC="${1:-${SVC:-vpc}}"
 COLLECTION="${2:-${COLLECTION:-}}"
-NS="${SETUP_NS:-kacho}"
-GW_PORT="${GW_PORT:-18080}"
-GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"   # api-gateway internal-rest :8081 (Internal*-RPC)
+# Пространство имён стенда — из ОДНОГО места, того же, что у посева
+# (tests/authz-fixtures/stand-ns.sh, задача #2882): SETUP_NS либо KACHO_NAMESPACE,
+# заданные по-разному, — отказ до первого обращения к кластеру. Ответ уходит дальше
+# обеими переменными, и посев приходит к тому же пространству, что и пробросы.
+# shellcheck source=tests/authz-fixtures/stand-ns.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/tests/authz-fixtures/stand-ns.sh"
+stand_ns_resolve || exit 1
+NS="$STAND_NS"
+GW_PORT="${GW_PORT:-$_fp1}"
+GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-$_fp2}"   # api-gateway internal-rest :8081 (Internal*-RPC)
 # api-gateway EXTERNAL TLS listener :8443 (advertised as api.kacho.local:443). The ban-#6
 # negatives address it here rather than by its advertised hostname: that name does not
 # resolve on a developer box, adding it needs root, kind publishes only node:80, and the
 # Ingress in front of it speaks GRPCS so every REST path through it answers 502 — every path
 # but the three exact ceremony coordinates, which it forwards over HTTPS (kacho#2860). Ban #6
 # is about which routes the LISTENER serves, not about the name used to find it.
-GW_TLS_PORT="${GW_TLS_PORT:-18443}"
-IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
+GW_TLS_PORT="${GW_TLS_PORT:-$_fp3}"
+IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-$_fp4}"
 # Адреса ПОЛОСЫ ФАСАДА (#59, iam-token-facade-conformance). Кейсы IBT-* спрашивают
 # сами слушатели — иначе «проверка подписи идёт через фасад» останется утверждением
 # о конфигурации, а не о поведении.
-IAM_JWKS_PORT="${IAM_JWKS_PORT:-19097}"         # iam JWKS-proxy :9097 (server-TLS)
-IAM_REGTOKEN_PORT="${IAM_REGTOKEN_PORT:-19096}" # iam docker-token handle :9096 (server-TLS)
+IAM_JWKS_PORT="${IAM_JWKS_PORT:-$_fp5}"         # iam JWKS-proxy :9097 (server-TLS)
+IAM_REGTOKEN_PORT="${IAM_REGTOKEN_PORT:-$_fp6}" # iam docker-token handle :9096 (server-TLS)
 # СОБСТВЕННЫЕ REST-ФРОНТЫ СЛУЖБЫ. Здесь объявляется ТОЛЬКО локальный порт проброса —
 # то, что принадлежит этой машине. Порт слушателя, его транспорт и имя Service
 # объявляет ПОСАДКА, и читаются они у неё (own-rest-front-address.py): выписанные
 # здесь литералом, они разошлись бы с чартом молча, а прогон пошёл бы по прежнему
 # адресу и назвал бы чужой ответ ответом фронта.
-OWN_REST_PORT="${OWN_REST_PORT:-19098}"                 # собственный публичный REST-фронт
-OWN_INTERNAL_REST_PORT="${OWN_INTERNAL_REST_PORT:-19099}" # собственный внутренний REST-фронт
+OWN_REST_PORT="${OWN_REST_PORT:-$_fp7}"                 # собственный публичный REST-фронт
+OWN_INTERNAL_REST_PORT="${OWN_INTERNAL_REST_PORT:-$_fp8}" # собственный внутренний REST-фронт
+MAILBOX_PORT="${MAILBOX_PORT:-$_fp9}"                   # приёмник писем стенда (поверхность чтения посева)
 # Порт data plane реестра здесь не объявляется: адресат — компонент, и порт вместе
 # с портовой ручкой живёт в deploy/e2e-shards.json (`optional_transports`).
 
@@ -70,6 +162,7 @@ done
 [ -d "$NEWMAN_DIR" ] || { echo "FATAL: no newman dir for SVC=$SVC ($NEWMAN_DIR)" >&2; exit 1; }
 
 PF_PIDS=()
+PF_WHAT=()   # «порт|что|журнал» на каждый проброс — для стража живости ниже
 TMP_DIRS=()
 # Чистим и порт-форварды, и временные каталоги: в них лежит ПРИВАТНЫЙ КЛЮЧ
 # client-cert'а — оставлять его в /tmp после прогона нельзя.
@@ -78,34 +171,36 @@ cleanup() {
   for d in "${TMP_DIRS[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done
 }
 trap cleanup EXIT
+# Журналы пробросов — в СВОЁМ каталоге прогона, а не под общими именами /tmp/e2e-pf-*:
+# параллельный прогон перезаписывал их, и причина отказа читалась из чужого журнала.
+PF_LOG_DIR="$(mktemp -d)"; TMP_DIRS+=("$PF_LOG_DIR")
 
+# pf_start <локальный порт> <что> <имя журнала> <svc/…> <порт Service>
+pf_start() {
+  kubectl -n "$NS" port-forward "$4" "$1:$5" >"$PF_LOG_DIR/$3.log" 2>&1 &
+  PF_PIDS+=($!); PF_WHAT+=("$1|$2|$PF_LOG_DIR/$3.log")
+}
+
+echo "[e2e] порты прогона: $GW_PORT $GW_INTERNAL_PORT $GW_TLS_PORT $IAM_INTERNAL_PORT $IAM_JWKS_PORT $IAM_REGTOKEN_PORT $OWN_REST_PORT $OWN_INTERNAL_REST_PORT $MAILBOX_PORT"
 echo "[e2e] port-forward api-gateway :$GW_PORT (public) / :$GW_INTERNAL_PORT (internal-rest) / :$GW_TLS_PORT (external TLS) + kaname-internal :$IAM_INTERNAL_PORT"
-kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pf-gw.log 2>&1 &
-PF_PIDS+=($!)
+pf_start "$GW_PORT" "публичный край api-gateway:8080" gw svc/api-gateway 8080
 # internal-rest (:8081) — ОТДЕЛЬНЫЙ листенер для Internal*-RPC. На публичном :8080 их
 # нет и быть не должно (ban #6: Internal.* не публикуется на external endpoint), поэтому
 # коллекции internal-* обязаны ходить сюда через {{internalBaseUrl}}, иначе получают
 # закономерный 404. iam-набор так и делает; vpc-набор — ещё нет (см. README/issue).
-kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pf-gw-internal.log 2>&1 &
-PF_PIDS+=($!)
+pf_start "$GW_INTERNAL_PORT" "внутренний слушатель края api-gateway:8081" gw-internal svc/api-gateway 8081
 # external TLS (:8443) — то, что рекламируется наружу. Сюда ходят ban-#6 негативы
 # ({{externalBaseUrl}}): Internal*-пути обязаны быть недостижимы на нём.
-kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pf-gw-tls.log 2>&1 &
-PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pf-iam.log 2>&1 &
-PF_PIDS+=($!)
+pf_start "$GW_TLS_PORT" "внешний TLS края api-gateway:8443" gw-tls svc/api-gateway 8443
+pf_start "$IAM_INTERNAL_PORT" "внутренний gRPC службы доступа kaname-internal:9091" iam svc/kaname-internal 9091
 # Полоса фасада (#59): JWKS-прокси iam, ручка docker-токена iam и data-plane реестра.
-kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pf-iam-jwks.log 2>&1 &
-PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
-PF_PIDS+=($!)
+pf_start "$IAM_JWKS_PORT" "JWKS службы доступа kaname-internal:9097" iam-jwks svc/kaname-internal 9097
+pf_start "$IAM_REGTOKEN_PORT" "ручка токена службы доступа kaname:9096" iam-regtoken svc/kaname 9096
 # Приёмник писем стенда — поверхность чтения посева людей (kacho#2901, F6b-53):
 # человек наборов подтверждается кодом из письма регистрации, и посев читает его
 # здесь. Тот же проброс и тот же довод, что у прогонщика шардов (newman-parallel.sh).
-MAILBOX_PORT="${MAILBOX_PORT:-18025}"
 MAILBOX_SVC="${MAILBOX_SVC:-kacho-umbrella-mailpit}"
-kubectl -n "$NS" port-forward "svc/$MAILBOX_SVC" "$MAILBOX_PORT:8025" >/tmp/e2e-pf-mailbox.log 2>&1 &
-PF_PIDS+=($!)
+pf_start "$MAILBOX_PORT" "приёмник писем $MAILBOX_SVC:8025" mailbox "svc/$MAILBOX_SVC" 8025
 
 # ─── СОБСТВЕННЫЕ REST-ФРОНТЫ: АДРЕС ЧИТАЕТСЯ У ПОСАДКИ ──────────────────────
 #
@@ -119,6 +214,16 @@ PF_PIDS+=($!)
 # «какого-нибудь» адреса превратила бы «условия нет» в вердикт о продукте.
 OWN_FRONT_ENV_ARGS=()
 OWN_FRONT_TLS_ARGS=()   # --ssl-client-* для фронта, чьё ребро ВЗАИМНОЕ
+# Фронт под транспортом адресуется ИМЕНЕМ из SAN своего листа, запиненным на петлю
+# (kacho#3315): лист несёт в SAN только DNS-имена Service, и адрес по IP проверку
+# имени не проходит — newman отдаёт `errored` вместо вердикта. Проверка не
+# ослабляется: имя — из листа посадки (own-front-tls-name.py), цепочка — по УЦ
+# посадки (--ssl-extra-ca-certs), разрешение имени в петлю — lib/pin-resolve.cjs
+# (форма `curl --resolve <имя>:<порт>:127.0.0.1`). Имени в SAN нет — адрес не
+# инъектируется: «условие не создано», а не откат на IP.
+OWN_FRONT_PINS=()       # «имя=127.0.0.1» на каждый фронт под транспортом
+OWN_FRONT_CA_ARGS=()    # --ssl-extra-ca-certs <УЦ посадки>
+OWN_FRONT_CA_DIR=""
 
 # own_front_client_leaf — тот же помощник, что у прогонщика шардов, и по той же
 # причине: лист берётся у ПОСАДКИ, а не выписывается. 0 — лист есть, 1 — секрета нет.
@@ -149,6 +254,16 @@ own_front_forward() {  # <public|internal> <локальный порт> <имя
   svc="$(echo "$addr" | cut -d'|' -f3)"
   leaf="$(echo "$addr" | cut -d'|' -f4)"
 
+  local host="127.0.0.1"
+  if [ "$scheme" = https ]; then
+    if [ -z "$OWN_FRONT_CA_DIR" ]; then OWN_FRONT_CA_DIR="$(mktemp -d)"; TMP_DIRS+=("$OWN_FRONT_CA_DIR"); fi
+    if ! host="$(python3 "$SCRIPT_DIR/own-front-tls-name.py" "$svc" --namespace "$NS" --ca-out "$OWN_FRONT_CA_DIR/$var.pem")"; then
+      echo "[e2e] $var НЕ инъектируется: имя из SAN листа фронта svc/$svc не установлено (выше) —" \
+           "«условие не создано», а не адрес по IP с проверкой, которая не пройдёт"
+      return 0
+    fi
+  fi
+
   # ТРЕБОВАНИЕ КЛИЕНТСКОГО ЛИСТА — решение ПРОИЗВОДИТЕЛЯ, зеркалящего продуктовый
   # предикат; здесь оно не вычисляется (вторая копия разошлась бы молча). До этой
   # правки серийный прогонщик листа не подавал ВОВСЕ, и на взаимном ребре каждый
@@ -169,13 +284,28 @@ own_front_forward() {  # <public|internal> <локальный порт> <имя
       return 0 ;;
   esac
 
-  kubectl -n "$NS" port-forward "svc/$svc" "$local_port:$port" >"/tmp/e2e-pf-$var.log" 2>&1 &
-  PF_PIDS+=($!)
-  OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://127.0.0.1:$local_port")
-  echo "[e2e] собственный фронт: $var → svc/$svc :$port ($scheme, лист $leaf) на 127.0.0.1:$local_port"
+  pf_start "$local_port" "собственный фронт $var $svc:$port" "own-$var" "svc/$svc" "$port"
+  if [ "$scheme" = https ]; then
+    OWN_FRONT_PINS+=("$host=127.0.0.1")
+    cat "$OWN_FRONT_CA_DIR/$var.pem" >>"$OWN_FRONT_CA_DIR/bundle.pem"
+    OWN_FRONT_CA_ARGS=(--ssl-extra-ca-certs "$OWN_FRONT_CA_DIR/bundle.pem")
+  fi
+  OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://$host:$local_port")
+  echo "[e2e] собственный фронт: $var → svc/$svc :$port ($scheme, лист $leaf) на $host:$local_port (проброс на 127.0.0.1)"
 }
 own_front_forward public  "$OWN_REST_PORT"          ownRestBaseUrl
 own_front_forward internal "$OWN_INTERNAL_REST_PORT" ownInternalRestBaseUrl
+# Пин имён фронтов на петлю — процессам node этого прогона (newman), и только им:
+# NODE_OPTIONS другие инструменты прогонщика не читают.
+if [ "${#OWN_FRONT_PINS[@]}" -gt 0 ]; then
+  KACHO_PIN_RESOLVE="$(IFS=,; printf '%s' "${OWN_FRONT_PINS[*]}")"
+  # Кавычки вокруг пути — для разбора NODE_OPTIONS самим node, а не оболочкой.
+  # shellcheck disable=SC2089,SC2090
+  NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--require \"$SCRIPT_DIR/lib/pin-resolve.cjs\""
+  # shellcheck disable=SC2090
+  export KACHO_PIN_RESOLVE NODE_OPTIONS
+  echo "[e2e] имена фронтов запинены на петлю: $KACHO_PIN_RESOLVE; УЦ посадки — ${OWN_FRONT_CA_ARGS[*]}"
+fi
 
 # ПРОБРОС К КОМПОНЕНТУ — ПО СПРОСУ, ТЕМ ЖЕ ПРЕДИКАТОМ, ЧТО У newman-parallel.sh.
 #
@@ -191,12 +321,32 @@ OPT_ENV_ARGS=()
 while IFS='|' read -r _ovar _osvc _otport _oportenv _odport _oscheme _owhy; do
   [ -n "${_ovar:-}" ] || continue
   _oport="${!_oportenv:-$_odport}"
-  kubectl -n "$NS" port-forward "svc/$_osvc" "$_oport:$_otport" >"/tmp/e2e-pf-opt-$_ovar.log" 2>&1 &
-  PF_PIDS+=($!)
+  pf_start "$_oport" "транспорт компонента $_ovar $_osvc:$_otport" "opt-$_ovar" "svc/$_osvc" "$_otport"
   OPT_ENV_ARGS+=(--env-var "$_ovar=$_oscheme://localhost:$_oport")
   echo "[e2e] транспорт компонента: $_ovar → svc/$_osvc :$_otport на localhost:$_oport ($_owhy)"
 done < <(python3 "$(dirname "${BASH_SOURCE[0]}")/e2e-optional-transports.py" --suites "$SVC" --census)
 sleep 4
+
+# ПРОБРОС, КОТОРЫЙ НЕ ВСТАЛ, ОСТАНАВЛИВАЕТ ПРОГОН ЗДЕСЬ — тот же страж и тот же
+# предикат, что у newman-parallel.sh: жив ли НАШ процесс (занятость порта не
+# отличает наш проброс от чужого, а kubectl при отказе привязки завершается).
+pf_dead=()
+for _i in "${!PF_PIDS[@]}"; do
+  kill -0 "${PF_PIDS[$_i]}" 2>/dev/null || pf_dead+=("${PF_WHAT[$_i]}")
+done
+if [ "${#pf_dead[@]}" -gt 0 ]; then
+  echo
+  echo "===== ПРОГОН НЕДЕЙСТВИТЕЛЕН: проброс не встал (${#pf_dead[@]} из ${#PF_PIDS[@]}) ====="
+  for _d in "${pf_dead[@]}"; do
+    _port="${_d%%|*}"; _rest="${_d#*|}"; _why="${_rest%%|*}"; _log="${_rest#*|}"
+    _first="$(tr -d '\r' <"$_log" 2>/dev/null | grep -a -m1 . || true)"
+    echo "  :$_port — $_why"
+    echo "      ${_first:-журнал пуст: $_log}"
+  done
+  echo
+  echo "Посев и суиты НЕ запускались. Это НЕ красный прогон и НЕ зелёный — результата нет."
+  exit 2
+fi
 
 # mTLS для grpcurl → kaname-internal:9091.
 #
@@ -249,7 +399,11 @@ internal_rest_client_leaf "$NS" "$IR_DIR" \
 internal_rest_newman_args "$GW_INTERNAL_PORT" "$IR_DIR"
 
 echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
+# Корень удостоверяющего слушателя выдачи — в каталоге этого прогона, а не в общем
+# /tmp/kaname-server-ca, который переписывают соседние посевы (kacho#3238).
+SERVER_CA_DIR="$(mktemp -d)"; TMP_DIRS+=("$SERVER_CA_DIR")
 env BASE_URL="http://localhost:$GW_PORT" \
+IAM_SERVER_CA_DIR="$SERVER_CA_DIR" \
 INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT" \
 IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
 PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
@@ -289,6 +443,7 @@ if [ -n "$COLLECTION" ]; then
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
     ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
+    ${OWN_FRONT_CA_ARGS[@]+"${OWN_FRONT_CA_ARGS[@]}"} \
     "${INTERNAL_REST_NEWMAN_ARGS[@]}" \
     "${OPT_ENV_ARGS[@]}" \
     --delay-request 15 --reporters cli
@@ -307,6 +462,7 @@ else
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
     ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
+    ${OWN_FRONT_CA_ARGS[@]+"${OWN_FRONT_CA_ARGS[@]}"} \
     "${INTERNAL_REST_NEWMAN_ARGS[@]}" \
     "${OPT_ENV_ARGS[@]}"
   RAW_RC=$?

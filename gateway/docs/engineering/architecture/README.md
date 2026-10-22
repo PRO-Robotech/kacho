@@ -15,7 +15,9 @@ admin-поверхности. Здесь — ключевые проектные
 Третий листенер — **cluster-internal REST** (`KACHO_API_GATEWAY_INTERNAL_REST_ADDR`, дефолт
 `:8081`): на нём и только на нём резолвятся `Internal*`-пути доменов. Транспорт — только mTLS
 (kacho#3131): свой серверный лист (`KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE` / `_KEY_FILE`),
-клиентский лист обязателен, цепочка — к УЦ установки (`KACHO_API_GATEWAY_MTLS_CA_FILE`), URI-имя
+клиентский лист обязателен, цепочка — к отдельному якорю оператора
+(`KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE`, kacho#3189; совпадение с якорем установки
+`KACHO_API_GATEWAY_MTLS_CA_FILE` либо якорем звеньев — отказ старта), URI-имя
 листа — в круге `KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS`. Страж старта
 `validateProductionInternalListener` отказывает без материала на любой метке `KACHO_APP_ENV`;
 сборка — `serveInternalREST` (`tls.NewListener` внешней обёрткой над меткой «внутренний»).
@@ -34,7 +36,7 @@ TLS-листенер; соединения, принятые на внешнем
 REST-запрос проходит (снаружи внутрь):
 
 ```
-RequestID → Recovery → AuthN(dev-HMAC / сессия платформы) → DPoP/JWT(по издателю) →
+RequestID → Recovery → AuthN(сессия платформы) → DPoP/JWT(по издателю) →
 AuthZ(per-RPC Check) → AccessLog → Idempotency → REST-mux → backend
 ```
 

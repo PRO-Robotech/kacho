@@ -97,7 +97,14 @@ import jwt as pyjwt
 IAM_INTERNAL_GRPC = os.environ.get("IAM_INTERNAL_GRPC", "localhost:19091")
 BOOTSTRAP_OPERATOR_SECRET = os.environ.get(
     "BOOTSTRAP_OPERATOR_SECRET", "kacho-bootstrap-operator-client-tls")
-BOOTSTRAP_OPERATOR_NS = os.environ.get("KACHO_NAMESPACE", "kacho")
+# Пространство имён стенда — из ОДНОГО места (`stand_ns.py`, задача #2882): обе
+# переменные, SETUP_NS и KACHO_NAMESPACE, читаются там; расхождение — отказ здесь,
+# при импорте, то есть до первого обращения к кластеру.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stand_ns  # noqa: E402
+
+STAND_NS = stand_ns.resolve()
+
 _OPERATOR_CERT_DIR = os.environ.get("BOOTSTRAP_OPERATOR_CERT_DIR", "/tmp/kacho-bootstrap-operator")
 BOOTSTRAP_MINT_MTLS_CERT = os.environ.get(
     "BOOTSTRAP_MINT_MTLS_CERT", os.path.join(_OPERATOR_CERT_DIR, "client.crt"))
@@ -117,6 +124,19 @@ IAM_INTERNAL_MTLS_CERT = os.environ.get(
     "IAM_INTERNAL_GRPC_MTLS_CERT", os.path.join(_GATEWAY_CERT_DIR, "client.crt"))
 IAM_INTERNAL_MTLS_KEY = os.environ.get(
     "IAM_INTERNAL_GRPC_MTLS_KEY", os.path.join(_GATEWAY_CERT_DIR, "client.key"))
+
+# Материал, переданный ЯВНО (путь задан переменной), — решение вызывающего, и посев
+# его не подменяет повторным извлечением из кластера (задача #2882): иначе файл,
+# который вызывающий положил сам, молча переписывался листом того пространства,
+# куда посев сходил по своему умолчанию.
+_EXPLICIT_MATERIAL_VARS = ("BOOTSTRAP_MINT_MTLS_CERT", "BOOTSTRAP_MINT_MTLS_KEY",
+                           "IAM_INTERNAL_GRPC_MTLS_CERT", "IAM_INTERNAL_GRPC_MTLS_KEY",
+                           "IAM_SERVER_CA_FILE")
+
+
+def _explicit_material(*paths: str) -> bool:
+    given = {os.path.abspath(os.environ[v]) for v in _EXPLICIT_MATERIAL_VARS if os.environ.get(v)}
+    return any(os.path.abspath(p) in given for p in paths)
 
 
 # ── HTTP helpers ────────────────────────────────────────────────────────────
@@ -179,7 +199,8 @@ def ensure_client_cert(secret: str, cert_path: str, key_path: str,
     persistent, NON-transient failure that a retry only repeats (the same trap
     prodrun.sh documents for the gateway cert). If kubectl or the Secret is
     unavailable (CI without cluster access, pre-extracted material), leave whatever
-    is on disk alone and let the caller's existence check decide.
+    is on disk alone and let the caller's existence check decide. Material whose path
+    the caller set EXPLICITLY (`_EXPLICIT_MATERIAL_VARS`) is never re-extracted.
 
     The material is written 0600 OUTSIDE the repository (default /tmp/…): the seed
     borrows the cluster's own leaf for the length of the run, it never carries key
@@ -187,7 +208,9 @@ def ensure_client_cert(secret: str, cert_path: str, key_path: str,
 
     Returns True when the on-disk pair is usable (freshly written or pre-existing).
     """
-    ns = namespace or BOOTSTRAP_OPERATOR_NS
+    ns = namespace or STAND_NS
+    if _explicit_material(cert_path, key_path):
+        return all(os.path.exists(p) and os.path.getsize(p) > 0 for p in (cert_path, key_path))
     if shutil.which("kubectl"):
         probe = subprocess.run(
             ["kubectl", "-n", ns, "get", "secret", secret],
@@ -263,7 +286,7 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
     as setup.sh's grpcurl calls.
 
     Overrides: BOOTSTRAP_MINT_MTLS_CERT / _KEY (paths), IAM_INTERNAL_GRPC (addr),
-    BOOTSTRAP_OPERATOR_SECRET + KACHO_NAMESPACE (where to pull the material from).
+    BOOTSTRAP_OPERATOR_SECRET + the stand namespace (`stand_ns.py`) to pull the material from.
     """
     # NO REQUEST FIELDS, AND NO TTL PARAMETER.
     #
@@ -294,7 +317,7 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
             raise RuntimeError(
                 f"bootstrap-operator client {what} missing at {path}. MintBootstrapToken is "
                 f"gated on the caller's client certificate; provision it with "
-                f"`kubectl -n {BOOTSTRAP_OPERATOR_NS} get secret {BOOTSTRAP_OPERATOR_SECRET}` "
+                f"`kubectl -n {STAND_NS} get secret {BOOTSTRAP_OPERATOR_SECRET}` "
                 f"(issued by the umbrella when mtls.enabled) or point "
                 f"BOOTSTRAP_MINT_MTLS_CERT/_KEY at it.")
     if not shutil.which("grpcurl"):
@@ -445,7 +468,22 @@ PLATFORM_TOKEN_URL = os.environ.get(
     "PLATFORM_TOKEN_URL", "https://127.0.0.1:19096/iam/v1/token")
 
 IAM_SERVER_SECRET = os.environ.get("IAM_SERVER_SECRET", "kaname-server-tls")
-_IAM_SERVER_CA_DIR = os.environ.get("IAM_SERVER_CA_DIR", "/tmp/kaname-server-ca")
+# Каталог корня — СВОЙ у процесса, если прогонщик не отдал свой (kacho#3238).
+# Общий литерал `/tmp/kaname-server-ca` переписывали друг другу посевы против
+# разных стендов на одной машине, и обмен честно отказывал чужому корню
+# (`CERTIFICATE_VERIFY_FAILED`). Прогонщик (deploy/scripts/newman-{parallel,e2e}.sh)
+# задаёт IAM_SERVER_CA_DIR каталогом своего прогона: посев и перевыпуск читают
+# один корень. Каталог по умолчанию снимается при выходе процесса.
+def _own_ca_dir() -> str:
+    import atexit
+    import tempfile
+    d = tempfile.mkdtemp(prefix="kaname-server-ca-")
+    atexit.register(shutil.rmtree, d, True)
+    return d
+
+
+_IAM_SERVER_CA_DIR = os.environ.get("IAM_SERVER_CA_DIR") or (
+    "" if os.environ.get("IAM_SERVER_CA_FILE") else _own_ca_dir())
 IAM_SERVER_CA_FILE = os.environ.get(
     "IAM_SERVER_CA_FILE", os.path.join(_IAM_SERVER_CA_DIR, "ca.crt"))
 
@@ -457,17 +495,20 @@ def ensure_iam_server_ca(namespace: str | None = None) -> bool:
     перевыпускает корень, поэтому лежащий с прошлого стенда не годится и повтор
     его не чинит. Материал ПУБЛИЧНЫЙ (только `ca.crt`), пишется 0600 вне дерева.
     """
-    ns = namespace or BOOTSTRAP_OPERATOR_NS
-    if shutil.which("kubectl"):
+    ns = namespace or STAND_NS
+    if not _explicit_material(IAM_SERVER_CA_FILE) and shutil.which("kubectl"):
         out = subprocess.run(
             ["kubectl", "-n", ns, "get", "secret", IAM_SERVER_SECRET,
              "-o", r"jsonpath={.data.ca\.crt}"],
             capture_output=True, text=True)
         if out.returncode == 0 and out.stdout.strip():
             os.makedirs(os.path.dirname(IAM_SERVER_CA_FILE), mode=0o700, exist_ok=True)
-            with open(IAM_SERVER_CA_FILE, "wb") as fh:
-                os.chmod(IAM_SERVER_CA_FILE, 0o600)
+            # Запись целиком через переименование: читатель не застанет файл полузаписанным.
+            tmp = f"{IAM_SERVER_CA_FILE}.{os.getpid()}.tmp"
+            with open(tmp, "wb") as fh:
+                os.chmod(tmp, 0o600)
                 fh.write(base64.b64decode(out.stdout.strip()))
+            os.replace(tmp, IAM_SERVER_CA_FILE)
     return os.path.exists(IAM_SERVER_CA_FILE)
 
 
@@ -524,8 +565,12 @@ def exchange_at_platform(token_url: str, assertion: str, api_audience: str,
 # ── Composed one-shot helpers ───────────────────────────────────────────────
 def user_platform_token(base_url: str, admin_token: str, user_id: str,
                         created_by_user_id: str, token_url: str, api_audience: str,
-                        assertion_audience: str | None = None) -> str:
+                        assertion_audience: str | None = None,
+                        on_key=None) -> str:
     """Персональный токен пользователя → утверждение НАШЕМУ издателю → токен НАШЕЙ чеканки.
+
+    `on_key(client_id, private_key_pem)` — для посева, которому нужен перевыпуск
+    того же предъявителя без нового ключа (prodseed_refresh.py, kacho#3238).
 
     Полоса та же, что у `sa_platform_token`, и субъект — другой: человек, а не
     машина. Держать обе нужно именно поэтому — принципал у них разный, и краю
@@ -550,6 +595,8 @@ def user_platform_token(base_url: str, admin_token: str, user_id: str,
             f"{client_id!r} против keyId={registry_client_id!r}. Наш издатель "
             "разрешает клиента по строке реестра, поэтому первое имя не годится "
             "для обмена ни при каком входе")
+    if on_key is not None:
+        on_key(registry_client_id, key)
     assertion = sign_client_assertion(
         registry_client_id, key, registry_client_id,
         assertion_audience or PLATFORM_ASSERTION_AUDIENCE,

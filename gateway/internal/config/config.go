@@ -25,6 +25,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/servicecontract"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/linktls"
 	"github.com/PRO-Robotech/kacho/pkg/proxycircle"
 )
 
@@ -76,8 +77,9 @@ type Config struct {
 	// is disabled (Internal* REST unreachable via the gateway entirely).
 	//
 	// Транспорт слушателя — mTLS и только он (kacho#3131): серверный лист
-	// (InternalRESTCertFile/KeyFile), клиентский лист обязателен, цепочка — к УЦ
-	// установки (MTLSCAFile), имя листа — в круге InternalRESTClientSANs. Что
+	// (InternalRESTCertFile/KeyFile), клиентский лист обязателен, цепочка — к
+	// якорю оператора (InternalRESTClientCAFile, kacho#3189), имя листа — в
+	// круге InternalRESTClientSANs. Что
 	// чего-то из этого нет, — отказ старта на ЛЮБОЙ метке KACHO_APP_ENV
 	// (InternalRESTListenerTLS); открытого текста у слушателя нет ни в одном
 	// профиле.
@@ -85,13 +87,19 @@ type Config struct {
 	InternalRESTCertFile string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE" default:""`
 	InternalRESTKeyFile  string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_TLS_KEY_FILE"  default:""`
 	// InternalRESTClientSANs — круг клиентов внутреннего слушателя: URI-имена
-	// (spiffe://…) клиентских листов через запятую. Умолчания НЕТ: лист УЦ
-	// установки есть у каждой службы и у самого края, и «любой лист УЦ» не
-	// сужал бы ничего; круг производит чарт края (internalRest.clientSANs).
+	// (spiffe://…) клиентских листов через запятую. Умолчания НЕТ: «любой лист
+	// якоря» не сужал бы ничего; круг производит чарт края
+	// (api-gateway.internalRestClientSANs).
 	InternalRESTClientSANs string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS" default:""`
-	TLSCertFile            string `envconfig:"KACHO_API_GATEWAY_TLS_CERT_FILE"        default:""`
-	TLSKeyFile             string `envconfig:"KACHO_API_GATEWAY_TLS_KEY_FILE"         default:""`
-	VPCAddr                string `envconfig:"KACHO_API_GATEWAY_VPC_GRPC"              default:"vpc.kacho.svc:9090"`
+	// InternalRESTClientCAFile — ЯКОРЬ ОПЕРАТОРА внутреннего слушателя
+	// (kacho#3189): файл PEM удостоверяющего центра, который выпускает листы
+	// круга InternalRESTClientSANs. Отдельный от якоря установки и якоря
+	// звеньев; умолчания НЕТ — слушатель без него не стартует
+	// (InternalRESTOperatorAnchor).
+	InternalRESTClientCAFile string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE" default:""`
+	TLSCertFile              string `envconfig:"KACHO_API_GATEWAY_TLS_CERT_FILE"        default:""`
+	TLSKeyFile               string `envconfig:"KACHO_API_GATEWAY_TLS_KEY_FILE"         default:""`
+	VPCAddr                  string `envconfig:"KACHO_API_GATEWAY_VPC_GRPC"              default:"vpc.kacho.svc:9090"`
 	// VPCInternalAddr — admin-only internal-port (9091) of vpc backend.
 	// Routes AddressPool RESTful endpoints (kacho-only admin).
 	VPCInternalAddr string `envconfig:"KACHO_API_GATEWAY_VPC_INTERNAL_GRPC" default:"vpc.kacho.svc:9091"`
@@ -218,12 +226,25 @@ type Config struct {
 	IdentityCallBudget time.Duration `ignored:"true"`
 	BackendCallBudget  time.Duration `ignored:"true"`
 
+	// SessionCookieDomainRaw — домен печенья нашей сессии, КАК ЕСТЬ
+	// (session_cookie_domain.go, kacho#3174); SessionCookieDomain — разобранный:
+	// пусто — только на хост. Умолчания нет.
+	SessionCookieDomainRaw string `envconfig:"KACHO_API_GATEWAY_SESSION_COOKIE_DOMAIN"`
+	SessionCookieDomain    string `ignored:"true"`
+
 	// SubscriptionMaxStreams — потолок ОДНОВРЕМЕННЫХ потоков этой реплики.
 	//
 	// Арифметика, а не вкус: число реплик края × потолок обязано помещаться в
 	// потолок потоков владельца, иначе исчерпание наступает у владельца — то
 	// есть у всех арендаторов сразу, а не у того, кто его вызвал.
-	SubscriptionMaxStreams int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS" default:"64"`
+	//
+	// Умолчание — та же величина, что `subscriptionStream.maxStreams` профиля
+	// чарта, и она равна потолку потоков владельца (`subscription.maxStreams`
+	// его чарта): процесс без ручки не создаёт больше, чем примет владелец.
+	// Здесь стояло 64 — вчетверо больше (kacho#3214). Согласие умолчания,
+	// профиля, страницы конфигурации и потолков владельцев держит
+	// subscription_stream_ceiling_test.go.
+	SubscriptionMaxStreams int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS" default:"16"`
 
 	// SubscriptionMaxStreamsPerSubject — потолок потоков ОДНОГО субъекта.
 	//
@@ -231,7 +252,12 @@ type Config struct {
 	// него один субъект занимает потолок реплики целиком, и остальные получают
 	// отказ, не имея ни одного собственного потока. Консоль открывает поток на
 	// вкладку, поэтому случай не умозрительный.
-	SubscriptionMaxStreamsPerSubject int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT" default:"8"`
+	//
+	// Умолчание — та же величина, что `subscriptionStream.maxStreamsPerSubject`
+	// профиля чарта: владельцы × 2 вкладки (расчёт — у профиля). Здесь стояло
+	// 8 — на шести владельцах это отказ одному арендатору на второй вкладке
+	// при штатной работе (kacho#3214).
+	SubscriptionMaxStreamsPerSubject int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT" default:"12"`
 
 	// AdvertisedEndpointAddr — host:port that the api-gateway advertises through
 	// the endpoint-discovery RPC. External clients dial this address. Defaults to
@@ -942,23 +968,84 @@ func (c Config) TrustedProxyLinkAnchor() ([]*x509.Certificate, error) {
 				TrustedProxyCAFileKnob, path, r.Subject.String())
 		}
 	}
-	if inst := strings.TrimSpace(c.MTLSCAFile); inst != "" {
-		installation, ierr := readPEMCertificates(inst)
-		if ierr != nil {
-			return nil, fmt.Errorf("%s: якорь установки для сверки: %w", TrustedProxyCAFileKnob, ierr)
-		}
-		for _, r := range roots {
-			for _, i := range installation {
-				if r.Equal(i) {
-					return nil, fmt.Errorf("%s=%q совпадает с якорем установки KACHO_API_GATEWAY_MTLS_CA_FILE=%q "+
-						"(корень %q): лист с именем звена выдал бы себе всякий, кто заводит запрос на сертификат "+
-						"в любом пространстве имён — якорь звеньев обязан быть отдельным удостоверяющим центром",
-						TrustedProxyCAFileKnob, path, inst, r.Subject.String())
-				}
+	shared, inst, err := sharedRoot(roots, c.MTLSCAFile)
+	if err != nil {
+		return nil, fmt.Errorf("%s: якорь установки для сверки: %w", TrustedProxyCAFileKnob, err)
+	}
+	if shared != nil {
+		return nil, fmt.Errorf("%s=%q совпадает с якорем установки KACHO_API_GATEWAY_MTLS_CA_FILE=%q "+
+			"(корень %q): лист с именем звена выдал бы себе всякий, кто заводит запрос на сертификат "+
+			"в любом пространстве имён — якорь звеньев обязан быть отдельным удостоверяющим центром",
+			TrustedProxyCAFileKnob, path, inst, shared.Subject.String())
+	}
+	return roots, nil
+}
+
+// sharedRoot — корень из roots, совпадающий по байтам (Equal, как
+// linktls.Anchor) с сертификатом файла другого якоря, либо nil. Пустой путь —
+// якоря нет, совпадать не с чем. Одно сравнение на все сверки якорей: якорь
+// звеньев против якоря установки, якорь оператора против обоих.
+func sharedRoot(roots []*x509.Certificate, otherPath string) (*x509.Certificate, string, error) {
+	other := strings.TrimSpace(otherPath)
+	if other == "" {
+		return nil, "", nil
+	}
+	certs, err := readPEMCertificates(other)
+	if err != nil {
+		return nil, other, err
+	}
+	for _, r := range roots {
+		for _, o := range certs {
+			if r.Equal(o) {
+				return r, other, nil
 			}
 		}
 	}
-	return roots, nil
+	return nil, other, nil
+}
+
+// InternalRESTOperatorAnchor — ЯКОРЬ ОПЕРАТОРА внутреннего слушателя
+// (kacho#3189). Круг внутреннего слушателя судится отдельным удостоверяющим
+// центром так же, как звенья фронта (TrustedProxyLinkAnchor): якорь установки
+// выпускает листы кластерным выпускающим, и имя из круга в ЕГО листе не
+// узнаёт оператора. Якорь оператора выпускает только в пространстве имён
+// установки (namespaced Issuer умбреллы).
+//
+// Отказ старта — с именем ручки, умолчания нет:
+//   - ручка пуста, файл не читается либо не несёт ни одного сертификата;
+//   - сертификат файла — не удостоверяющий центр (корнем цепочки он не
+//     бывает, и слушатель не признал бы ни одного листа, молча);
+//   - корень совпадает с корнем якоря установки либо якоря звеньев: отдельный
+//     якорь, равный общему, не сужает ничего.
+func (c Config) InternalRESTOperatorAnchor() (linktls.Anchor, error) {
+	path := strings.TrimSpace(c.InternalRESTClientCAFile)
+	if path == "" {
+		return linktls.Anchor{}, fmt.Errorf("%s не задан: круг внутреннего REST-слушателя судится только якорем оператора", InternalRESTClientCAKnob)
+	}
+	roots, err := readPEMCertificates(path)
+	if err != nil {
+		return linktls.Anchor{}, fmt.Errorf("%s: %w", InternalRESTClientCAKnob, err)
+	}
+	for _, r := range roots {
+		if !r.IsCA {
+			return linktls.Anchor{}, fmt.Errorf("%s=%q: сертификат %q — не удостоверяющий центр: корнем цепочки листа круга он не бывает",
+				InternalRESTClientCAKnob, path, r.Subject.String())
+		}
+	}
+	for _, other := range []struct{ path, knob string }{
+		{c.MTLSCAFile, internalRESTCAKnob},
+		{c.AuthZTrustedProxyCAFile, TrustedProxyCAFileKnob},
+	} {
+		shared, file, err := sharedRoot(roots, other.path)
+		if err != nil {
+			return linktls.Anchor{}, fmt.Errorf("%s: %s для сверки: %w", InternalRESTClientCAKnob, other.knob, err)
+		}
+		if shared != nil {
+			return linktls.Anchor{}, fmt.Errorf("%s=%q совпадает с %s=%q (корень %q): якорь оператора обязан быть отдельным удостоверяющим центром",
+				InternalRESTClientCAKnob, path, other.knob, file, shared.Subject.String())
+		}
+	}
+	return linktls.NewAnchor(roots...), nil
 }
 
 // readPEMCertificates — все сертификаты файла PEM; ни одного — ошибка.
@@ -1021,6 +1108,7 @@ const (
 	InternalRESTCertKnob       = "KACHO_API_GATEWAY_INTERNAL_REST_TLS_CERT_FILE"
 	InternalRESTKeyKnob        = "KACHO_API_GATEWAY_INTERNAL_REST_TLS_KEY_FILE"
 	InternalRESTClientSANsKnob = "KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS"
+	InternalRESTClientCAKnob   = "KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_CA_FILE"
 	internalRESTCAKnob         = "KACHO_API_GATEWAY_MTLS_CA_FILE"
 )
 
@@ -1056,9 +1144,11 @@ func (c Config) InternalRESTClientCircle() ([]string, error) {
 // Объявлен — mTLS и только он, на ЛЮБОЙ метке KACHO_APP_ENV:
 //   - серверный лист и ключ (InternalRESTCertFile/KeyFile) — свои, не лист
 //     внешнего слушателя;
-//   - клиентский лист обязателен (RequireAndVerifyClientCert), цепочка — к УЦ
-//     установки (MTLSCAFile) и ни к какому другому корню: якоря звеньев фронта
-//     здесь нет;
+//   - клиентский лист обязателен (RequireAndVerifyClientCert), цепочка — к
+//     ЯКОРЮ ОПЕРАТОРА (InternalRESTOperatorAnchor, kacho#3189) и ни к какому
+//     другому корню: ни якоря установки, ни якоря звеньев фронта здесь нет;
+//     якорь установки (MTLSCAFile) нужен лишь для сверки «якорь оператора —
+//     отдельный»;
 //   - URI-имя листа — в круге InternalRESTClientCircle.
 //
 // Чего-то нет — отказ с именем ручки; открытого текста у слушателя нет. server
@@ -1088,13 +1178,13 @@ func (c Config) InternalRESTListenerTLS(server func(tls.Certificate) *tls.Config
 	if err != nil {
 		return nil, fmt.Errorf("%s/%s: %w", InternalRESTCertKnob, InternalRESTKeyKnob, err)
 	}
-	caPEM, err := os.ReadFile(c.MTLSCAFile)
+	anchor, err := c.InternalRESTOperatorAnchor()
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", internalRESTCAKnob, err)
+		return nil, err
 	}
 	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(caPEM) {
-		return nil, fmt.Errorf("%s %q: сертификатов не разобрано", internalRESTCAKnob, c.MTLSCAFile)
+	for _, r := range anchor.Roots() {
+		pool.AddCert(r)
 	}
 	inCircle := make(map[string]struct{}, len(circle))
 	for _, s := range circle {
@@ -1104,10 +1194,14 @@ func (c Config) InternalRESTListenerTLS(server func(tls.Certificate) *tls.Config
 	cfg.ClientAuth = tls.RequireAndVerifyClientCert
 	cfg.ClientCAs = pool
 	cfg.VerifyConnection = func(cs tls.ConnectionState) error {
-		if len(cs.VerifiedChains) == 0 || len(cs.VerifiedChains[0]) == 0 {
-			return errors.New("внутренний REST-слушатель: клиентский лист не проверен")
+		// Пул и так несёт только корни якоря оператора; принадлежность
+		// проверенной цепочки якорю судится здесь ещё раз по байтам корня —
+		// тем же linktls.Anchor, что и круг звеньев, а не составом пула.
+		leaf := anchor.Issued(cs.VerifiedChains)
+		if leaf == nil {
+			return errors.New("внутренний REST-слушатель: клиентский лист не выпущен якорем " + InternalRESTClientCAKnob)
 		}
-		for _, u := range cs.VerifiedChains[0][0].URIs {
+		for _, u := range leaf.URIs {
 			if _, ok := inCircle[u.String()]; ok {
 				return nil
 			}
@@ -1413,6 +1507,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if err := loadCallBudgets(&cfg, os.LookupEnv); err != nil {
+		return Config{}, err
+	}
+	if err := loadSessionCookieDomain(&cfg, os.LookupEnv); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil

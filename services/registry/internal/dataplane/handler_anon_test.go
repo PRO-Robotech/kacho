@@ -15,22 +15,22 @@ import (
 // handler_anon_test.go — RG-1 group B (anonymous public-read data-plane path,
 // B03/B04/B05/B07/B14). A VALID iam-issued anon Bearer carries the configured
 // anonymous principal id (kaname AnonymousClientID) as its `sub`; the data-plane
-// resolves it to the FGA wildcard `user:*` (D-7). PUBLIC repos carry a `user:* v_get`
+// resolves it to the system class `system_class:anonymous` (D-7). PUBLIC repos carry a `system_class:anonymous v_get`
 // tuple (emitted by the overlay) → anon read allowed (200); PRIVATE/absent → the
 // SAME uniform 404 NAME_UNKNOWN (public-ness is NOT a probeable existence-oracle).
-// Anon push is denied (user:* holds no write relation) → 403 DENIED; a request with
+// Anon push is denied (system_class:anonymous holds no write relation) → 403 DENIED; a request with
 // no Bearer at all → 401 challenge (unchanged). The verb-per-route model is unchanged: manifest/blob use
-// v_get (covered by the user:* wildcard), tags/list uses v_list (NO wildcard — anon
+// v_get (covered by the grant to the anonymous class), tags/list uses v_list (NO wildcard — anon
 // cannot enumerate tags), which is why these tests exercise the docker-pull core
 // (manifest + blob) rather than tag listing.
 
 // anonClientID — the anonymous principal id an anon Bearer's `sub` carries. The
-// data-plane is configured (WithAnonymousSubject) to resolve this id to `user:*`.
+// data-plane is configured (WithAnonymousSubject) to resolve this id to `system_class:anonymous`.
 const anonClientID = "cid-registry-anon"
 
 // subjectAuthz — a subject-AWARE fake Authorizer keyed on the full (subject, relation,
 // object) triple. Unlike fakeAuthz (which ignores the subject), it distinguishes
-// `user:*` from any other principal — required to lock the anon→user:* mapping
+// `system_class:anonymous` from any other principal — required to lock the anon→system_class:anonymous mapping
 // BEHAVIOURALLY: before the wiring the anon token resolves to
 // service_account:<anonClientID> and is denied even on a PUBLIC repo (RED).
 type subjectAuthz struct {
@@ -67,8 +67,8 @@ func (a *subjectAuthz) hasSubject(subject string) bool {
 
 // newAnonHandler — a handler whose verifier resolves any Bearer to anonClientID (the
 // anon principal) and which is configured to recognise anonClientID as anonymous
-// (→ user:*). Mirrors the deployed wiring: iam issues the anon Bearer, the data-plane
-// resolves it to the public wildcard.
+// (→ system_class:anonymous). Mirrors the deployed wiring: iam issues the anon Bearer, the data-plane
+// resolves it to the anonymous class.
 func newAnonHandler(az Authorizer, be Backend, fw Forwarder) *Handler {
 	return newTestHandler(&fakeVerifier{subject: anonClientID}, az, be, fw, &fakeRepoReg{}).
 		WithAnonymousSubject(anonClientID)
@@ -78,12 +78,12 @@ const publicRepoObject = "registry_repository:reg-A/public"
 
 // TestDataplane_RG1_B03_AnonPullPublic_200 — a VALID anon Bearer pulling a PUBLIC repo
 // (manifest GET/HEAD + blob GET) → 200. The per-request Check MUST carry the FGA
-// wildcard subject `user:*` (proves the anon-recognition wiring); the PUBLIC repo's
-// `user:* v_get` tuple grants the read. RED before wiring: the anon token resolves to
+// class subject `system_class:anonymous` (proves the anon-recognition wiring); the PUBLIC repo's
+// `system_class:anonymous v_get` tuple grants the read. RED before wiring: the anon token resolves to
 // service_account:<anonClientID>, the subject-aware authz denies, and the pull 404s.
 func TestDataplane_RG1_B03_AnonPullPublic_200(t *testing.T) {
 	az := &subjectAuthz{allow: map[string]bool{
-		"user:* v_get " + publicRepoObject: true, // PUBLIC repo carries the user:* v_get tuple
+		"system_class:anonymous v_get " + publicRepoObject: true, // PUBLIC repo carries the system_class:anonymous v_get tuple
 	}}
 	fw := &fakeForwarder{status: 200}
 	be := &fakeBackend{
@@ -92,7 +92,7 @@ func TestDataplane_RG1_B03_AnonPullPublic_200(t *testing.T) {
 	}
 	h := newAnonHandler(az, be, fw)
 
-	// manifest GET + HEAD (v_get, covered by the user:* wildcard).
+	// manifest GET + HEAD (v_get, covered by the grant to the anonymous class).
 	for _, m := range []string{http.MethodGet, http.MethodHead} {
 		rec := doReq(h, m, "/v2/reg-A/public/manifests/v1", true)
 		require.Equal(t, http.StatusOK, rec.Code, "anon manifest %s of PUBLIC repo → 200", m)
@@ -101,19 +101,19 @@ func TestDataplane_RG1_B03_AnonPullPublic_200(t *testing.T) {
 	rec := doReq(h, http.MethodGet, "/v2/reg-A/public/blobs/sha256:x", true)
 	require.Equal(t, http.StatusOK, rec.Code, "anon member-blob pull of PUBLIC repo → 200")
 
-	require.True(t, az.hasSubject("user:*"),
-		"anon Bearer MUST resolve to the FGA wildcard user:* (D-7); before wiring it would be service_account:%s", anonClientID)
+	require.True(t, az.hasSubject("system_class:anonymous"),
+		"anon Bearer MUST resolve to the system class system_class:anonymous (D-7); before wiring it would be service_account:%s", anonClientID)
 	require.False(t, az.hasSubject("service_account:"+anonClientID),
 		"anon Bearer MUST NOT reach FGA as an ordinary service_account principal")
 }
 
 // TestDataplane_RG1_B04B05_AnonPullPrivateOrAbsent_Uniform404 — a VALID anon Bearer
-// pulling a PRIVATE repo (exists, no user:* v_get tuple, B04) OR an ABSENT repo (B05)
+// pulling a PRIVATE repo (exists, no system_class:anonymous v_get tuple, B04) OR an ABSENT repo (B05)
 // → the SAME uniform 404 NAME_UNKNOWN, byte-for-byte identical to a missing repo.
 // public-ness is NOT a probeable existence-oracle: private-exists is indistinguishable
-// from absent. The Check still carries user:* (mapping applied) but denies.
+// from absent. The Check still carries system_class:anonymous (mapping applied) but denies.
 func TestDataplane_RG1_B04B05_AnonPullPrivateOrAbsent_Uniform404(t *testing.T) {
-	az := &subjectAuthz{allow: map[string]bool{}} // no user:* v_get anywhere → all anon reads deny
+	az := &subjectAuthz{allow: map[string]bool{}} // no system_class:anonymous v_get anywhere → all anon reads deny
 	fw := &fakeForwarder{}
 	be := &fakeBackend{exists: map[string]bool{"reg-A/private": true}} // private exists; ghost absent
 	h := newAnonHandler(az, be, fw)
@@ -132,7 +132,7 @@ func TestDataplane_RG1_B04B05_AnonPullPrivateOrAbsent_Uniform404(t *testing.T) {
 	require.Equal(t, `{"errors":[{"code":"NAME_UNKNOWN","message":"not found"}]}`+"\n", privateRec.Body.String())
 
 	require.Equal(t, 0, fw.count(), "denied anon reads never reach zot")
-	require.True(t, az.hasSubject("user:*"), "anon read still resolves to user:* before it is denied")
+	require.True(t, az.hasSubject("system_class:anonymous"), "anon read still resolves to system_class:anonymous before it is denied")
 }
 
 // TestDataplane_RG1_B04_HeadAndBlob_Uniform404 — the uniform-404 existence-hiding
@@ -173,15 +173,15 @@ func TestDataplane_RG1_B07_AnonPushNoToken_401(t *testing.T) {
 }
 
 // TestDataplane_RG1_B14_AnonTokenPushPublic_403Denied — B07(b)/B14: an anon Bearer
-// (user:*, read-only) attempting `docker push` into a PULL-ABLE PUBLIC repo → 403
-// DENIED. user:* carries the v_get wildcard (the repo IS anon-readable) but NO write
+// (system_class:anonymous, read-only) attempting `docker push` into a PULL-ABLE PUBLIC repo → 403
+// DENIED. system_class:anonymous holds the v_get grant (the repo IS anon-readable) but NO write
 // relation, so the push-verb Check (v_update on the existing repo) denies → uniform
 // push-deny 403. Public-ness of a repo does NOT open anonymous writes. The Check MUST
-// carry user:* (proves the mapping applies on the write path too).
+// carry system_class:anonymous (proves the mapping applies on the write path too).
 func TestDataplane_RG1_B14_AnonTokenPushPublic_403Denied(t *testing.T) {
 	az := &subjectAuthz{allow: map[string]bool{
-		"user:* v_get " + publicRepoObject: true, // repo is anon-pull-able...
-		// ...but NO "user:* v_update" — user:* holds no write relation (read-only floor).
+		"system_class:anonymous v_get " + publicRepoObject: true, // repo is anon-pull-able...
+		// ...but NO "system_class:anonymous v_update" — system_class:anonymous holds no write relation (read-only floor).
 	}}
 	fw := &fakeForwarder{}
 	be := &fakeBackend{exists: map[string]bool{"reg-A/public": true}} // existing repo → push verb = v_update@repo
@@ -193,17 +193,17 @@ func TestDataplane_RG1_B14_AnonTokenPushPublic_403Denied(t *testing.T) {
 	require.Equal(t, "DENIED", pushDenyCode(t, rec))
 	require.Equal(t, 0, fw.count(), "denied anon push never writes to zot")
 
-	// The write-path Check was made as user:* (mapping applied), and denied.
-	require.Contains(t, az.checks(), checkCall{"user:*", "v_update", publicRepoObject},
-		"anon push resolves to user:* and is checked for the write verb v_update (denied — no wildcard write)")
+	// The write-path Check was made as system_class:anonymous (mapping applied), and denied.
+	require.Contains(t, az.checks(), checkCall{"system_class:anonymous", "v_update", publicRepoObject},
+		"anon push resolves to system_class:anonymous and is checked for the write verb v_update (denied — the class holds no write verb)")
 }
 
 // TestDataplane_RG1_B14_AnonTokenPushNewRepo_403Denied — an anon Bearer initiating a
 // blob-upload into a NEW repo (push-new verb = v_create@registry_registry) → 403
-// DENIED: user:* holds no v_create on the namespace either. No register-on-first-push
+// DENIED: system_class:anonymous holds no v_create on the namespace either. No register-on-first-push
 // intent is emitted (push was denied).
 func TestDataplane_RG1_B14_AnonTokenPushNewRepo_403Denied(t *testing.T) {
-	az := &subjectAuthz{allow: map[string]bool{}} // user:* has no v_create on the registry
+	az := &subjectAuthz{allow: map[string]bool{}} // system_class:anonymous has no v_create on the registry
 	fw := &fakeForwarder{}
 	be := &fakeBackend{exists: map[string]bool{}} // repo does not exist → push-new
 	rr := &fakeRepoReg{}
@@ -214,18 +214,19 @@ func TestDataplane_RG1_B14_AnonTokenPushNewRepo_403Denied(t *testing.T) {
 	require.Equal(t, "DENIED", pushDenyCode(t, rec))
 	require.Equal(t, 0, fw.count())
 	require.Empty(t, rr.registered(), "denied anon push emits no register-intent")
-	require.Contains(t, az.checks(), checkCall{"user:*", "v_create", "registry_registry:reg-A"},
-		"anon push-new resolves to user:* and is checked for v_create (denied)")
+	require.Contains(t, az.checks(), checkCall{"system_class:anonymous", "v_create", "registry_registry:reg-A"},
+		"anon push-new resolves to system_class:anonymous and is checked for v_create (denied)")
 }
 
-// TestDataplane_RG1_AnonDisabled_TokenResolvesAsOrdinaryPrincipal — secure-by-default:
-// with anonymous pull DISABLED (WithAnonymousSubject NOT called / empty), a token whose
-// sub equals the anon client id resolves as an ordinary principal (service_account),
-// NOT the wildcard — it never silently gains public-read. A PUBLIC repo (whose grant is
-// user:* only) then denies it → 404.
-func TestDataplane_RG1_AnonDisabled_TokenResolvesAsOrdinaryPrincipal(t *testing.T) {
+// TestDataplane_RG1_AnonDisabled_TokenRefusedByForm — secure-by-default: при
+// ВЫКЛЮЧЕННОМ анонимном потоке (WithAnonymousSubject НЕ вызван либо пуст) токен, чей
+// sub равен анонимному идентификатору клиента, молча анонимного класса не получает и,
+// поскольку анонимный идентификатор не порождённой формы (kaname#908 это запрещает),
+// не является принципалом ни одного класса: отказ до любого Check (kacho#3305), а не
+// сведение к service_account:<анонимный идентификатор>.
+func TestDataplane_RG1_AnonDisabled_TokenRefusedByForm(t *testing.T) {
 	az := &subjectAuthz{allow: map[string]bool{
-		"user:* v_get " + publicRepoObject: true, // only the wildcard is granted
+		"system_class:anonymous v_get " + publicRepoObject: true, // only the anonymous class is granted
 	}}
 	fw := &fakeForwarder{}
 	be := &fakeBackend{exists: map[string]bool{"reg-A/public": true}}
@@ -233,10 +234,9 @@ func TestDataplane_RG1_AnonDisabled_TokenResolvesAsOrdinaryPrincipal(t *testing.
 	h := newTestHandler(&fakeVerifier{subject: anonClientID}, az, be, fw, &fakeRepoReg{})
 
 	rec := doReq(h, http.MethodGet, "/v2/reg-A/public/manifests/v1", true)
-	require.Equal(t, http.StatusNotFound, rec.Code,
-		"anon disabled → anon-shaped token resolves as ordinary principal, not user:* → PUBLIC repo denies → 404")
-	require.True(t, az.hasSubject("service_account:"+anonClientID),
-		"anon disabled → token resolves by id-prefix (service_account), not the wildcard")
-	require.False(t, az.hasSubject("user:*"), "anon disabled → the wildcard is never used")
+	require.Equal(t, http.StatusUnauthorized, rec.Code,
+		"anon disabled → the anon id is not of the generated form → no subject → refused (kacho#3305)")
+	require.Contains(t, rec.Header().Get("WWW-Authenticate"), `error="invalid_token"`)
+	require.Empty(t, az.checks(), "anon disabled → no Check at all: neither the class nor service_account:<anon id>")
 	require.Equal(t, 0, fw.count())
 }

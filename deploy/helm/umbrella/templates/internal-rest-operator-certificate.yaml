@@ -6,7 +6,7 @@
   A different door from the mint identity (templates/bootstrap-operator-
   certificate.yaml), hence a separate file: the api-gateway's
   internal REST listener (Internal* REST, `internal-rest` Service port) is
-  mutual-TLS only and admits a client leaf of the installation CA whose URI-SAN
+  mutual-TLS only and admits a client leaf of the OPERATOR ANCHOR whose URI-SAN
   is in its circle (KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS, rendered by the
   api-gateway chart from `api-gateway.internalRest.operatorSaName`). This leaf is
   that circle's operator: operator tooling (deploy/scripts, tests/authz-fixtures,
@@ -18,17 +18,89 @@
   differ. mTLS here authenticates the TRANSPORT only: the leaf is no principal,
   and authorization on the listener is unchanged.
 
+  ЯКОРЬ ОПЕРАТОРА (kacho#3189). Лист выпускает не кластерный выпускающий
+  установки, а отдельный удостоверяющий центр в пространстве релиза — так же,
+  как звенья фронта (templates/api-gateway-front-link-pki.yaml):
+    (1) Issuer `<якорь>-selfsigned` — самоподписанный корень;
+    (2) Certificate `<якорь>` (isCA) — центр; край монтирует из его секрета
+        только ca.crt (api-gateway.internalRest.operatorAnchor), ключ центра в
+        поды не попадает;
+    (3) Issuer `<якорь>` (тип ca) — НАМЕСПЕЙСНЫЙ: запрос к нему принимается
+        только из пространства релиза.
+  Край отказывает в старте, если якорь оператора совпадает с якорем установки
+  либо якорем звеньев (config.InternalRESTOperatorAnchor). Выпускающего и
+  ручку якоря края держит gateway/deploy/internal_rest_mtls_render_test.go.
+
   Rendered whenever the internal-CA PKI is up (mtls.enabled) — the api-gateway
-  chart declares its internal listener under the same condition. Defaults live
-  here (no umbrella values key): saName `kacho-internal-rest-operator`, the same
-  default the api-gateway chart puts in its circle; the two spellings are tied by
-  gateway/deploy/internal_rest_mtls_render_test.go over every stack chain.
+  chart declares its internal listener under the same condition.
+
+  ИМЯ ЛИСТА — ОДНО НАПИСАНИЕ С КРУГОМ КРАЯ (kacho#3151). URI-имя берётся тем же
+  помощником, которым чарт края строит свой круг
+  (`api-gateway.internalRestOperatorSAN`), над значениями чарта края: домен
+  доверия, ЗАКРЕПЛЁННОЕ пространство личности (`api-gateway.mtls.spiffe.namespace`)
+  и имя учётки (`api-gateway.internalRest.operatorSaName`). Прежняя редакция
+  брала пространство из пространства релиза, и в любом пространстве, кроме
+  рабочего, край отвергал лист оператора, а рендер и установка были зелёными.
+  Совпадение держат gateway/deploy/internal_rest_mtls_render_test.go (рендер в
+  рабочее пространство) и tools/standns (рендер каждой цепочки в тестовое
+  пространство и перенос стенда проб, отказывающий на расхождении).
 */ -}}
 {{- $mtls2 := .Values.mtls | default dict -}}
 {{- if $mtls2.enabled -}}
 {{- $ca2 := $mtls2.internalCA | default dict -}}
-{{- $irSa := "kacho-internal-rest-operator" -}}
+{{- $edge := dict "Values" (index .Values "api-gateway") "Release" .Release -}}
+{{- $irSa := dig "internalRest" "operatorSaName" "kacho-internal-rest-operator" (index .Values "api-gateway") -}}
 {{- $irSecret := "kacho-internal-rest-operator-client-tls" }}
+{{- $irAnchor := dig "internalRest" "operatorAnchor" "secretName" "kacho-internal-rest-operator-ca" (index .Values "api-gateway") }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ printf "%s-selfsigned" $irAnchor | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    kacho.cloud/component: internal-rest-operator-anchor
+    app.kubernetes.io/managed-by: helm
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $irAnchor | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    kacho.cloud/component: internal-rest-operator-anchor
+    app.kubernetes.io/managed-by: helm
+spec:
+  isCA: true
+  commonName: {{ $irAnchor | quote }}
+  secretName: {{ $irAnchor | quote }}
+  duration: {{ $ca2.caDuration | default "87600h" | quote }}
+  renewBefore: {{ $ca2.caRenewBefore | default "720h" | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ printf "%s-selfsigned" $irAnchor | quote }}
+    kind: Issuer
+    group: cert-manager.io
+  usages:
+    - cert sign
+    - crl sign
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $irAnchor | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    kacho.cloud/component: internal-rest-operator-anchor
+    app.kubernetes.io/managed-by: helm
+spec:
+  ca:
+    secretName: {{ $irAnchor | quote }}
+---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -47,11 +119,11 @@ spec:
     size: 256
     rotationPolicy: Always
   issuerRef:
-    name: {{ $ca2.clusterIssuerName | default "kacho-internal-ca" | quote }}
-    kind: ClusterIssuer
+    name: {{ $irAnchor | quote }}
+    kind: Issuer
     group: cert-manager.io
   uris:
-    - {{ printf "spiffe://%s/ns/%s/sa/%s" (include "umbrella.trustDomain" .) .Release.Namespace $irSa | quote }}
+    - {{ include "api-gateway.internalRestOperatorSAN" $edge | quote }}
   usages:
     - client auth        # client-only — this identity never terminates a listener
 {{- end }}

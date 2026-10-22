@@ -87,6 +87,7 @@ sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
+    path_segments_as_sent,
     Run,
     assert_created_at_seconds,
     assert_field_violation,
@@ -160,11 +161,23 @@ class Step:
     # предмет такой пробы — какие маршруты слушатель ОБСЛУЖИВАЕТ, а не чья
     # цепочка доверия у туннеля. Умолчание — строгая проверка.
     insecure_tls: bool = False
+    # Банка печений прогонщика снимается ЯВНО и только шагом, который несёт
+    # печенья сам (заголовок `Cookie` пред-скриптом). Умолчание newman — общая
+    # банка на весь прогон: печенье, выданное шагу ОДНОГО кейса, уезжает в
+    # запросы СЛЕДУЮЩИХ, и шаг другого человека предъявляет чужой контекст
+    # формы (kacho#3230: служба выдаёт `kaname_form` лишь запросу без него, и
+    # выдача признака второму человеку печенья не ставила).
+    explicit_cookies: bool = False
     # Тело `application/x-www-form-urlencoded` парами «имя, значение» — форма,
     # которой говорит координата выдачи края (`/iam/v1/token`, RFC 6749 §4.1.3).
     # Взаимоисключающе с `body`: тело у запроса одно, и второе присваивание
     # молча перезаписало бы первое, поэтому пара — отказ генерации.
     form: Optional[List[Tuple[str, str]]] = None
+    # Банка печенья прогонщика снимается ЯВНО и только шагом, который это объявил:
+    # шаг, предъявляющий носителя заголовком, не должен получать печенье сессии,
+    # оставленное в банке ответом соседнего шага, — иначе край увидел бы второго
+    # носителя, и шаг судил бы не тот класс, что назвал.
+    no_cookie_jar: bool = False
 
 
 @dataclass
@@ -313,15 +326,29 @@ def assert_answered(label: str) -> List[str]:
     ]
 
 
-def assert_iam_operation_envelope() -> List[str]:
-    """IAM mutations return an Operation whose id carries the `iop` prefix."""
+def assert_operation_envelope(prefix: str, domain: str) -> List[str]:
+    """Мутация домена `domain` отвечает конвертом Operation с id префикса `prefix`.
+
+    Префикс операции — свойство ДОМЕНА-владельца пути (таблица `gateway/internal/opsproxy`,
+    константы `PrefixOperation*` в corelib/ids), а не набора: край отдаёт операцию
+    того сервиса, к которому ушёл запрос. Префикс — ровно три строчные латинские
+    буквы или цифры; иное отвергается при генерации, а не на стенде.
+    """
+    if not re.fullmatch(r"[a-z0-9]{3}", prefix):
+        raise ValueError(f"operation prefix must be 3 lowercase chars, got {prefix!r}")
     return [
-        "pm.test('IAM Operation envelope returned', () => {",
+        f"pm.test({js_str(f'{domain} Operation envelope returned')}, () => {{",
         "  const j = pm.response.json();",
-        "  pm.expect(j.id, 'operation.id must start with iop: ' + JSON.stringify(j)).to.match(/^iop[a-z0-9]+$/);",
+        f"  pm.expect(j.id, {js_str(f'operation.id must start with {prefix}: ')} + JSON.stringify(j))"
+        f".to.match(/^{prefix}[a-z0-9]+$/);",
         "  pm.expect(j.done, 'operation.done present').to.be.a('boolean');",
         "});",
     ]
+
+
+def assert_iam_operation_envelope() -> List[str]:
+    """IAM mutations return an Operation whose id carries the `iop` prefix."""
+    return assert_operation_envelope("iop", "IAM")
 
 
 # МЕТКА ТРЕТЬЕГО ИСХОДА: «условие не создал ХАРНЕСС», а не «продукт неверен».
@@ -472,6 +499,113 @@ def poll_operation(op_var: str = "opId", auth: str = "jwtBootstrap",
     )
 
 
+# ОКНО ДОСТАВКИ СНЯТИЯ РЕГИСТРАЦИИ: предел повторов удаления проекта и пауза между
+# ними. Значения — те же, что у кейса-образца `NET-PRJ-DL-NEG-NETWORK-HOLDS`
+# (services/vpc/tests/newman/cases/project-container.py): 20 повторов по 500 мс, 10 с.
+UNREG_WINDOW_BUDGET = 20
+UNREG_WINDOW_INTERVAL_MS = 500
+
+
+def delete_project_until_released(name: str, prj_var: str, op_var: str,
+                                  auth: str = "jwtAccountAdminA") -> List[Step]:
+    """Уборка проекта ПОСЛЕ снятия его ресурсов: удаление + опрос, повтор в окне доставки.
+
+    ЗАЧЕМ. Удаление сети отвечает `done` тем коммитом, что снимает строку сети (и её
+    служебные группу безопасности и таблицу маршрутизации) у владельца. Снятие их
+    регистрации у службы доступа идёт СЛЕДОМ, через исходящую очередь владельца.
+    Контракт `ProjectService.Delete` называет это окно прямо: «a removed one may still
+    be counted for a while». Удаление проекта сразу за `done` удаления сети поэтому
+    законно получает в операции `FAILED_PRECONDITION` «Project <id> is not empty
+    (vpc.network: 1, vpc.securityGroup: 1)» с `REFERENCE_IN_USE` (kacho#3300).
+
+    ЧЕМ ЖДЁТСЯ. Наблюдать доставку снятия через край нечем: строка учёта наружу не
+    видна. Наблюдатель один — исход самого удаления проекта. Поэтому опрос, получив
+    именно этот отказ (код 9, `REFERENCE_IN_USE`, текст начинается с
+    «Project <этот id> is not empty (»), с настоящей паузой возвращает прогон к ТОМУ
+    ЖЕ запросу удаления, не больше `UNREG_WINDOW_BUDGET` раз. Любой другой отказ
+    терминален с первого захода.
+
+    ПОЧЕМУ ЭТО НЕ МАСКА. По исчерпании предела утверждение «операция без ошибки»
+    исполняется на последнем ответе и падает с текстом отказа: проект, который не
+    освобождается никогда, остаётся красным. Число повторов печатается в журнал
+    прогона — им меряется окно.
+
+    Имя шага удаления берётся в момент исполнения (`pm.info.requestName`), а не
+    литералом: newman на неизвестное имя перехода завершает прогон.
+    """
+    step_var = "_prjDelStep"
+    reason = ("(j.error && j.error.code === 9 && (j.error.details || []).some("
+              "x => x && x.reason === 'REFERENCE_IN_USE') && String(j.error.message || '')"
+              f".startsWith('Project ' + pm.environment.get({js_str(prj_var)}) + ' is not empty ('))")
+    return [
+        Step(
+            name=name, method="DELETE", path="/iam/v1/projects/{{" + prj_var + "}}", mux="public", auth=auth,
+            pre_script=[f"if (!pm.environment.get({js_str(prj_var)})) {{ pm.execution.skipRequest(); }}"],
+            test_script=[
+                "pm.test('уборка: снято (200) либо уже нет (404)', () => "
+                "pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                "// Повтор не опрашивает операцию ПРЕЖНЕГО захода: идентификатор снимается",
+                "// до захвата, и на 404 опрос пропускается.",
+                f"pm.environment.unset({js_str(op_var)});",
+                "if (pm.response.code === 200) {",
+                *["  " + s for s in save_from_response("j.id", op_var)],
+                "}",
+                f"pm.environment.set({js_str(step_var)}, pm.info.requestName);",
+            ],
+        ),
+        Step(
+            name=f"{name}-poll",
+            method="GET",
+            path="/operations/{{" + op_var + "}}",
+            auth=auth,
+            pre_script=[
+                "// OPERATION guard (legal skip): проект уже снят (404) — опрашивать нечего.",
+                f"if (!pm.environment.get({js_str(op_var)})) {{ pm.execution.skipRequest(); }}",
+            ],
+            test_script=[
+                "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                "const j = pm.response.json();",
+                "if (pm.environment.get('_pollStarted') !== pm.info.requestName) {",
+                "  pm.environment.set('_pollCount', '0');",
+                "  pm.environment.set('_pollStarted', pm.info.requestName);",
+                "}",
+                "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                f"if (!j.done && pc < {POLL_CAP}) {{",
+                "  pm.environment.set('_pollCount', String(pc + 1));",
+                f"  const _ipd = Date.now(); while (Date.now() - _ipd < {POLL_DELAY_MS}) void 0;"
+                f"  /* real inter-poll delay: cap {POLL_CAP} x {POLL_DELAY_MS}ms budget (testing.md) */",
+                "  pm.execution.setNextRequest(pm.info.requestName);",
+                "  return;",
+                "}",
+                "pm.environment.unset('_pollCount');",
+                "pm.environment.unset('_pollStarted');",
+                "// Окно доставки снятия регистрации (шапка delete_project_until_released).",
+                "if (pm.environment.get('_unregStarted') !== pm.info.requestName) {",
+                "  pm.environment.set('_unregWait', '0');",
+                "  pm.environment.set('_unregStarted', pm.info.requestName);",
+                "}",
+                "const _uw = parseInt(pm.environment.get('_unregWait') || '0', 10);",
+                f"const _ustep = pm.environment.get({js_str(step_var)});",
+                f"if (j.done && {reason} && _ustep && _uw < {UNREG_WINDOW_BUDGET}) {{",
+                "  pm.environment.set('_unregWait', String(_uw + 1));",
+                f"  const _ud = Date.now(); while (Date.now() - _ud < {UNREG_WINDOW_INTERVAL_MS}) void 0;",
+                "  pm.execution.setNextRequest(_ustep);",
+                "  return;",
+                "}",
+                "console.log('[unreg-window] ' + pm.info.requestName + ': повторов удаления ' + _uw"
+                f" + ' из {UNREG_WINDOW_BUDGET}');",
+                "pm.environment.unset('_unregWait');",
+                "pm.environment.unset('_unregStarted');",
+                f"pm.environment.unset({js_str(step_var)});",
+                "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                "pm.test('operation succeeded (no error)', () => {",
+                "  pm.expect(j.error, 'op error: ' + JSON.stringify(j.error || {})).to.be.oneOf([undefined, null]);",
+                "});",
+            ],
+        ),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Postman v2.1 serialization
 # ---------------------------------------------------------------------------
@@ -547,12 +681,14 @@ _INJECTED = {
     "assert_error_message_eql": assert_error_message_eql,
     "save_from_response": save_from_response,
     "assert_iam_operation_envelope": assert_iam_operation_envelope,
+    "assert_operation_envelope": assert_operation_envelope,
     "assert_answered": assert_answered,
     "assert_field_violation": assert_field_violation,
     "assert_created_at_seconds": assert_created_at_seconds,
     "require_env_url": require_env_url,
     "require_env_slot": require_env_slot,
     "poll_operation": poll_operation,
+    "delete_project_until_released": delete_project_until_released,
     "POLL_CAP": POLL_CAP,
     "POLL_DELAY_MS": POLL_DELAY_MS,
 }
@@ -616,15 +752,43 @@ def _form_raw(pairs: List[Tuple[str, str]]) -> str:
                     for k, v in pairs)
 
 
+def _query_pairs(path):
+    """Строка запроса пути шага — парами `{key, value}` в написанном виде."""
+    if "?" not in path:
+        return []
+    pairs = []
+    for part in path.split("?", 1)[1].split("&"):
+        if not part:
+            continue
+        key, eq, value = part.partition("=")
+        pairs.append({"key": key, "value": value} if eq else {"key": key, "value": None})
+    return pairs
+
+
 def _gateway_item_hook(step, item):
     """Поведение шага, объявленное ИМ САМИМ, а не умолчание прогонщика.
 
     Шаг без этих полей эмитится байт в байт как прежде: ослабленная проверка
-    сертификата и тело формы появляются в элементе коллекции только там, где
+    сертификата, снятая банка печений и тело формы появляются в элементе коллекции только там, где
     кейс их назвал.
     """
+    behavior = {}
     if step.insecure_tls:
-        item["protocolProfileBehavior"] = {"strictSSL": False}
+        behavior["strictSSL"] = False
+    # Два имени одного объявления пришли из двух полос волны (kacho#3230 и
+    # kacho#2571); оба снимают банку печений только у объявившего шага.
+    if step.explicit_cookies or step.no_cookie_jar:
+        behavior["disableCookies"] = True
+    if behavior:
+        item["protocolProfileBehavior"] = behavior
+    # Строку запроса сегменты пути у края не несут (`path_segments` ниже), а
+    # прогонщик собирает адрес из разобранных полей и `raw` при объекте не
+    # читает: без `query` запрос ушёл бы без неё (kacho#3230 — `csrf?form=…`
+    # приходил к службе голым). Пары — дословно как написаны, без раскодирования:
+    # подстановки `{{…}}` и `%`-коды доезжают тем же текстом, что в `raw`.
+    query = _query_pairs(step.path)
+    if query:
+        item["request"]["url"]["query"] = query
     if step.form is not None:
         if step.body is not None:
             raise ValueError(f"шаг {step.name!r}: заданы и form, и body — тело у "
@@ -649,7 +813,7 @@ _EMIT = Emit(
     pre_head=_gateway_pre_head,
     item_hook=_gateway_item_hook,
     # Строка запроса в сегменты пути не входит: у края кейсы адресуются с ней.
-    path_segments=lambda path: [p for p in path.split("?")[0].strip("/").split("/") if p],
+    path_segments=lambda path: path_segments_as_sent(path.split("?")[0]),
 )
 
 

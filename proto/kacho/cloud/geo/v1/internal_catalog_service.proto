@@ -33,6 +33,9 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;ge
 // ever needed. GetInternal reads the full Internal projection synchronously.
 
 service InternalRegionService {
+  // Создаёт регион.
+  // Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+  // рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Create (CreateRegionRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/geo/v1/internal/regions" body: "*" };
     option (corelib.api.v1.operation) = {
@@ -47,6 +50,9 @@ service InternalRegionService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
+  // Правит регион.
+  // Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+  // рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Update (UpdateRegionRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/regions/{region_id}" body: "*" };
     option (corelib.api.v1.operation) = {
@@ -61,6 +67,9 @@ service InternalRegionService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
+  // Удаляет регион.
+  // Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+  // рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Delete (DeleteRegionRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/regions/{region_id}" };
     option (corelib.api.v1.operation) = {
@@ -149,6 +158,9 @@ message GetInternalRegionRequest {
 }
 
 service InternalZoneService {
+  // Создаёт зону.
+  // Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+  // рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Create (CreateZoneRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/geo/v1/internal/zones" body: "*" };
     option (corelib.api.v1.operation) = {
@@ -163,6 +175,9 @@ service InternalZoneService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
+  // Правит зону.
+  // Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+  // рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Update (UpdateZoneRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/zones/{zone_id}" body: "*" };
     option (corelib.api.v1.operation) = {
@@ -177,6 +192,9 @@ service InternalZoneService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
+  // Удаляет зону.
+  // Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+  // рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
   rpc Delete (DeleteZoneRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/zones/{zone_id}" };
     option (corelib.api.v1.operation) = {

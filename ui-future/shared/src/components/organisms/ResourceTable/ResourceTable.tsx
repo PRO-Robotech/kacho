@@ -107,6 +107,14 @@ interface Props<T> {
    * закрепление начального отрезка до колонки идентичности здесь безусловно.
    */
   selectedRowKey?: string | null;
+  /**
+   * Таблица ЗАПОЛНЯЕТ поверхность страницы и прокручивает тело сама (по
+   * умолчанию — так стоят списки ресурсов). `false` — таблица внутри страницы,
+   * прокрутка которой уже есть (разделы экрана «Безопасность», приёмка F8-S7,
+   * Р1): высота — по строкам, своей вертикальной прокрутки у таблицы нет, иначе
+   * у страницы их стало бы две (`ui-page-single-scroll`).
+   */
+  fill?: boolean;
 }
 
 export function ResourceTable<T extends object>({
@@ -119,6 +127,7 @@ export function ResourceTable<T extends object>({
   onRowClick,
   complete,
   selectedRowKey,
+  fill = true,
 }: Props<T>) {
   const antColumns: ColumnType<T>[] = useMemo(() => {
     // Края таблицы закрепляются, потому что широкая таблица прокручивается
@@ -149,6 +158,8 @@ export function ResourceTable<T extends object>({
       // и предел берётся из неё, иначе содержимое растянуло бы столбец шире
       // объявленного — и закрепление разъехалось бы с тем, что показано.
       const clipWidth = width === undefined ? CELL_MAX_WIDTH : Math.max(width - CELL_INSET, 0);
+      const declared = width ?? c.width;
+      const headerClipWidth = declared === undefined ? CELL_MAX_WIDTH : Math.max(declared - CELL_INSET, 0);
       // Линия стоит на СТЫКЕ закрепления и прокручиваемой части: у левого
       // закрепления это его последняя колонка, у правого — сам столбец действий.
       const edge =
@@ -159,7 +170,15 @@ export function ResourceTable<T extends object>({
             : {};
 
       const col: ColumnType<T> = {
-        title: c.header,
+        // Заголовок — той же обрезкой, что клетки (`CellClip`). Шапка не
+        // переносится (index.css), и без предела длина заголовка становилась
+        // шириной колонки поверх объявленной: «Последнее предъявление способа
+        // входа» при 200 объявленных раздвигал столбец до трёхсот, и таблица
+        // сессий переставала помещаться (kacho#3230). Предел — объявленная
+        // ширина колонки (закреплённая либо `width` объявления), без неё —
+        // общий предел клетки. Не поместившееся договаривает подсказка тем же
+        // обработчиком поверхности.
+        title: service ? c.header : <CellClip maxWidth={headerClipWidth}>{c.header}</CellClip>,
         key: String(idx),
         className: c.className,
         // Клетка идентичности — В ДВЕ СТРОКИ: под именем стоит идентификатор.
@@ -237,7 +256,7 @@ export function ResourceTable<T extends object>({
   const [scrollY, setScrollY] = useState<number | undefined>(undefined);
   useEffect(() => {
     const el = wrapRef.current;
-    if (!el) return;
+    if (!el || !fill) return;
     const recompute = () => {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- ложное срабатывание: querySelector<E extends Element = Element>, и E выводится из самого утверждения типа. Без него E = Element, у которого нет offsetHeight (проверено tsc: удаление даёт TS2339).
       const thead = el.querySelector(".ant-table-thead") as HTMLElement | null;
@@ -249,7 +268,7 @@ export function ResourceTable<T extends object>({
     ro.observe(el);
     recompute();
     return () => ro.disconnect();
-  }, []);
+  }, [fill]);
 
   const tableProps: TableProps<T> = {
     columns: antColumns,
@@ -269,7 +288,7 @@ export function ResourceTable<T extends object>({
     // Прокрутка вбок остаётся у САМОЙ таблицы (страницу она не тянет), а край
     // закрепления назван линией — см. `pinnedEdge`. scroll.y — тело
     // скроллится вертикально под фиксированной шапкой колонок.
-    scroll: { x: "max-content", y: scrollY },
+    scroll: { x: "max-content", y: fill ? scrollY : undefined },
     loading,
     locale: {
       emptyText: empty ?? "Ресурсов не найдено",
@@ -302,8 +321,8 @@ export function ResourceTable<T extends object>({
   return (
     <div
       ref={wrapRef}
-      className="kc-table-fill"
-      style={{ height: "100%", minHeight: 0, minWidth: 0 }}
+      className={fill ? "kc-table-fill" : undefined}
+      style={fill ? { height: "100%", minHeight: 0, minWidth: 0 } : { minWidth: 0 }}
       onMouseOver={showTitleWhenClipped}
       // Тот же обработчик и на ФОКУС: подсказка объясняет, что значение в ячейке
       // обрезано, — и человеку, ведущему фокус с клавиатуры, она нужна ровно так

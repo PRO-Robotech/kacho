@@ -275,18 +275,25 @@ test("Ф12-45 · самосброс кодом из несвежей сесси�
       // (а) U под S1: remove кодом №4 набора — 200; свежести сверх кода не требуется.
       const s1Before = (await carrierOf(s1, "S1")).value;
       const removed = await s1.submit(LANE.remove, "second-factor", { method: "lookup_secret", code: uFactor.backupCodes[3] });
-      const removedBody = lastIssued(s1, LANE.remove).body as { backupCodesRemaining?: unknown } | null;
+      const removedBody = lastIssued(s1, LANE.remove).body as Record<string, unknown> | null;
       expect(removed.status(), `(а): самосброс кодом из несвежей сессии — ${JSON.stringify(removedBody)}`).toBe(200);
-      expect(removedBody?.backupCodesRemaining, "(а): набора после снятия нет — остаток 0 (Р4, kaname#275)").toBe(0);
+      // «Набора после снятия нет» служба выражает ОТСУТСТВИЕМ сводки набора, а не
+      // нулём остатка (kaname#297, Р4; инвариант kaname#275 — остаток снятого
+      // набора наружу не выходит): ни одного ключа набора в ответе снятия нет.
+      expect(
+        Object.keys(removedBody ?? {}).filter((k) => k.startsWith("backupCode")),
+        `(а): набора после снятия нет — ключей набора в ответе нет (Р4, kaname#275, kaname#297): ${JSON.stringify(removedBody)}`,
+      ).toEqual([]);
       expect((await carrierOf(s1, "S1 после снятия")).value, "(а): снятие перевыпускает носитель").not.toBe(s1Before);
       expect(await levelOf(s1, "S1 после снятия"), "(а): S1 на новом носителе — «2» (запасной код предъявлен)").toBe("2");
       const uAfter = await factorStatus(s1, "U после снятия");
       expect(uAfter.totp, `(а): строк фактора у U нет — ${JSON.stringify(uAfter)}`).toEqual(
         expect.objectContaining({ enrolled: false }),
       );
-      expect(Object.keys(uAfter), `(а): ключа backupCodes после снятия нет — ${JSON.stringify(uAfter)}`).not.toContain(
-        "backupCodes",
-      );
+      expect(
+        Object.keys(uAfter).filter((k) => k.startsWith("backupCode")),
+        `(а): ни сводки набора, ни кодов после снятия нет — ${JSON.stringify(uAfter)}`,
+      ).toEqual([]);
       const reEnroll = await s1.submit(LANE.enroll, "second-factor", {});
       expect(
         reEnroll.status(),

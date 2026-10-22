@@ -38,7 +38,7 @@ import {
 } from "./producer-answers";
 
 /**
- * Смена адреса почты на `/settings` — раздел «Учётная запись», три состояния
+ * Смена адреса почты на `/settings` — раздел «Способ входа», три состояния
  * (приёмка F8-S6, Р3), отказы (Р4), браузерный набор §5.
  *
  * Каждое «Тогда» утверждается наблюдаемым: переписью обращений страницы
@@ -81,7 +81,9 @@ function submitWait(seconds: number | string): string {
 // ─── экран ───────────────────────────────────────────────────────────────────
 
 function accountSection(page: Page) {
-  const region = page.getByRole("region", { name: "Учётная запись" });
+  // Смена адреса — действие раздела «Способ входа» экрана «Безопасность»
+  // (приёмка F8-S7, Р1; поведение F8-S6 без изменения).
+  const region = page.getByRole("region", { name: "Способ входа" });
   return {
     region,
     change: region.getByRole("button", { name: "Сменить адрес" }),
@@ -102,7 +104,7 @@ function pathOf(page: Page): string {
   return new URL(page.url()).pathname;
 }
 
-/** Открыть `/settings` и дождаться раздела «Учётная запись» в покое — с кнопкой «Сменить адрес». */
+/** Открыть `/settings` и дождаться раздела «Способ входа» в покое — с кнопкой «Сменить адрес». */
 async function openAccount(page: Page): Promise<Section> {
   await page.goto("/settings", { waitUntil: "domcontentloaded" });
   const s = accountSection(page);
@@ -114,7 +116,7 @@ async function openAccount(page: Page): Promise<Section> {
         if (now !== "/settings") return `страница уведена на ${now}`;
         return (await s.region.isVisible()) ? "раздел без «Сменить адрес»" : "ещё не отрисован";
       },
-      { message: "раздел «Учётная запись» на /settings не показал «Сменить адрес» (Р3, покой)", timeout: 30_000 },
+      { message: "раздел «Способ входа» на /settings не показал «Сменить адрес» (Р3, покой)", timeout: 30_000 },
     )
     .toBe("покой");
   return s;
@@ -239,6 +241,24 @@ async function signInSeed(seed: Seed, email: string, password: string, which: st
  */
 async function panelOutcome(page: Page): Promise<string> {
   await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+  return settledOutcome(page);
+}
+
+/**
+ * Куда консоль уводит контекст САМА после принятого входа: экран входа уходит
+ * документом на адрес возврата, и проба ждёт этого ухода, а не переходит
+ * своим `goto` — переход пробы прервался бы переходом консоли. Остаться на
+ * экране входа — исход «консоль не ушла», он называется отказом ожидания.
+ */
+async function departureOutcome(page: Page): Promise<string> {
+  await expect
+    .poll(() => pathOf(page), { message: "принятый вход: консоль не ушла с экрана входа", timeout: 30_000 })
+    .not.toBe("/login");
+  return settledOutcome(page);
+}
+
+/** Решение консоли на текущем документе: «панель», «экран входа» либо отказ ожидания. */
+async function settledOutcome(page: Page): Promise<string> {
   const account = page.getByRole("button", { name: "Учётная запись" });
   let outcome = "ждём";
   await expect
@@ -327,7 +347,7 @@ async function stepUpWithBackupCode(page: Page, code: string): Promise<LaneAnswe
   const dialog = stepUpDialog(page);
   await expect(dialog, "консоль не открыла окно повышения на вызов уровня").toBeVisible();
   await dialog.getByRole("radio", { name: "Запасной код" }).check();
-  await dialog.getByRole("textbox", { name: "Код", exact: true }).fill(code);
+  await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill(code);
   const [raised] = await Promise.all([
     lanePostAnswer(page, LANE.stepUp),
     dialog.getByRole("button", { name: "Подтвердить" }).click(),
@@ -413,7 +433,7 @@ test("F8S6-01 · смена адреса целиком на /settings, вход
       expect(pathOf(pageB)).toBe("/login");
       const signed = await loginOnScreen(pageB, n, human.password);
       expect(signed.status(), `вход новым адресом не прошёл: ${await signed.text()}`).toBe(200);
-      expect(await panelOutcome(pageB), "вход новым адресом не открыл консоль").toBe("панель");
+      expect(await departureOutcome(pageB), "вход новым адресом не открыл консоль").toBe("панель");
     });
   } finally {
     await ctxB.close();
@@ -471,6 +491,9 @@ test("F8S6-03 · несвежая сессия — повышение и воз�
   // verifies #3062 — близнец: F8S6-01 (тот же шаг без подставленного отказа).
   const substituted = await substituteFirst(page, CHANGE, SESSION_NOT_FRESH);
   await withHuman(testInfo, page, "F8S6-03", async (_seed, human) => {
+    // Окно подтверждения — способы службы, пароля в нём нет (приёмка F8-S7, Р5,
+    // §5): человек «Дано» заводит код отдельным посевом и подтверждает запасным.
+    const codes = await enrollSecondFactorAside(testInfo, human);
     const census = ceremonyCensus(page.context());
     const s = await openAccount(page);
     const n = freeAddress("F8S6-03");
@@ -478,14 +501,14 @@ test("F8S6-03 · несвежая сессия — повышение и воз�
     expect(refused.status()).toBe(403);
     const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
     await expect(dialog, "консоль не открыла церемонию повышения на SESSION_NOT_FRESH").toBeVisible();
-    await dialog.getByRole("radio", { name: "Паролем" }).check();
-    await dialog.getByLabel("Пароль", { exact: true }).fill(human.password);
+    await dialog.getByRole("radio", { name: "Запасной код", exact: true }).check();
+    await dialog.getByRole("textbox", { name: "Запасной код", exact: true }).fill(codes[0]);
     const retried = lanePostAnswer(page, CHANGE);
     const [raised] = await Promise.all([
       lanePostAnswer(page, LANE.stepUp),
-      dialog.getByRole("button", { name: "Подтвердить" }).click(),
+      dialog.getByRole("button", { name: "Подтвердить", exact: true }).click(),
     ]);
-    expect(raised.status(), `повышение паролем не прошло: ${await raised.text()}`).toBe(200);
+    expect(raised.status(), `повышение запасным кодом не прошло: ${await raised.text()}`).toBe(200);
     expect((await retried).status(), "повтор запроса смены после повышения не прошёл").toBe(200);
     await expect(dialog).toBeHidden();
     await expectCodeState(s, n);
@@ -796,7 +819,7 @@ test("F8S6-15 · повышение на предъявлении отменен
     await s.code.fill(letter.code);
     const [refused] = await Promise.all([lanePostAnswer(page, CHANGE_CONFIRM), s.confirm.click()]);
     await expectLevelRefusal(refused, CHANGE_CONFIRM);
-    await stepUpDialog(page).getByRole("button", { name: "Отменить" }).click();
+    await stepUpDialog(page).getByRole("button", { name: "Отмена", exact: true }).click();
     await expect(stepUpDialog(page)).toBeHidden();
     await expect(
       s.region.getByText(STEP_UP_NOT_DONE, { exact: true }),
@@ -860,7 +883,7 @@ test("F8S6-16 · повышение на запросе отменено — о�
     // (а) «Отправить код» → вызов уровня → в окне «Отменить».
     const refused = await requestChange(page, s, n);
     await expectLevelRefusal(refused, CHANGE);
-    await stepUpDialog(page).getByRole("button", { name: "Отменить" }).click();
+    await stepUpDialog(page).getByRole("button", { name: "Отмена", exact: true }).click();
     await expect(stepUpDialog(page)).toBeHidden();
     await expect(
       s.region.getByText(STEP_UP_NOT_DONE, { exact: true }),

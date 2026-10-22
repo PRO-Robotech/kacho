@@ -7,6 +7,8 @@ import {
   EDGE_CREDENTIAL_STATE_UNKNOWN as EDGE_CREDENTIAL_STATE_UNKNOWN_SOURCE,
   type EdgeAnswer,
 } from "../../shared/src/test/edge-answers";
+import { SESSION_NOT_FRESH_TEXT } from "./access-key-texts";
+import { noteSubstituted } from "./ceremony-budget";
 import { CONDITION_NOT_CREATED } from "./mail-receiver";
 
 /**
@@ -131,7 +133,7 @@ export const SESSION_NOT_FRESH = laneRefusal(
   "kaname loginlanehttp.writeError → writeRefusal(403, PERMISSION_DENIED, TextSessionNotFresh, SESSION_NOT_FRESH)",
   403,
   7,
-  "re-authentication required: present a credential again",
+  SESSION_NOT_FRESH_TEXT,
   "SESSION_NOT_FRESH",
 );
 
@@ -151,7 +153,7 @@ export const ACCESS_KEY_SESSION_NOT_FRESH: ProducerAnswer = {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     code: 7,
-    message: "re-authentication required: present a credential again",
+    message: SESSION_NOT_FRESH_TEXT,
     details: [
       { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SESSION_NOT_FRESH", domain: REFUSAL_DOMAIN },
     ],
@@ -218,8 +220,27 @@ export const EDGE_CREDENTIAL_STATE_UNKNOWN = edgeAnswer(EDGE_CREDENTIAL_STATE_UN
 /** Край: удостоверение не принято (KA1, Р2) — один отказ на все причины. */
 export const EDGE_AUTHN_FAILED = edgeAnswer(EDGE_AUTHN_FAILED_SOURCE);
 
+/**
+ * Край: соединение моста со службой в отказе (`Unavailable` grpc-клиента моста),
+ * ответ — обработчик ошибок grpc-gateway по умолчанию (`runtime.DefaultHTTPErrorHandler`,
+ * своего у моста нет — gateway/internal/restmux/mux.go): `503`, тело `{code, message,
+ * details}`, `details` пуст. Текст — снятый с прогона console-e2e на 897e11c8f
+ * (kacho#3238), адрес службы заменён литералом документационного диапазона.
+ */
+export const EDGE_BACKEND_UNREACHABLE: ProducerAnswer = {
+  producer: "api-gateway restmux → runtime.DefaultHTTPErrorHandler на Unavailable соединения моста",
+  status: 503,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    code: 14,
+    message: 'connection error: desc = "transport: Error while dialing: dial tcp 192.0.2.1:9090: connect: connection refused"',
+    details: [],
+  }),
+};
+
 /** Ответить подставленным ответом производителя — телом и заголовками. */
 export function fulfillWith(route: Route, answer: ProducerAnswer): Promise<void> {
+  noteSubstituted(route.request());
   return route.fulfill({ status: answer.status, headers: answer.headers, body: answer.body });
 }
 

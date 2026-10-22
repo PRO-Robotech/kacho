@@ -26,7 +26,7 @@ func TestSECE01_DialBackends_DefaultAllInsecure(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	backends, cleanup, err := dialBackends(cfg)
+	backends, cleanup, err := dialBackends(cfg, nil)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 
@@ -48,7 +48,7 @@ func TestSECE03_DialBackends_Enabled_MissingCert_FailFast(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	_, cleanup, err := dialBackends(cfg)
+	_, cleanup, err := dialBackends(cfg, nil)
 	if cleanup != nil {
 		t.Cleanup(cleanup)
 	}
@@ -68,7 +68,7 @@ func TestSECE07_DialBackends_MixedProfile_OK(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	backends, cleanup, err := dialBackends(cfg)
+	backends, cleanup, err := dialBackends(cfg, nil)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 

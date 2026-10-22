@@ -2,6 +2,13 @@
 
 ~755 кейсов / 245+ паттернов.
 
+> Снято (kacho#3258): `*-GET-PERF-BASELINE` и `*-LST-PERF-BASELINE` (12 кейсов). Одно
+> время ответа по часам клиента через проброс порта — задержка среды, а не свойство
+> продукта: в одном прогоне коллекции адресов ответы стенда шли от 107 до 1563 мс, и чтение
+> `ADR-GET-PERF-BASELINE` при пороге 300 мс ответило за 395 мс (сборка kacho#3258 @ee8056fb).
+> Нагрузка вне предмета набора (`TAXONOMY.md`, «Что НЕ покрываем»); бюджет задержки держит
+> k6 — `services/vpc/tests/k6/resource_ops.js` (порог `p(99)` по ручке `BUDGET_MS`).
+
 > Contract-removal: удалены RPC и их кейсы — `*-MV-*` (Move у
 > Network/Subnet/Address/RouteTable/SecurityGroup/Gateway), `*-REL-*`
 > (Subnet.Relocate), NIC `AttachToInstance`/`DetachFromInstance` (паттерны
@@ -266,7 +273,6 @@
 | `*-GET-NEG-NF-INVALID-PREFIX` | NEG | P0 | 1 (ope) | Get opId без 3-char domain-prefix → 400 InvalidArgument 'unknown prefix' |
 | `*-GET-NEG-NF-VALID-PREFIX` | NEG | P1 | 1 (ope) | Get несуществующего opId с правильным префиксом → NotFound |
 | `*-GET-NEG-NOT-FOUND` | CONF,NEG | P0 | 2 (net,sub) | Get garbage → 404 |
-| `*-GET-PERF-BASELINE` | CRUD,PERF | P2 | 6 (add,gat,net,rou,sec,sub) | Get existing — response time < 300ms |
 | `*-GET-TRAILING-SLASH` | VAL | P3 | 5 (add,gat,net,rou,sec) | Get с trailing slash → 404 |
 | `*-GET-WITH-QUERY-PARAMS` | CRUD,VAL | P3 | 1 (gat) | Get Gateway с дополнительными query params → 200 (ignored) |
 
@@ -324,7 +330,6 @@
 | `*-LST-PAGE-TOKEN-GARBAGE` | PAGE,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | List с garbage page_token → InvalidArgument |
 | `*-LST-PAGESIZE-1001` | BVA,VAL | P1 | 5 (add,gat,net,rou,sec) | List с pageSize=1001 (over max) → 400 |
 | `*-LST-PAGESIZE-EXACTLY-1000` | BVA | P2 | 5 (add,gat,net,rou,sec) | List с pageSize=1000 (boundary max) → 200 |
-| `*-LST-PERF-BASELINE` | CRUD,PERF | P2 | 6 (add,gat,net,rou,sec,sub) | List response time < 500ms (perf baseline) |
 | `*-LST-SEC-FILTER-SQLI` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security: SQL injection в filter → 200 и пустая страница, без 500 |
 | `*-LST-VAL-PROJECT-REQUIRED` | AUTHZ,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | List без projectId → InvalidArgument |
 

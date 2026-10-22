@@ -16,7 +16,7 @@
 // E0 (текущая фаза): без auth-interceptor; UI шлёт запросы без Bearer
 // (api-gateway допускает анонимный доступ). Operations.principal_* — пусто/stub.
 
-import { api } from "./client";
+import { api, ApiError } from "./client";
 import type { CredentialKind } from "@shared/lib/tokens-util";
 import { snakeToCamelPath } from "@shared/lib/update-mask";
 
@@ -342,6 +342,12 @@ export interface Rule {
   verbs: string[];
   resource_names?: string[];
   match_labels?: Record<string, string>;
+  // Вложенные правила (kaname#874) — ТОЛЬКО ВЫВОД: их объявляет манифест модуля,
+  // на входе Create/Update непустое поле край отвергает (INVALID_ARGUMENT,
+  // `rules[<i>].children`). Названо здесь, чтобы черновик набора не умалчивал
+  // поле контракта; консоль его не показывает и не заполняет. Вложенность
+  // плоская: у вложенного правила своих `children` нет.
+  children?: Rule[];
 }
 
 export type RuleArm = "ARM_ANCHOR" | "ARM_NAMES" | "ARM_LABELS";
@@ -486,7 +492,53 @@ export interface PermissionCatalog {
 export const PERMISSION_CATALOG_PATH = "/iam/v1/permissionCatalog";
 
 // ====== AccessBinding ======
-export type SubjectType = "user" | "service_account" | "group";
+export type SubjectType = "user" | "service_account" | "group" | "system_class";
+
+// ====== Системный класс субъекта (kaname#829, приёмка
+// anonymous-and-authenticated-are-subject-classes, Р1) ======
+//
+// Класс — субъект без страницы: у него нет записи, которую можно открыть, и нет
+// поиска — значений ровно два, их словарь закрыт сервером. Подписи живут здесь
+// одним местом: их читают форма выдачи (выбор), перечень и карточка выдачи
+// (показ), и разойтись им нельзя — человек узнаёт класс в перечне по той же
+// подписи, которой его выбрал.
+export type SystemClass = "authenticated" | "anonymous";
+
+/** Классы в порядке выбора: сперва более узкий по последствиям. */
+export const SYSTEM_CLASSES: readonly SystemClass[] = ["authenticated", "anonymous"];
+
+const SYSTEM_CLASS_LABEL: Record<SystemClass, string> = {
+  authenticated: "Вошедшие (любой аутентифицированный)",
+  anonymous: "Аноним (без входа)",
+};
+
+/** Подпись класса; незнакомое имя показывается как есть, а не выдаётся за класс. */
+export function systemClassLabel(id: string): string {
+  return (SYSTEM_CLASS_LABEL as Record<string, string>)[id] ?? id;
+}
+
+/** Вид субъекта — системный класс, в любом написании провода и проекции. */
+export function isSystemClassSubjectType(t: string): boolean {
+  return t === "system_class" || t === "SYSTEM_CLASS" || t === "SUBJECT_TYPE_SYSTEM_CLASS";
+}
+
+/** Глаголы, которые класс вправе получить (Р4): чтение и перечисление. */
+const CLASS_READ_VERBS: ReadonlySet<string> = new Set(["get", "list"]);
+
+/**
+ * Роль только читает — её действующие глаголы (`effectiveVerbs`) лежат в
+ * {get, list}. Тот же предикат, что у ворот выдачи службы (SC-21); последнее
+ * слово остаётся за сервером, а форма лишь не ПРЕДЛАГАЕТ роль, которую он
+ * отвергнет.
+ *
+ * Роль, чьи глаголы не прочитаны, читающей НЕ считается: незнание — не
+ * «только чтение», и предложенная по незнанию роль вернулась бы отказом.
+ */
+export function roleGrantsReadsOnly(role: Role | undefined): boolean {
+  const verbs = role?.effective_verbs ?? role?.effectiveVerbs;
+  if (!Array.isArray(verbs)) return false;
+  return verbs.every((v) => CLASS_READ_VERBS.has(v));
+}
 // RBAC v2 (KAC-214): resource_type ограничен высокоуровневыми скоупами,
 // которые принимает AccessBindingsPage. Legacy resource-manager типы
 // (folder/organization/cloud) удалены — backend validResourceTypes их не
@@ -655,9 +707,41 @@ export const SUBJECT_TYPE_ENUM: Record<SubjectType, WireSubjectType> = {
   user: "SUBJECT_TYPE_USER",
   service_account: "SUBJECT_TYPE_SERVICE_ACCOUNT",
   group: "SUBJECT_TYPE_GROUP",
+  system_class: "SUBJECT_TYPE_SYSTEM_CLASS",
 };
 
-export type WireSubjectType = "SUBJECT_TYPE_USER" | "SUBJECT_TYPE_SERVICE_ACCOUNT" | "SUBJECT_TYPE_GROUP";
+export type WireSubjectType =
+  | "SUBJECT_TYPE_USER"
+  | "SUBJECT_TYPE_SERVICE_ACCOUNT"
+  | "SUBJECT_TYPE_GROUP"
+  | "SUBJECT_TYPE_SYSTEM_CLASS";
+
+/**
+ * Отказ выдачи, который сервер отнёс к полю `target`, — его текст дословно; иначе
+ * null.
+ *
+ * Сервер называет поле в `google.rpc.BadRequest` (`fieldViolations[].field`), и
+ * форма показывает отказ У ЭТОГО поля, а не общим сообщением: человек видит,
+ * какой выбор отвергнут (SC-52 — «вся область» у класса). Текст не переводится:
+ * тон сообщений — часть контракта, а отказ, который консоль пересказала,
+ * перестаёт совпадать с тем, что видит вызывающий API.
+ */
+export function targetFieldRefusal(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const blocks: unknown[] = Array.isArray(err.details) ? err.details : [err.details];
+  for (const block of blocks) {
+    if (typeof block !== "object" || block === null) continue;
+    const violations: unknown = (block as { fieldViolations?: unknown }).fieldViolations;
+    if (!Array.isArray(violations)) continue;
+    for (const v of violations as unknown[]) {
+      if (typeof v !== "object" || v === null) continue;
+      const { field, description } = v as { field?: unknown; description?: unknown };
+      if (field !== "target") continue;
+      return typeof description === "string" && description !== "" ? description : err.message;
+    }
+  }
+  return null;
+}
 
 export interface CreateAccessBindingInput {
   /** 1..32 грантополучателей; каждый даёт независимый tuple-set / revoke. */
@@ -877,7 +961,7 @@ export const iamApi = {
    * KAC item #1: GET /iam/v1/accounts/{account_id}/accessBindings — все
    * AccessBinding'и видимые админу в account'е (включает project-scoped + account-scoped).
    * Опциональные фильтры:
-   *   - subject_type_filter — "user" | "service_account" | "group"
+   *   - subject_type_filter — "user" | "service_account" | "group" | "system_class"
    *   - include_revoked — "true" / "false" (default false)
    *   - page_size / page_token — opaque cursor pagination.
    */

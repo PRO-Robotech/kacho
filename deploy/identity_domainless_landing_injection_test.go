@@ -6,7 +6,7 @@
 //
 // Дефект ВОЗВРАЩАЕТСЯ настоящим входом — рендером подчарта службы настоящей
 // цепочкой стенда, переведённой фикстурой на IP-литерал
-// (`domainlessFixtureStack`, `domainlessFixtureSet`), — и рядом ставится ЗАКОННЫЙ БЛИЗНЕЦ той же
+// (`domainlessFixtureStack`, `domainlessFixtureSets`), — и рядом ставится ЗАКОННЫЙ БЛИЗНЕЦ той же
 // формы, отличающийся одним фактом. Зовётся ТОТ ЖЕ адъюдикатор, что исполняет
 // гейт (`judgeOurDomainlessLanding`), а не его копия.
 package deploy_test
@@ -47,7 +47,7 @@ func renderedOwnConfig(t *testing.T, stack string, sets ...string) (string, map[
 
 func TestIdentityDomainlessGate_ProvenByInjection(t *testing.T) {
 	st := domainlessFixtureStack
-	host, twin := renderedOwnConfig(t, st, domainlessFixtureSet)
+	host, twin := renderedOwnConfig(t, st, domainlessFixtureSets...)
 	isIP, f := judgeOurDomainlessLanding(st, host, twin)
 	if !isIP {
 		t.Fatalf("вход инъекции сменил форму: хост внешнего origin фикстуры %s — %q, не IP-литерал", st, host)
@@ -62,8 +62,12 @@ func TestIdentityDomainlessGate_ProvenByInjection(t *testing.T) {
 		{"печенье с доменом", "cookie-domain", []string{"config.authn.login.cookieDomain=api.kacho.cloud"}},
 		{"печенье на IP", "cookie-domain", []string{"config.authn.login.cookieDomain=" + host}},
 		{"происхождение ключей на IP", "IP-литерале", []string{"config.authn.accessKeys.origins[0]=http://" + host}},
+		// Форма, которую фикстура больше не несёт: перечень из консоли на
+		// посадке без имени (решение стенда a8f60d, kacho#3229, перенесённое на IP).
+		{"происхождение ключей из консоли на IP", "IP-литерале", []string{
+			"config.authn.accessKeys.originFromConsole=true", "config.authn.accessKeys.origins=null"}},
 	} {
-		_, cfg := renderedOwnConfig(t, st, append([]string{domainlessFixtureSet}, c.sets...)...)
+		_, cfg := renderedOwnConfig(t, st, append(append([]string{}, domainlessFixtureSets...), c.sets...)...)
 		_, f := judgeOurDomainlessLanding(st, host, cfg)
 		if len(f) != 1 || !strings.Contains(f[0], c.want) {
 			t.Errorf("%s: ожидалась одна находка с %q, получено %v", c.name, c.want, f)

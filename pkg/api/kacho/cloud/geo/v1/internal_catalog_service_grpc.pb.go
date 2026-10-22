@@ -33,8 +33,17 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type InternalRegionServiceClient interface {
+	// Создаёт регион.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Create(ctx context.Context, in *CreateRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Правит регион.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Update(ctx context.Context, in *UpdateRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Удаляет регион.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Delete(ctx context.Context, in *DeleteRegionRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// GetInternal returns the FULL Internal projection (raw status + infra°).
 	GetInternal(ctx context.Context, in *GetInternalRegionRequest, opts ...grpc.CallOption) (*InternalRegion, error)
@@ -92,8 +101,17 @@ func (c *internalRegionServiceClient) GetInternal(ctx context.Context, in *GetIn
 // All implementations must embed UnimplementedInternalRegionServiceServer
 // for forward compatibility.
 type InternalRegionServiceServer interface {
+	// Создаёт регион.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Create(context.Context, *CreateRegionRequest) (*operation.Operation, error)
+	// Правит регион.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Update(context.Context, *UpdateRegionRequest) (*operation.Operation, error)
+	// Удаляет регион.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Delete(context.Context, *DeleteRegionRequest) (*operation.Operation, error)
 	// GetInternal returns the FULL Internal projection (raw status + infra°).
 	GetInternal(context.Context, *GetInternalRegionRequest) (*InternalRegion, error)
@@ -251,8 +269,17 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type InternalZoneServiceClient interface {
+	// Создаёт зону.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Create(ctx context.Context, in *CreateZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Правит зону.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Update(ctx context.Context, in *UpdateZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Удаляет зону.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Delete(ctx context.Context, in *DeleteZoneRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// GetInternal returns the FULL Internal projection (raw status + infra°).
 	GetInternal(ctx context.Context, in *GetInternalZoneRequest, opts ...grpc.CallOption) (*InternalZone, error)
@@ -310,8 +337,17 @@ func (c *internalZoneServiceClient) GetInternal(ctx context.Context, in *GetInte
 // All implementations must embed UnimplementedInternalZoneServiceServer
 // for forward compatibility.
 type InternalZoneServiceServer interface {
+	// Создаёт зону.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Create(context.Context, *CreateZoneRequest) (*operation.Operation, error)
+	// Правит зону.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Update(context.Context, *UpdateZoneRequest) (*operation.Operation, error)
+	// Удаляет зону.
+	// Пол подтверждения — `required_acr_min = "1"`, равный публичному близнецу:
+	// рутинная мутация каталога кластера, а не выдача права (приёмка ADM-1 geo).
 	Delete(context.Context, *DeleteZoneRequest) (*operation.Operation, error)
 	// GetInternal returns the FULL Internal projection (raw status + infra°).
 	GetInternal(context.Context, *GetInternalZoneRequest) (*InternalZone, error)

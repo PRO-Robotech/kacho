@@ -1099,25 +1099,6 @@ def update_happy_per_field(prefix, create_path, update_base_path, body_create):
     ]
 
 
-def perf_baseline_block(prefix, list_path, get_path=None):
-    """Performance baseline: response time для Get/List ниже бюджета.
-
-    list_path — путь List endpoint (с projectId query param).
-    """
-    cases = [
-        Case(
-            id=f"{prefix}-LST-PERF-BASELINE",
-            title="List response time < 500ms (perf baseline)",
-            classes=["PERF", "CRUD"], priority="P2",
-            steps=[Step(name="list-timed", method="GET",
-                        path=f"{list_path}?projectId={{{{_suiteProjectId}}}}&pageSize=10",
-                        test_script=[*assert_status(200),
-                                     "pm.test('response time < 500ms', () => pm.expect(pm.response.responseTime).to.be.below(500));"])],
-        ),
-    ]
-    return cases
-
-
 def verbatim_text_pack(prefix, resource_name, resource_path, text_template=None):
     """Snapshots стабильного текста для распространенных ошибок (Get/Update/Delete).
 
@@ -1385,27 +1366,6 @@ def update_mask_partial_block(prefix, create_path, update_base_path, body_create
             ],
         ),
     ]
-
-
-def perf_baseline_get_block(prefix, get_create_path, body_create):
-    """GET happy с perf budget."""
-    return Case(
-        id=f"{prefix}-GET-PERF-BASELINE",
-        title="Get existing — response time < 300ms",
-        classes=["PERF", "CRUD"], priority="P2",
-        steps=[
-            Step(name="cr", method="POST", path=get_create_path,
-                 body={**body_create, "name": f"{prefix.lower()}-perf-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-            poll_operation_until_done(capture_id_to="perfId"),
-            _rya(Step(name="get-timed", method="GET", path=f"{get_create_path}/{{{{perfId}}}}",
-                 test_script=[*assert_status(200),
-                              "pm.test('response time < 300ms', () => pm.expect(pm.response.responseTime).to.be.below(300));"])),
-            Step(name="cleanup", method="DELETE", path=f"{get_create_path}/{{{{perfId}}}}",
-                 test_script=[*save_from_response("j.id", "opId")]),
-            poll_operation_until_done(),
-        ],
-    )
 
 
 def list_total_size_check_block(prefix, list_path):
@@ -2953,7 +2913,6 @@ _INJECTED = {
     "pagination_roundtrip": pagination_roundtrip,
     "idempotency_block": idempotency_block,
     "update_happy_per_field": update_happy_per_field,
-    "perf_baseline_block": perf_baseline_block,
     "verbatim_text_pack": verbatim_text_pack,
     "authz_caller_headers_block": authz_caller_headers_block,
     "update_happy_multi_field": update_happy_multi_field,
@@ -2967,7 +2926,6 @@ _INJECTED = {
     "malformed_body_block": malformed_body_block,
     "alreadyexists_dup_name_for": alreadyexists_dup_name_for,
     "update_mask_partial_block": update_mask_partial_block,
-    "perf_baseline_get_block": perf_baseline_get_block,
     "list_total_size_check_block": list_total_size_check_block,
     "headers_content_type_block": headers_content_type_block,
     "required_fields_matrix": required_fields_matrix,

@@ -590,6 +590,12 @@
                 "v1",
                 "internal",
                 "interactiveClients"
+              ],
+              "query": [
+                {
+                  "key": "filter",
+                  "value": "name%3D%22ic-secret-s04-{{runId}}%22"
+                }
               ]
             }
           },
@@ -1383,6 +1389,12 @@
                 "v1",
                 "internal",
                 "interactiveClients"
+              ],
+              "query": [
+                {
+                  "key": "filter",
+                  "value": "name%3D%22ic-secret-s09-{{runId}}%22"
+                }
               ]
             }
           },

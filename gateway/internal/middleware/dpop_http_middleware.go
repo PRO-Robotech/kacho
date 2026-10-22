@@ -117,7 +117,7 @@ func (c catalogPermissionLookup) Lookup(fqn string) PermissionRequirement {
 	if !ok {
 		return PermissionRequirement{}
 	}
-	return PermissionRequirement{RequiredACRMin: entry.RequiredACRMin}
+	return PermissionRequirement{RequiredACRMin: entry.RequiredACRMin, AdmitsAnonymous: entry.AdmitsAnonymous()}
 }
 
 // DPoPMiddlewareConfig — DI bag.
@@ -207,8 +207,13 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 		dpopHeader := r.Header.Get("DPoP")
 
 		// 1. No Authorization header → respect requireForAllRequests; otherwise pass.
+		// Отметка пропуска анонима (слой аутентификации стоит снаружи и поставил
+		// её только по строке каталога с полом «0», anonymous_admission.go) —
+		// тот же исход, что посадка без требования: решение выносит посредник
+		// прав. Иначе строгая посадка с этим слоем отвергала бы анонима на
+		// методе, который его допускает, а без слоя — нет.
 		if token == "" {
-			if m.requireForAllRequests {
+			if m.requireForAllRequests && !anonymousAdmitted(r.Context()) {
 				m.logger.Info("dpop-mw: refused — no access token", "path", path)
 				authnrefusal.WriteHTTP(w)
 				return

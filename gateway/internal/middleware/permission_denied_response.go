@@ -408,6 +408,16 @@ func scopeSourceConflictMessage(field string) string {
 		"in the request body for a request that has one, otherwise in the query string"
 }
 
+// requiredScopeFieldMessage — текст отказа на пустое поле скоупа (kacho#3177),
+// по норме api-resourceid-empty: «<поле>: required», имя поля — как в proto.
+// Текст совпадает с тем, что службы отвечают на собственный required-check
+// (напр. nlb shared.ErrInvalidArg «project_id: required», vpc release.go,
+// pkg/quota/quotapb); деталей BadRequest край не несёт — плоский текст и есть
+// контракт отказа края.
+func requiredScopeFieldMessage(field string) string {
+	return field + ": required"
+}
+
 // buildGRPCInvalidArgStatus constructs a *status.Status{Code: InvalidArgument}
 // with the supplied flat message. No PreconditionFailure / ErrorInfo details —
 // the flat message IS the contract (mirrors corevalidate.ResourceID).

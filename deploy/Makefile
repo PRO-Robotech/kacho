@@ -13,7 +13,7 @@
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
         managed-image-pins managed-image-pins-check stack-up cert-manager-up own-up \
-        stand-ns-up stand-ns-down stand-ns-run stand-ns-census \
+        stand-ns-up stand-ns-down stand-ns-run stand-ns-census stand-owner \
         stand-second-factor-wrap-rotate bootstrap-cloud-admin
 
 SHELL := bash
@@ -1159,11 +1159,21 @@ stack-up:
 
 # ── СТЕНД ПРОБ В СВОЁМ ПРОСТРАНСТВЕ ИМЁН ВНЕШНЕГО КЛАСТЕРА (kacho#3102) ──────
 #
-#   make stand-ns-up     NS=t<задача>-<коротко> [STACK=<цепочка stacks.txt>] [REF=<коммит>]
+#   make stand-ns-up     NS=t<задача>-<коротко> [STACK=<цепочка stacks.txt>] [REF=<коммит>] [KANAME_BRANCH=<ветка> [KANAME_REF=<sha40>]]
 #   make stand-ns-down   NS=t<задача>-<коротко>
 #   make stand-ns-run    NS=t<задача>-<коротко> [REF=…] [STACK=…] [KEEP=1] [DIR=<каталог от корня>] CMD='<команда>'
+#                        [RUNNER=newman|browser [OUT=<каталог отчётов>]] — CMD идёт в pod пространства
+#                        стенда, а не на машине (шапка scripts/stand-ns.sh, «РАННЕР В POD СТЕНДА», kacho#3346)
 #   make stand-ns-census [EXPIRED=1]
 #   make reload-svc      NS=t<задача>-<коротко> SVC=<служба> [REF=<коммит>] [BRANCH=<ветка>]
+#
+# KANAME_BRANCH (stand-ns-up, stand-ns-run) — служба доступа ставится образом этой
+# ветки своего репозитория, а не пином профиля (kacho#3312): ревизия — голова ветки
+# на origin службы либо KANAME_REF=<sha40>; тег — `task-<ветка>-<8>` либо
+# `<ветка>-<8>`, какой опубликован, отвечает реестр; нет образа — отказ с тегом и
+# командой сборки (`gh workflow run docker-build.yml --ref <ветка>` в репозитории
+# службы), отката на пин нет; провенанс сверяет ссылку и ревизию образа с головой
+# ветки. Без KANAME_BRANCH — служба по пину, как прежде.
 #
 # BRANCH (stand-ns-up, stand-ns-run, reload-svc) — ветка, сборкой которой
 # опубликованы образы REF; не задана — ветки-кандидатки выводятся из истории, и
@@ -1207,7 +1217,11 @@ EXPIRED ?=
 BRANCH ?=
 # Ветка публикации образов доходит до скрипта переменной окружения; пустая — не
 # задаётся вовсе (ветки тогда выводятся из истории).
-STAND_BRANCH_ENV = $(if $(BRANCH),STAND_IMAGE_BRANCHES='$(subst ','\'',$(BRANCH))' ,)
+STAND_BRANCH_ENV = $(if $(BRANCH),STAND_IMAGE_BRANCHES='$(subst ','\'',$(BRANCH))' ,)$(STAND_KANAME_ENV)
+KANAME_BRANCH ?=
+KANAME_REF ?=
+# Ветка службы доступа — тем же путём, окружением; пустая не задаётся вовсе.
+STAND_KANAME_ENV = $(if $(KANAME_BRANCH),STAND_KANAME_BRANCH='$(subst ','\'',$(KANAME_BRANCH))' ,)$(if $(KANAME_REF),STAND_KANAME_REF='$(subst ','\'',$(KANAME_REF))' ,)
 stand-ns-up:
 	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — стенд ставить некуда (NS=t<задача>-<коротко>)"; exit 2; }
 	@$(STAND_BRANCH_ENV)bash scripts/stand-ns.sh up "$(NS)" "$(or $(STACK),dev-prod)" "$(or $(REF),HEAD)"
@@ -1221,15 +1235,29 @@ stand-ns-run:
 	@$(if $(value CMD),:,{ echo "ABORT: CMD не задан — прогонять на стенде нечего (CMD='<команда>')"; exit 2; })
 	@cd "$(CURDIR)/../$(DIR)" || exit 2; \
 	$(STAND_BRANCH_ENV)bash "$(CURDIR)/scripts/stand-ns.sh" run "$(NS)" $(if $(filter 1,$(KEEP)),--keep,) \
+	  $(if $(RUNNER),--runner "$(RUNNER)",) $(if $(OUT),--out "$(OUT)",) \
 	  --stack "$(or $(STACK),dev-prod)" --ref "$(or $(REF),HEAD)" -- bash -c '$(subst ','\'',$(value CMD))'; \
 	code=$$?; \
-	case $$code in 0) what="команда прошла" ;; 125) what="команда НЕ исполнялась — условие прогона не создано" ;; \
+	case $$code in 0) what="команда прошла" ;; 125) what="не выполнилось — команда НЕ исполнялась (условие прогона не создано) либо отчёты раннера доставлены неполно" ;; \
 	  *) what="команда завершилась ненулевым кодом" ;; esac; \
 	echo "stand-ns-run: код scripts/stand-ns.sh run = $$code ($$what)"; \
 	exit $$code
 
 stand-ns-census:
 	@bash scripts/stand-ns.sh census $(if $(filter 1,$(EXPIRED)),--expired,)
+
+# stand-owner — владелец стенда проб с носителем уровня «2» (kacho#3281): заведение
+# путём человека и второй фактор по времени, повторный посев — вход паролем и
+# повышение кодом фактора. Пол каталога прав не снижается. Состояние (адрес,
+# пароль, секрет фактора) — файл 0600 рабочего каталога стенда, в вывод не идёт;
+# TOKEN=1 печатает носитель в stdout для подстановки, TWIN=1 — обе стороны пола
+# (держатель предиката). Нужен проброс: `bash scripts/stand-ns.sh forward NS`.
+stand-owner:
+	@[ -n "$(NS)" ] || { echo "ABORT: NS не задан — чей стенд сеять (NS=t<задача>-<коротко>)"; exit 2; }
+	@env="$${KACHO_STAND_NS_WORKDIR:-$(CURDIR)/.stand-ns}/$(NS)/probe.env"; \
+	[ -f "$$env" ] || { echo "ABORT: окружения проб $$env нет — сначала bash scripts/stand-ns.sh forward $(NS)" >&2; exit 75; }; \
+	. "$$env" && STAND_OWNER_STATE="$${env%/probe.env}/owner.json" \
+	  python3 scripts/stand_owner.py $(if $(filter 1,$(TOKEN)),--token,) $(if $(filter 1,$(TWIN)),--prove-twin,)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # stand-second-factor-wrap-rotate — производитель условия Ф12-35 «в» (kacho#3038):
@@ -1987,6 +2015,11 @@ wipe-iam-db: guard-kind-context
 # разработки в тот кластер, куда сейчас смотрит kubectl. Тот же довод, по которому
 # `stack-up` требует `STACK`. Все три пути выкатки называют стенд явно, поэтому
 # снятие умолчания не трогает ни одного из них.
+# MODULE_MANIFESTS_PRODUCER — готовый производитель (путь к исполняемому файлу). Задан —
+# цель Go не зовёт: так её вызывает подъём стенда проб, собравший производителя во внешнем
+# кластере (scripts/stand-ns.sh, build_tool, kacho#3353; на машине оператора Go не
+# запускается). Не задан — производитель собирается здесь (dev-up на kind, stack-up).
+MODULE_MANIFESTS_PRODUCER ?=
 module-manifests-configmap: guard-declared-context
 	@$(if $(filter $(MODULE_MANIFESTS_STACK),$(CLIENT_CONTEXT_STACKS)),bash scripts/client-context.sh verify --ambient,true)
 	@[ -n "$(MODULE_MANIFESTS_STACK)" ] || { \
@@ -2001,8 +2034,13 @@ module-manifests-configmap: guard-declared-context
 	[ -n "$$chain" ] || { echo "ABORT: цепочка стенда '$(MODULE_MANIFESTS_STACK)' прочиталась пустой"; exit 1; }; \
 	profiles=""; for f in $$chain; do profiles="$$profiles ./helm/umbrella/$$f"; done; \
 	work="$$(mktemp -d)"; trap 'rm -rf "$$work"' EXIT; \
-	go build -o "$$work/producer" ../tools/modulemanifests/cmd/module-manifests-configmap; \
-	rc=0; "$$work/producer" -root .. $$profiles > "$$work/configmap.yaml" || rc=$$?; \
+	producer="$(MODULE_MANIFESTS_PRODUCER)"; \
+	if [ -n "$$producer" ]; then \
+	  [ -x "$$producer" ] || { echo "ABORT: MODULE_MANIFESTS_PRODUCER=$$producer — не исполняемый файл"; exit 2; }; \
+	else \
+	  go build -o "$$work/producer" ../tools/modulemanifests/cmd/module-manifests-configmap; producer="$$work/producer"; \
+	fi; \
+	rc=0; "$$producer" -root .. $$profiles > "$$work/configmap.yaml" || rc=$$?; \
 	case "$$rc" in \
 	  0) kubectl -n $(STACK_NAMESPACE) apply -f "$$work/configmap.yaml"; \
 	     digest="$$(sha256sum "$$work/configmap.yaml" | cut -d' ' -f1)"; \

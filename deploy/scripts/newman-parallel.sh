@@ -19,8 +19,9 @@
 #
 # Flow (idempotent, deterministic — same as newman-e2e.sh, once for all four):
 #   1. port-forward api-gateway public(:18080)+internal(:18081) + iam-internal(:19091)
-#   2. seed auth fixtures ONCE via tests/authz-fixtures/setup.sh (per-service
-#      isolated accounts/projects) + patch every service env
+#   2. seed auth fixtures via tests/authz-fixtures/setup.sh (per-service
+#      isolated accounts/projects) + patch every service env; каждая следующая
+#      суита получает свежий посев своего окружения (reseed_before_suite)
 #   3. seed the nlb external-VIP AddressPool (only nlb needs it)
 #   4. regenerate every suite's collections (gen.py)
 #   5. run all four suites in parallel (each = its own scripts/run.sh, which itself
@@ -70,7 +71,14 @@ set -uo pipefail
 # исполняемая суита без каталога — прогон, который нечем разобрать (это и
 # говорит .github/scripts/check-newman-suite-gates.py).
 SERVICES="${SERVICES:-vpc compute nlb storage registry geo api-gateway}"
-NS="${SETUP_NS:-kacho}"
+# Пространство имён стенда — из ОДНОГО места, того же, что у посева
+# (tests/authz-fixtures/stand-ns.sh, задача #2882): SETUP_NS либо KACHO_NAMESPACE,
+# заданные по-разному, — отказ до первого обращения к кластеру. Ответ уходит дальше
+# обеими переменными, и посев приходит к тому же пространству, что и пробросы.
+# shellcheck source=tests/authz-fixtures/stand-ns.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/tests/authz-fixtures/stand-ns.sh"
+stand_ns_resolve || exit 1
+NS="$STAND_NS"
 GW_PORT="${GW_PORT:-18080}"
 GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 # The api-gateway's EXTERNAL TLS listener (:8443, advertised as api.kacho.local:443).
@@ -123,6 +131,10 @@ DELAY="${DELAY:-3}"          # per-request delay (ms) inside each collection
 JOBS="${JOBS:-1}"            # коллекций одновременно внутри суиты
 WAVE_JOBS="${WAVE_JOBS:-1}"  # суит одновременно внутри волны
 SEED="${SEED:-true}"         # set false to reuse an already-seeded stand
+# Свежие предъявители перед каждой следующей суитой: true — свежий посев её окружения
+# (kacho#3211), false — перевыпуск по рецептам посева прогона (kacho#3238); см.
+# reseed_before_suite ниже.
+SEED_PER_SUITE="${SEED_PER_SUITE:-true}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -194,6 +206,16 @@ internal_rest_newman_args "$GW_INTERNAL_PORT" "$IR_DIR"
 # уронить прогон блоком живости на предмете, которого в этой посадке не бывает.
 OWN_FRONT_ENV_ARGS=()
 OWN_FRONT_TLS_ARGS=()   # --ssl-client-* для фронта, чьё ребро ВЗАИМНОЕ
+# Фронт под транспортом адресуется ИМЕНЕМ из SAN своего листа, запиненным на петлю
+# (kacho#3315): лист несёт в SAN только DNS-имена Service, и адрес по IP проверку
+# имени не проходит — newman отдаёт `errored` вместо вердикта. Проверка не
+# ослабляется: имя — из листа посадки (own-front-tls-name.py), цепочка — по УЦ
+# посадки (--ssl-extra-ca-certs), разрешение имени в петлю — lib/pin-resolve.cjs
+# (форма `curl --resolve <имя>:<порт>:127.0.0.1`). Имени в SAN нет — адрес не
+# инъектируется: «условие не создано», а не откат на IP.
+OWN_FRONT_PINS=()       # «имя=127.0.0.1» на каждый фронт под транспортом
+OWN_FRONT_CA_ARGS=()    # --ssl-extra-ca-certs <УЦ посадки>
+OWN_FRONT_CA_DIR=""
 
 # own_front_client_leaf — кладёт клиентский лист посадки в OWN_FRONT_TLS_ARGS.
 # 0 — лист есть (или уже взят раньше), 1 — секрета в посадке нет.
@@ -229,6 +251,16 @@ own_front_forward() {  # <public|internal> <локальный порт> <имя
   port="$(echo "$addr" | cut -d'|' -f2)"
   svc="$(echo "$addr" | cut -d'|' -f3)"
   leaf="$(echo "$addr" | cut -d'|' -f4)"
+
+  local host="127.0.0.1"
+  if [ "$scheme" = https ]; then
+    if [ -z "$OWN_FRONT_CA_DIR" ]; then OWN_FRONT_CA_DIR="$(mktemp -d)"; TMP_DIRS+=("$OWN_FRONT_CA_DIR"); fi
+    if ! host="$(python3 "$SCRIPT_DIR/own-front-tls-name.py" "$svc" --namespace "$NS" --ca-out "$OWN_FRONT_CA_DIR/$var.pem")"; then
+      echo "[parallel] $var НЕ инъектируется: имя из SAN листа фронта svc/$svc не установлено (выше) —" \
+           "«условие не создано», а не адрес по IP с проверкой, которая не пройдёт"
+      return 0
+    fi
+  fi
 
   # ТРЕБУЕТ ЛИ ФРОНТ ПРОВЕРЕННОГО КЛИЕНТСКОГО ЛИСТА — РЕШЕНИЕ ПРОИЗВОДИТЕЛЯ (#2372).
   #
@@ -275,11 +307,27 @@ own_front_forward() {  # <public|internal> <локальный порт> <имя
 
   kubectl -n "$NS" port-forward "svc/$svc" "$local_port:$port" >"/tmp/e2e-pp-$var.log" 2>&1 &
   PF_PIDS+=($!); PF_WHAT+=("$local_port|$var → svc/$svc (:$port, $scheme)|/tmp/e2e-pp-$var.log")
-  OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://127.0.0.1:$local_port")
-  echo "[parallel] собственный фронт: $var → svc/$svc :$port ($scheme, лист $leaf) на 127.0.0.1:$local_port"
+  if [ "$scheme" = https ]; then
+    OWN_FRONT_PINS+=("$host=127.0.0.1")
+    cat "$OWN_FRONT_CA_DIR/$var.pem" >>"$OWN_FRONT_CA_DIR/bundle.pem"
+    OWN_FRONT_CA_ARGS=(--ssl-extra-ca-certs "$OWN_FRONT_CA_DIR/bundle.pem")
+  fi
+  OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://$host:$local_port")
+  echo "[parallel] собственный фронт: $var → svc/$svc :$port ($scheme, лист $leaf) на $host:$local_port (проброс на 127.0.0.1)"
 }
 own_front_forward public   "$OWN_REST_PORT"           ownRestBaseUrl
 own_front_forward internal "$OWN_INTERNAL_REST_PORT"  ownInternalRestBaseUrl
+# Пин имён фронтов на петлю — процессам node этого прогона (newman), и только им:
+# NODE_OPTIONS другие инструменты прогонщика не читают.
+if [ "${#OWN_FRONT_PINS[@]}" -gt 0 ]; then
+  KACHO_PIN_RESOLVE="$(IFS=,; printf '%s' "${OWN_FRONT_PINS[*]}")"
+  # Кавычки вокруг пути — для разбора NODE_OPTIONS самим node, а не оболочкой.
+  # shellcheck disable=SC2089,SC2090
+  NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--require \"$SCRIPT_DIR/lib/pin-resolve.cjs\""
+  # shellcheck disable=SC2090
+  export KACHO_PIN_RESOLVE NODE_OPTIONS
+  echo "[parallel] имена фронтов запинены на петлю: $KACHO_PIN_RESOLVE; УЦ посадки — ${OWN_FRONT_CA_ARGS[*]}"
+fi
 # Та же строка для волн, которые принимают набор аргументов ОДНОЙ строкой.
 OWN_FRONT_ENV_STR=""
 for _a in "${OWN_FRONT_ENV_ARGS[@]}"; do
@@ -400,6 +448,64 @@ if kubectl -n "$NS" get secret kacho-bootstrap-operator-client-tls >/dev/null 2>
   MTLS_ENV+=(BOOTSTRAP_MINT_MTLS_CERT="$OP_DIR/client.crt" BOOTSTRAP_MINT_MTLS_KEY="$OP_DIR/client.key")
 fi
 
+# ─── ПРЕДЪЯВИТЕЛИ ФИКСТУРЫ ЖИВУТ МЕНЬШЕ ПРОГОНА (kacho#3238, kacho#3211) ─────────
+#
+# Срок предъявителя назначает выдающий: на стенде t3238-sc измерено `exp - iat` =
+# 900 с (в цепочке dev-prod это `clientToken.tokenTtl`, 15 минут). Посев длится около
+# 4 минут, суита vpc — около 14, суиты идут одна за другой (WAVE_JOBS=1). Всё, что
+# начиналось позже срока, отвечало сплошными 401 AUTHN_REQUIRED — вердиктом о
+# продукте там, где истёк срок фикстуры. Срок продукта здесь не трогается.
+#
+# Свежесть держится в ДВУХ местах, и у каждого места один путь:
+#   • перед КАЖДОЙ суитой (reseed_before_suite ниже) — первую только что посеял посев
+#     прогона; каждую следующую — свежий посев её окружения (kacho#3211), а при
+#     SEED_PER_SUITE=false — принудительный перевыпуск по рецептам посева прогона.
+#     Посев и перевыпуск перед одной суитой не сходятся: свежему посеву перевыпускать
+#     нечего;
+#   • перед КАЖДОЙ коллекцией — перевыпуск по остатку срока у самих предъявителей
+#     окружения, если он меньше TOKEN_REFRESH_MARGIN_S (обёртка `newman` ниже).
+# Так суита любой длины не упирается в срок, пока ОДНА коллекция короче запаса
+# (самая длинная коллекция прогона 2026-10-16 шла 166 с; запас 600 с).
+#
+# Посев записывает РЕЦЕПТ каждого выданного предъявителя в файл состояния (0600,
+# временный каталог прогона — в нём приватные ключи учёток, снимается вместе с
+# прогоном), а tests/authz-fixtures/prodseed_refresh.py выпускает те же предъявители
+# заново тем же путём, что посев. Рецепты — у того посева, что правил окружение:
+# посев прогона пишет общий файл (PRODSEED_TOKEN_STATE), свежий посев суиты — файл
+# этой суиты рядом с ним, и обёртка newman суиты перевыпускает по своему
+# (SUITE_TOKEN_STATE из launch_wave): посев следующей суиты рецептов идущей не
+# подменяет. Перевыпуск отказал — коллекция или суита НЕ запускается, и это
+# «не выполнилось», а не красное: прогон против просроченных предъявителей вердикта
+# не даёт.
+TOKEN_REFRESH_MARGIN_S="${TOKEN_REFRESH_MARGIN_S:-600}"
+TOKEN_STATE_DIR="$(mktemp -d)"; TMP_DIRS+=("$TOKEN_STATE_DIR")
+PRODSEED_TOKEN_STATE="$TOKEN_STATE_DIR/token-recipes.json"
+# Корень удостоверяющего слушателя выдачи — в каталоге ЭТОГО прогона: посев и
+# перевыпуск проверяют лист одним корнем, а соседний посев против другого стенда
+# его не перепишет (общий /tmp/kaname-server-ca переписывался: CERTIFICATE_VERIFY_FAILED,
+# kacho#3238).
+SERVER_CA_DIR="$(mktemp -d)"; TMP_DIRS+=("$SERVER_CA_DIR")
+# Окружение посева — ОДНО объявление на посев прогона, свежий посев суиты и
+# перевыпуск: все трое ходят теми же пробросами, в то же пространство имён (одно
+# место, задача #2882) и с тем же клиентским материалом и корнем.
+SEED_ENV=(BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT"
+          IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT"
+          PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token"
+          MAILBOX_URL="http://localhost:$MAILBOX_PORT"
+          SETUP_NS="$NS" KACHO_NAMESPACE="$NS" IAM_SERVER_CA_DIR="$SERVER_CA_DIR"
+          PRODSEED_TOKEN_STATE="$PRODSEED_TOKEN_STATE" TOKEN_REFRESH_MARGIN_S="$TOKEN_REFRESH_MARGIN_S"
+          ${MTLS_ENV[@]+"${MTLS_ENV[@]}"})
+REFRESH_CMD=(env "${SEED_ENV[@]}" python3 "$REPO_ROOT/tests/authz-fixtures/prodseed_refresh.py")
+NEWMAN_SHIM_DIR=""
+
+# seed_suites <суиты> [файл рецептов] — посев фикстур и правка окружений НАЗВАННЫХ
+# суит окружением SEED_ENV. Одна форма на посев прогона и на свежий посев перед
+# суитой (reseed_before_suite ниже); рецепты — в общий файл либо в названный.
+seed_suites() {
+  env "${SEED_ENV[@]}" PRODSEED_TOKEN_STATE="${2:-$PRODSEED_TOKEN_STATE}" \
+      SERVICES="$1" PATCH_ENV=true bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
+}
+
 if [ "$SEED" = "true" ]; then
   echo "[parallel] seeding auth fixtures (per-service isolated) + patching envs"
   # INTERNAL_BASE_URL (:8081 internal mux, already port-forwarded above) lets the seed
@@ -438,13 +544,7 @@ if [ "$SEED" = "true" ]; then
     echo "[parallel] посев расширен по факту о стенде: суиты «$SERVICES» → посев «$SEED_SERVICES»"
   fi
 
-  env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="https://localhost:$GW_INTERNAL_PORT" \
-      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
-      PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
-      MAILBOX_URL="http://localhost:$MAILBOX_PORT" \
-      SERVICES="$SEED_SERVICES" \
-      PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
-      bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
+  seed_suites "$SEED_SERVICES"
   SEED_RC=$?
 
   # A FAILED SEED ABORTS THE RUN. It is not a red suite — it is not a result at all.
@@ -509,7 +609,46 @@ if [ "$SEED" = "true" ]; then
   #
   # deploy/scripts/assert-posture-branches-can-be-taken.py keeps this shape from coming
   # back: a branch on the seed posture must be able to go both ways.
-  :
+
+  # Рецептов нет — перевыпускать нечем, и суиты дольше срока снова получили бы 401.
+  # Это отказ прогона, а не «перевыпуск не нужен».
+  if [ ! -s "$PRODSEED_TOKEN_STATE" ]; then
+    echo
+    echo "===== ПРОГОН НЕДЕЙСТВИТЕЛЕН: посев не записал рецептов перевыпуска ($PRODSEED_TOKEN_STATE) ====="
+    echo "Суиты НЕ запускались. Это НЕ красный прогон и НЕ зелёный — результата нет."
+    exit 2
+  fi
+
+  # ОБЁРТКА newman: перед каждой коллекцией — перевыпуск по остатку срока. Ставится
+  # первой в PATH только суитам (launch_wave), прочие вызовы её не видят. Окружение
+  # коллекции — аргумент `-e`/`--environment` вызова, его же и перевыпускаем.
+  # Рецепты — файла СВОЕЙ суиты (SUITE_TOKEN_STATE, launch_wave), без него — общий.
+  NEWMAN_SHIM_DIR="$(mktemp -d)"; TMP_DIRS+=("$NEWMAN_SHIM_DIR")
+  {
+    echo '#!/usr/bin/env bash'
+    echo '# Обёртка newman прогонщика deploy/scripts/newman-parallel.sh (kacho#3238).'
+    printf 'REFRESH=('; printf ' %q' "${REFRESH_CMD[@]}"; printf ' )\n'
+    printf 'REAL=%q\n' "$(command -v newman)"
+    cat <<'SHIM'
+envf=""; prev=""
+for a in "$@"; do
+  case "$prev" in -e|--environment) envf="$a" ;; esac
+  case "$a" in --environment=*) envf="${a#--environment=}" ;; esac
+  prev="$a"
+done
+if [ "${1:-}" = run ] && [ -n "$envf" ]; then
+  if ! "${REFRESH[@]}" ${SUITE_TOKEN_STATE:+--state "$SUITE_TOKEN_STATE"} --env "$envf"; then
+    echo "[newman] УСЛОВИЕ НЕ СОЗДАНО: предъявители фикстуры не перевыпущены — коллекция не запускается" >&2
+    exit 3
+  fi
+fi
+exec "$REAL" "$@"
+SHIM
+  } >"$NEWMAN_SHIM_DIR/newman"
+  chmod 700 "$NEWMAN_SHIM_DIR/newman"
+  echo "[parallel] предъявители фикстуры: свежие перед каждой суитой (SEED_PER_SUITE=$SEED_PER_SUITE: true — посев суиты, false — перевыпуск) и перевыпуск при остатке срока < ${TOKEN_REFRESH_MARGIN_S}с перед каждой коллекцией"
+else
+  echo "[parallel] SEED=$SEED: рецептов перевыпуска нет — предъявители окружений живут свой срок, суита дольше него получит 401"
 fi
 
 echo "[parallel] regenerating collections for: $SERVICES"
@@ -525,6 +664,40 @@ for svc in $SERVICES; do ( cd "$(suite_dir "$svc")" && python3 scripts/gen.py >/
 # wall-time = dev-up + max(wave1) + wave2(iam ~serial) instead of max(all).
 PHASE2="${PHASE2_SERVICES:-iam}"
 _in_phase2() { case " $PHASE2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
+# СВЕЖИЕ ПРЕДЪЯВИТЕЛИ ПЕРЕД КАЖДОЙ СУИТОЙ — ОДНИМ ПУТЁМ (kacho#3211, kacho#3238).
+# Шард из двух-трёх суит идёт дольше срока предъявителей: на шарде compute-storage
+# набор storage получал `AUTHN_REQUIRED` около 1047-го запроса из 1170 коллекции image,
+# и остаток набора проверял отказ входа, а не свой предмет. Первую суиту посеял посев
+# прогона выше. Каждая следующая (SEED_PER_SUITE=true, умолчание) получает СВЕЖИЙ
+# посев своего окружения прямо перед стартом: он обновляет и предъявителей без
+# рецепта (носители гейта S3, сессии людей посева), которых перевыпуск не знает, и
+# пишет рецепты суиты в ЕЁ файл. Окружения уже идущих суит и их рецепты посев не
+# трогает. При SEED_PER_SUITE=false следующая суита получает принудительный
+# перевыпуск по рецептам посева прогона. Отказ посева — прогон недействителен (код 2),
+# как и у посева прогона; отказ перевыпуска — код функции 1: суита не выполнилась,
+# следующие идут (launch_wave).
+SUITES_LAUNCHED=0
+reseed_before_suite() {  # <суита>
+  local svc="$1" rc state
+  SUITES_LAUNCHED=$((SUITES_LAUNCHED + 1))
+  [ "$SEED" = "true" ] && [ "$SUITES_LAUNCHED" -gt 1 ] || return 0
+  if [ "$SEED_PER_SUITE" != "true" ]; then
+    "${REFRESH_CMD[@]}" --force --env "$(suite_dir "$svc")/environments/local.postman_environment.json"
+    return
+  fi
+  state="$TOKEN_STATE_DIR/$svc.token-recipes.json"
+  echo "[parallel] свежий посев перед суитой $svc (срок предъявителей короче шарда, kacho#3211)"
+  seed_suites "$svc" "$state"
+  rc=$?
+  if [ "$rc" -ne 0 ] || [ ! -s "$state" ]; then
+    echo
+    echo "===== ПРОГОН НЕДЕЙСТВИТЕЛЕН: посев перед суитой $svc упал (rc=$rc) либо не записал рецептов перевыпуска ====="
+    echo "Суита $svc и следующие НЕ запускались — результата по ним нет; причина — выше,"
+    echo "в выводе tests/authz-fixtures/setup.sh."
+    exit 2
+  fi
+}
 
 RC=0
 declare -A SUITE_PID
@@ -550,7 +723,7 @@ _wave_wait_below() {
 launch_wave() {  # $@ = суиты волны; одновременно исполняется не более WAVE_JOBS
   SUITE_PID=()
   WAVE_RUNNING=()
-  local svc d sjobs st
+  local svc d sjobs st suite_state
   for svc in "$@"; do
     # Ограничитель суит. При WAVE_JOBS=1 (умолчание) это делает волну строго
     # последовательной, и «волна» из имени становится просто порядком, а не
@@ -579,7 +752,21 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
     # prod-scale materialization throughput is the separate tracked scalability epic.
     sjobs="$JOBS"; case "$svc" in nlb|iam|registry) sjobs=1 ;; esac
     mkdir -p "$d/out"   # redirect below opens out/suite.log BEFORE run.sh's own mkdir
-    ( cd "$d" && ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
+    # Свежие предъявители НЕПОСРЕДСТВЕННО перед суитой — одним путём (reseed_before_suite
+    # выше). Перевыпуск отказал — суита не запускается: прежние отчёты снимаются (иначе
+    # гейт прочёл бы чужой прогон), код суиты 2 — «не выполнилась». Отказ свежего посева
+    # прогон уже остановил кодом 2 внутри функции.
+    if ! reseed_before_suite "$svc"; then
+      rm -f "$d"/out/*.json "$d"/out/*.cli "$d"/out/*.rc "$d"/out/summary.txt 2>/dev/null
+      echo "[parallel] $svc НЕ ВЫПОЛНИЛАСЬ: предъявители фикстуры не перевыпущены" | tee "$d/out/suite.log"
+      echo 2 > "$d/out/suite.rc"
+      continue
+    fi
+    # Обёртка newman суиты перевыпускает по рецептам того посева, что правил её
+    # окружение: свежий посев суиты писал файл суиты, иначе — общий файл посева прогона.
+    suite_state="$TOKEN_STATE_DIR/$svc.token-recipes.json"
+    [ -s "$suite_state" ] || suite_state="$PRODSEED_TOKEN_STATE"
+    ( cd "$d" && SUITE_TOKEN_STATE="$suite_state" PATH="${NEWMAN_SHIM_DIR:+$NEWMAN_SHIM_DIR:}$PATH" ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
         --env-var "baseUrl=http://localhost:$GW_PORT" \
         --env-var "internalBaseUrl=https://localhost:$GW_INTERNAL_PORT" \
         --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
@@ -587,6 +774,7 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
         --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
         "${OWN_FRONT_ENV_ARGS[@]}" \
         ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
+        ${OWN_FRONT_CA_ARGS[@]+"${OWN_FRONT_CA_ARGS[@]}"} \
         "${INTERNAL_REST_NEWMAN_ARGS[@]}" \
         "${OPT_ENV_ARR[@]}" \
         >"$d/out/suite.log" 2>&1; echo "$?" > "$d/out/suite.rc" ) &

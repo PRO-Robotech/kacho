@@ -263,6 +263,11 @@ func TestEdgeStartJudgeCatchesAWrongRenderedValue(t *testing.T) {
 		"круг внутреннего слушателя не отрисован": {func(e map[string]string) { delete(e, config.InternalRESTClientSANsKnob) }, config.InternalRESTClientSANsKnob},
 		"лист внутреннего слушателя не отрисован": {func(e map[string]string) { delete(e, config.InternalRESTCertKnob) }, config.InternalRESTCertKnob},
 		"ключ внутреннего слушателя не отрисован": {func(e map[string]string) { delete(e, config.InternalRESTKeyKnob) }, config.InternalRESTKeyKnob},
+		// Якорь оператора (kacho#3189): не отрисован либо равен якорю установки.
+		"якорь оператора не отрисован": {func(e map[string]string) { delete(e, config.InternalRESTClientCAKnob) }, config.InternalRESTClientCAKnob},
+		"якорь оператора = якорь установки": {func(e map[string]string) {
+			e[config.InternalRESTClientCAKnob] = e["KACHO_API_GATEWAY_MTLS_CA_FILE"]
+		}, config.InternalRESTClientCAKnob},
 	} {
 		t.Run(name, func(t *testing.T) {
 			env := map[string]string{}

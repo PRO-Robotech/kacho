@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, type Page, type Locator } from "@playwright/test";
+import { expect, type Page, type Locator, type Route } from "@playwright/test";
 import { STREAM_PATH, runTag, tenantWithProject, test } from "./fixtures";
 import {
   censusOfBody,
@@ -542,6 +542,47 @@ test("поля страницы одни на списке, карточке и 
   }
 
   console.log(`поля страницы: ${measurements.map((meas) => `${meas.pageName} ${meas.x}×${meas.y}`).join(" · ")}`);
+});
+
+test("заголовок страницы модуля стоит на месте, когда приезжает колонка разделов", async ({ page }) => {
+  // verifies #3238 — t3238-sc @63500f861: форма сети в 86×83 против 324×83 у списка;
+  // страница модуля отрисовалась раньше, чем приехала навигация модулей, и колонка
+  // разделов места не держала — с её приездом заголовок съезжал на 238px.
+  const { projectId } = await tenantWithProject(page);
+
+  // Условие: навигация модулей задержана, пока заголовок не измерен. Порядок
+  // приезда — то, что в полном прогоне решалось нагрузкой стенда; здесь он создан.
+  const held: Route[] = [];
+  let holding = true;
+  await page.route("**/__federation_expose_Navigation-*.js", async (route) => {
+    if (holding) held.push(route);
+    else await route.continue();
+  });
+  const panel = page.getByRole("navigation", { name: /^Ресурсы:/ });
+
+  await page.goto(`/projects/${projectId}/vpc/networks/create`, { waitUntil: "domcontentloaded" });
+  const title = page.locator("h3.ant-typography").first();
+  await expect(title, "форма сети не отрисовала заголовка, пока навигация едет").toBeVisible({ timeout: 45_000 });
+  await expect
+    .poll(() => held.length, { message: "навигация модулей не задержана — условие пробы не создано" })
+    .toBeGreaterThan(0);
+  await expect(panel, "колонка разделов уже нарисована — навигация приехала мимо задержки").toHaveCount(0);
+  const before = await title.boundingBox();
+  expect(before, "у заголовка нет геометрии").not.toBeNull();
+
+  holding = false;
+  for (const route of held.splice(0)) await route.continue();
+  // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: колонка приехала — сравнение ниже идёт до и после
+  // её приезда, а не дважды до.
+  await expect(panel, "навигация отпущена, а колонка разделов не нарисована").toBeVisible({ timeout: 30_000 });
+  const after = await title.boundingBox();
+  expect(after, "у заголовка нет геометрии после приезда колонки").not.toBeNull();
+
+  expect(
+    { x: Math.round(after!.x), y: Math.round(after!.y) },
+    `заголовок формы стоял в ${Math.round(before!.x)}×${Math.round(before!.y)}, а с приездом колонки разделов — ` +
+      `в ${Math.round(after!.x)}×${Math.round(after!.y)}: страница съехала, колонка своего места не держала`,
+  ).toEqual({ x: Math.round(before!.x), y: Math.round(before!.y) });
 });
 
 /**

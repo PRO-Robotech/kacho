@@ -4,7 +4,7 @@
 import { expect, test as base, type Browser, type BrowserContext, type Page, type Request } from "@playwright/test";
 import { parseRpcStatus } from "../../shared/src/api/rpc-status";
 import { isProviderAddressText } from "../../shared/src/test/provider-address";
-import { mayRecord, noteRefusal, recordableAttempt } from "./ceremony-budget";
+import { mayRecord, noteRefusal, recordableAttempt, wasSubstituted } from "./ceremony-budget";
 import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
 import { OUTSIDE_TEST, isRegistration, noteRegistration } from "./registration-budget.ts";
 import { attachSourceAxisRecords } from "./source-axis-records";
@@ -225,10 +225,23 @@ const tenantsOfTest = new Map<string, TenantRecord[]>();
  * дописывает тот, кто его прочитал.
  */
 export function removedAfterTest(email: string): TenantRecord {
-  const record: TenantRecord = { email, projectId: "", resources: [] };
+  const record: TenantRecord = { email, projectId: "", resources: [], backupCodes: [] };
   const id = currentTestId();
   tenantsOfTest.set(id, [...(tenantsOfTest.get(id) ?? []), record]);
   return record;
+}
+
+/**
+ * Второй фактор арендатора `email` заведён самой пробой (`raiseAssurance`):
+ * разбор поднимает уровень его запасным кодом, а не заводит фактор второй раз
+ * (kacho#3247). Человек, не записанный к снятию в этой пробе, — без записи:
+ * снимать его некому, и коды держать незачем.
+ */
+export function factorEnrolledByTest(email: string, backupCodes: readonly string[]): void {
+  const key = email.toLowerCase();
+  for (const tenant of tenantsOfTest.get(currentTestId()) ?? []) {
+    if (tenant.email.toLowerCase() === key) tenant.backupCodes = [...backupCodes];
+  }
 }
 
 /**
@@ -290,6 +303,8 @@ export function watchRefusals(context: BrowserContext, testId: string) {
     // Отказ `401` полосы (F8-41) и выдача испытания входа ключом (доля S4,
     // приёмка F8-S4, Р8): остальные ответы тела не читаются.
     if (!mayRecord(path, res.status())) return;
+    // Ответ, подставленный пробой целиком, службы не касался — ось он не тратит.
+    if (wasSubstituted(res.request())) return;
     pending.push(
       res
         .text()

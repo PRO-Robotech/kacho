@@ -90,6 +90,8 @@ type CatalogEntry struct {
 	ScopeExtractor ScopeExtractor `json:"scope_extractor"`
 
 	// RequiredACRMin — ACR floor as string ("1" / "2" / "3"). Default "2".
+	// Буквальное «0» сверх того объявляет допуск анонима до решения
+	// (AdmitsAnonymous); прочие написания вне словаря сборка отвергает.
 	RequiredACRMin string `json:"required_acr_min"`
 
 	// HideExistence — when true, an authz deny on this RPC is surfaced as
@@ -165,6 +167,75 @@ type ScopeExtractor struct {
 // is empty AND the FQN is on the hard-coded login/health/recovery allowlist).
 func (e CatalogEntry) IsExempt() bool {
 	return e.Permission == "<exempt>"
+}
+
+// anonymousFloor — единственное написание пола, которым метод объявляет «обслуживаю
+// вызывающего без личности» (приёмка kaname
+// anonymous-and-authenticated-are-subject-classes.md, Р6).
+//
+// Значение берётся БУКВАЛЬНО, по написанию, а не по рангу: в фундаменте
+// `acrlevel.Rank` отдаёт 0 и на «0», и на пустом, и на нераспознанном значении,
+// так что допуск по рангу открыл бы анониму решение на каждой строке без пола
+// (на 2ec6e1e3d таких 29 из 359). Ранг этим признаком не пользуется и не
+// меняется: для правила повышения уровня «0» и пустое по-прежнему значат
+// «требования нет».
+const anonymousFloor = "0"
+
+// readRelationsAdmittingAnonymous — отношения, на которых строка с полом «0»
+// допустима: только чтение (`get`, `list`), как у выдачи классу (Р4). Пишущее
+// отношение анониму решением не открывается никогда.
+var readRelationsAdmittingAnonymous = map[string]struct{}{
+	"v_get":  {},
+	"v_list": {},
+}
+
+// recognizedACRFloors — закрытый словарь написаний пола. Нераспознанное значение
+// сборка каталога отвергает с именем метода: молча ранжированное нулём, оно
+// стало бы неотличимо от «0» (Р6, правило 3; SC-35 (г)).
+var recognizedACRFloors = map[string]struct{}{
+	"":             {},
+	anonymousFloor: {},
+	"1":            {},
+	"2":            {},
+	"3":            {},
+}
+
+// AdmitsAnonymous — допускает ли строка вызывающего без личности до решения.
+//
+// Признак получает только строка, у которой пол написан буквально «0» И есть
+// конкретная пара (отношение, объект) с читающим отношением: решение о доступе
+// анониму принимает модель, и спросить её можно лишь о конкретном объекте.
+// `<exempt>` и `scope_filtered` пары не несут — у первого вопроса к модели нет
+// вовсе, у второго решает служба над данными и требует личности (SC-35 (а), (б));
+// пишущее отношение анониму не открывается (SC-35 (в)).
+//
+// Тот же предикат судит строку при сборке каталога (`validateEntry`) и на пути
+// запроса — у слоя аутентификации и у посредника прав: читателей у признака
+// три, правило одно.
+func (e CatalogEntry) AdmitsAnonymous() bool {
+	if e.RequiredACRMin != anonymousFloor || e.IsExempt() || e.ScopeFiltered {
+		return false
+	}
+	if _, read := readRelationsAdmittingAnonymous[e.RequiredRelation]; !read {
+		return false
+	}
+	return e.ScopeExtractor.ObjectType != "" && e.ScopeExtractor.FromRequestField != ""
+}
+
+// validateEntry — отказ сборки каталога по строке, которую край не вправе
+// исполнять: нераспознанный пол и пол «0» там, где решения о конкретном объекте
+// нет (Р6; SC-35). Край с таким каталогом не стартует и не перечитывает его.
+// Отказ называет метод и поле.
+func validateEntry(e CatalogEntry) error {
+	if _, ok := recognizedACRFloors[e.RequiredACRMin]; !ok {
+		return fmt.Errorf("permission catalog: %s: required_acr_min %q is not one of \"\", \"0\", \"1\", \"2\", \"3\"",
+			e.FQN, e.RequiredACRMin)
+	}
+	if e.RequiredACRMin == anonymousFloor && !e.AdmitsAnonymous() {
+		return fmt.Errorf("permission catalog: %s: required_acr_min \"0\" requires a read relation (v_get, v_list) "+
+			"on a concrete object, and is refused with <exempt> or scope_filtered", e.FQN)
+	}
+	return nil
 }
 
 // HidesExistenceOnDeny reports whether an authz deny on this RPC must be surfaced
@@ -259,6 +330,9 @@ func (c *PermissionCatalog) LoadFromBytes(buf []byte) error {
 		}
 		if _, dup := next[e.FQN]; dup {
 			return fmt.Errorf("permission catalog: duplicate fqn %q", e.FQN)
+		}
+		if verr := validateEntry(e); verr != nil {
+			return verr
 		}
 		next[e.FQN] = e
 	}

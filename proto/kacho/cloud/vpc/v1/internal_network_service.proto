@@ -55,8 +55,10 @@ service InternalNetworkService {
     // GetNetwork — READ инфра-чувствительного vrf_id: гейтим read-tier
     // `system_viewer` (а не `system_admin`). Нужный потребитель — kacho-vpc-net
     // оператор (least-priv `system_viewer@cluster`, SEC-L mig 0010). `system_viewer`
-    // НЕ содержит wildcard `user:*` → tenant'ы read-доступа не получают (инфра
-    // закрыта); мутация SetDefaultSecurityGroupId — по-прежнему system_admin.
+    // принимает только поимённых `user` и `service_account`, а НЕ класс
+    // `system_class:authenticated` (ему системная выдача даёт лишь `viewer` @
+    // `cluster`) → tenant'ы read-доступа не получают (инфра закрыта); мутация
+    // SetDefaultSecurityGroupId — по-прежнему system_admin.
     option (corelib.authz.v1.required_relation) = "system_viewer";
     option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"

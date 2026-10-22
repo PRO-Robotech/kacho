@@ -176,11 +176,20 @@ type AuthInterceptor struct {
 	// своё последствие, и слитое с полосой предъявителя окно подавляло бы первый
 	// доклад одной из них.
 	sessionCutoffFailures *introspectionFailureReporter
+	// sessionCutoffMisaddressed — своя клетка доклада о неверной настройке
+	// адреса службы доступа (kacho#3191): исход у неё закрытый, как у
+	// неответа, а действие дежурного — исправить адрес; слитая с окном раската
+	// либо с неответом величина не дала бы принять ни одного решения.
+	sessionCutoffMisaddressed *introspectionFailureReporter
 	// humanSession — читатель НАШЕЙ сессии по носителю `kaname_session` (посадка
 	// `own`, приёмка Ф3 Р7). nil → полосы браузерной сессии нет. Читатель сессии
 	// в процессе ЕДИНСТВЕННЫЙ: чужой снят вместе с переходным режимом двух носителей
 	// (#2792), и край читает только нашу сессию.
 	humanSession HumanSessionReader
+	// sessionCookieDomain — домен печенья нашей сессии, с которым его выдаёт
+	// служба (`authn.login.cookie-domain`); пусто — только на хост. Гашение края
+	// идёт с ним же (kacho#3174, session_carrier_names.go).
+	sessionCookieDomain string
 	// sessionLane — клетки полосы сессии (Ф3-48). Заводится сразу, чтобы ноль в
 	// клетке отличался от «полосы нет».
 	sessionLane *SessionLaneCounts
@@ -268,6 +277,9 @@ func (a *AuthInterceptor) WithHumanSession(r HumanSessionReader) *AuthIntercepto
 	// отсечка): заводится здесь, если читатель отсечки ещё не завёл его.
 	if a.sessionCutoffFailures == nil {
 		a.sessionCutoffFailures = newIntrospectionFailureReporter(0, nil)
+	}
+	if a.sessionCutoffMisaddressed == nil {
+		a.sessionCutoffMisaddressed = newIntrospectionFailureReporter(0, nil)
 	}
 	// Полоса смонтирована — значит у неё есть и доклад об уровне вне оси
 	// сессии (Ф11-19). Своей ручки у состояния нет: оно свойство ответа службы.
@@ -472,6 +484,13 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 			// одного источника (kacho#3033).
 			if _, public := a.publicMethods[normalizeFQN(fullMethod)]; public {
 				return ctx, nil
+			}
+			// Строка метода допускает анонима (буквальный пол «0», Р6): запрос
+			// идёт к решению без личности, с отметкой пропуска, и посредник
+			// прав спросит модель от имени класса `anonymous`
+			// (anonymous_admission.go). Список публичных этим не расширяется.
+			if a.admitsAnonymousGRPC(fullMethod) {
+				return withAnonymousAdmission(ctx), nil
 			}
 			a.logger.Debug("auth: refused — no credential presented", "method", fullMethod)
 			return nil, authnrefusal.Err()
@@ -1046,7 +1065,8 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 			if a.tryDevSecretJWT(w, r, next) {
 				return
 			}
-			if a.refuseUncredentialed(w, r) {
+			var refused bool
+			if r, refused = a.refuseUncredentialed(w, r); refused {
 				return
 			}
 		}
@@ -1068,17 +1088,26 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 //     записи объявления: они действуют ни от чьего имени;
 //   - предъявитель по схеме `DPoP` — его судит слой доказательства владения
 //     (`DPoPMiddleware`) либо, где тот не смонтирован, слой прав; оба отвечают
-//     тем же отказом.
-func (a *AuthInterceptor) refuseUncredentialed(w http.ResponseWriter, r *http.Request) bool {
+//     тем же отказом;
+//   - запрос без `Authorization` и без нашего носителя сессии к методу, строка которого допускает
+//     анонима (буквальный пол «0», Р6): он идёт к решению без личности, с
+//     отметкой пропуска в контексте — возвращаемый запрос несёт её
+//     (anonymous_admission.go). Запрос с заголовком, не принятым ни одной
+//     полосой, анонимом не становится никогда (SC-33).
+func (a *AuthInterceptor) refuseUncredentialed(w http.ResponseWriter, r *http.Request) (*http.Request, bool) {
 	if a.mode == AuthModeDev || isPublicHTTPPath(r.URL.Path) {
-		return false
+		return r, false
 	}
-	if scheme, _, _ := strings.Cut(r.Header.Get("Authorization"), " "); strings.EqualFold(scheme, "DPoP") {
-		return false
+	presented := r.Header.Get("Authorization")
+	if scheme, _, _ := strings.Cut(presented, " "); strings.EqualFold(scheme, "DPoP") {
+		return r, false
+	}
+	if presented == "" && !OurSessionCarrierPresented(r) && a.admitsAnonymousHTTP(r) {
+		return r.WithContext(withAnonymousAdmission(r.Context())), false
 	}
 	a.logger.Info("auth.HTTP: refused — no credential any lane accepts", "path", r.URL.Path)
 	writeAuthnRefusal(w)
-	return true
+	return r, true
 }
 
 // tryBasicCredential — полоса базового секрета на REST-поверхности края.

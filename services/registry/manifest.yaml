@@ -59,14 +59,19 @@
 #  `super_admin from <первый указатель>`; источник действия — супер-доступ.
 #  Названо только то, что от умолчания ОТЛИЧАЕТСЯ.
 #
-#  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный.
+#  РАЗДЕЛ `roles` объявляет ОДНУ роль — `registry.public.read` (под-фаза
+#  REG-PUB-1, решение Р1): чтение реестра `[get, list]` с ВЛОЖЕННЫМ правилом
+#  `[get, list]` над его репозиториями. Выдача этой роли классу `anonymous` на
+#  реестре и есть «реестр публичный»: ключ `publicReadToChildren` у `registries`
+#  объявляет реестр контейнером, и разворачивание такой выдачи пишет
+#  `public_reader` на названном реестре — чтение каждого его репозитория,
+#  включая созданные после выдачи. Идентификатор роли выводится из имени
+#  (`rolb1325b011aa17211d`), здесь не пишется. Других ролей у модуля нет;
+#  согласие объявленного с живой строкой роли судит пакет
+#  `internal/moduleroleparity` репозитория PRO-Robotech/kaname, в этом дереве
+#  его нет (#2613).
 #
-#  Раздела `roles` здесь нет потому, что объявлять нечего: живых системных ролей
-#  у модуля НОЛЬ — перепись печатает пакет `internal/moduleroleparity`
-#  репозитория PRO-Robotech/kaname; в этом дереве его нет (#2613).
-#  Пустой раздел был бы вторым способом сказать то же самое, и он разошёлся бы с
-#  деревом молча в день появления первой роли: гейт краснеет, если живая роль
-#  модуля не объявлена, а раздел уже есть.
+#  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный.
 #
 #  Раздел `seed` не объявлен НИ ОДНИМ манифестом дерева: посев модулей пишут
 #  применённые миграции, и его согласие с живой базой ещё никем не сверяется.
@@ -96,6 +101,7 @@ resources:
     objectType: registry_registry
     parents: [project]
     producer: derived
+    publicReadToChildren: true
     notes:
       - before: v_get
         text: |
@@ -154,10 +160,26 @@ resources:
         definition: '[user, service_account]'
         position: beforeTiers
     verbs:
-      - {name: get, subjects: ['user:*', user, service_account, 'group#member'], from: [owner, super_admin]}
+      - {name: get, subjects: [system_class, user, service_account, 'group#member'], from: [owner, super_admin]}
       - {name: list, from: [owner, super_admin]}
       - {name: update, from: [owner, super_admin]}
       - {name: delete, from: [owner, super_admin]}
+
+roles:
+
+  - id: registry.public.read
+    description: >
+      Публичное чтение реестра: метаданные реестра и перечень его
+      репозиториев, а через объявление контейнера — чтение каждого его
+      репозитория, включая созданные позже. Только чтение.
+    tier: {tierType: iam.cluster, tierId: cluster_root}
+    rules:
+      - module: registry
+        resources: [registries]
+        classes: [get, list]
+        children:
+          - resources: [repositories]
+            classes: [get, list]
 
 # --------------------------------------------------------------------------
 #  seed — что заводит УСТАНОВКА модуля (#1891).

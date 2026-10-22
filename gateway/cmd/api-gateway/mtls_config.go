@@ -23,6 +23,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"google.golang.org/grpc"
@@ -34,6 +35,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
+	"github.com/PRO-Robotech/kacho/gateway/internal/upstreamfailure"
 )
 
 // backendKeepalive — keep idle inter-service conns warm (idle conns are killed
@@ -58,7 +60,10 @@ func backendKeepalive() keepalive.ClientParameters {
 // service-config.
 //
 // The returned cleanup closes every opened ClientConn; main.go defers it.
-func dialBackends(cfg config.Config) (proxy.Backends, func(), error) {
+//
+// failures — учёт причины отказа соседу (kacho#3221): каждое соединение к
+// службе несёт его под своим ключом адреса. nil — учёт не собран (пробы).
+func dialBackends(cfg config.Config, failures *upstreamfailure.Tally) (proxy.Backends, func(), error) {
 	creds, err := buildBackendDialCreds(cfg)
 	if err != nil {
 		return nil, nil, err
@@ -82,7 +87,7 @@ func dialBackends(cfg config.Config) (proxy.Backends, func(), error) {
 	}
 
 	for key, addr := range cfg.BackendAddrs() {
-		conn, dialErr := grpc.NewClient(addr, dialOpts(creds[key])...)
+		conn, dialErr := grpc.NewClient(addr, append(dialOpts(creds[key]), failures.DialOptions(key)...)...)
 		if dialErr != nil {
 			cleanup()
 			return nil, nil, fmt.Errorf("dial %s (%s): %w", key, addr, dialErr)
@@ -105,6 +110,19 @@ func dialBackends(cfg config.Config) (proxy.Backends, func(), error) {
 	backends["operation"] = opsLoopback
 
 	return backends, cleanup, nil
+}
+
+// upstreamKeys — словарь соседей учёта причины отказа (kacho#3221): ключи
+// адресов корня, ВСЕ, в порядке сортировки. Незаданный адрес остаётся клеткой
+// с нулём: словарь меток закрыт сборкой и не зависит от профиля.
+func upstreamKeys(cfg config.Config) []string {
+	addrs := cfg.BackendAddrs()
+	keys := make([]string, 0, len(addrs))
+	for k := range addrs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // backendEdge maps a backend-domain key (as produced by config.BackendAddrs) to
@@ -175,10 +193,11 @@ func loopbackDialCreds() grpc.DialOption {
 	return grpc.WithTransportCredentials(insecure.NewCredentials())
 }
 
-// iamEdgeDialCreds returns the transport-credentials dial-option for the
-// gateway→iam edge, used by the two standalone iam dials (iam-subject and
-// iam-authorize) that live outside the backends map. Both are the gateway→iam
-// edge and share MTLS_IAM_ENABLE. Fail-fast on misconfig.
+// iamEdgeDialCreds — удостоверение транспорта ребра край→служба доступа для
+// соединения решения о праве (`NewIAMAuthorizeClient`), которое живёт вне карты
+// бэкендов; клиент субъекта ходит соединением `iamInternal` карты (kacho#3284).
+// Ручка та же, что у соединений карты к службе доступа, — MTLS_IAM_ENABLE.
+// Неполная настройка — отказ старта, а не тихий незащищённый откат.
 func iamEdgeDialCreds(cfg config.Config, addr string) (grpc.DialOption, error) {
 	tc, err := cfg.EdgeTLSClient("iam", addr)
 	if err != nil {

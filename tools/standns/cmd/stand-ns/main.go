@@ -12,14 +12,21 @@
 //	    печатает имена образов частей ЭТОГО дерева, объявленных цепочкой
 //	stand-ns images -refs "образ=ссылка …" СЛОЙ…
 //	    печатает накладку, ставящую каждому такому образу названную ссылку
-//	stand-ns inputs -root КОРЕНЬ -base КОММИТ
+//	stand-ns inputs -root КОРЕНЬ -base КОММИТ [-godeps ЗАПИСЬ]
 //	    судит каждый путь, отличающий рабочую копию от КОММИТ: вход ли он
-//	    сборки образов (правило — tools/standns/inputs.go); код 1 — вход менялся
+//	    сборки образов (правило — tools/standns/inputs.go); код 1 — вход менялся.
+//	    С -godeps замыкание пакетов берётся из ЗАПИСИ, а не из `go list` машины
+//	stand-ns godeps -root КОРЕНЬ -tracked ПЕРЕЧЕНЬ -untracked ПЕРЕЧЕНЬ > ЗАПИСЬ
+//	    замыкание пакетов каждого образа go дерева (`go list -deps`) записью JSON:
+//	    её пишет pod сборки инструментов во внешнем кластере над деревом машины,
+//	    перечни — `git ls-files` и `git ls-files --others --exclude-standard` машины
+//	    (kacho#3353: Go на машине оператора не запускается)
 //
 // Коды: 0 — исполнено; 1 — находка (часть без ссылки); 2 — отказ входа.
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -41,7 +48,7 @@ func main() {
 
 func run(stdin io.Reader, stdout, stderr io.Writer, args []string) int {
 	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stderr, "stand-ns: режим не назван (relocate | images | inputs)")
+		_, _ = fmt.Fprintln(stderr, "stand-ns: режим не назван (relocate | images | inputs | godeps)")
 		return 2
 	}
 	switch args[0] {
@@ -51,8 +58,10 @@ func run(stdin io.Reader, stdout, stderr io.Writer, args []string) int {
 		return images(stdout, stderr, args[1:])
 	case "inputs":
 		return inputs(stdout, stderr, args[1:])
+	case "godeps":
+		return godeps(stdout, stderr, args[1:])
 	}
-	_, _ = fmt.Fprintf(stderr, "stand-ns: неизвестный режим %q (relocate | images | inputs)\n", args[0])
+	_, _ = fmt.Fprintf(stderr, "stand-ns: неизвестный режим %q (relocate | images | inputs | godeps)\n", args[0])
 	return 2
 }
 
@@ -147,6 +156,7 @@ func inputs(stdout, stderr io.Writer, args []string) int {
 	fs.SetOutput(stderr)
 	root := fs.String("root", "", "корень рабочей копии")
 	base := fs.String("base", "", "коммит опубликованных образов")
+	recFile := fs.String("godeps", "", "запись замыкания пакетов (stand-ns godeps) вместо go list этой машины")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -160,15 +170,7 @@ func inputs(stdout, stderr io.Writer, args []string) int {
 		out, err := cmd.Output()
 		return string(out), err
 	}
-	lines := func(s string) []string {
-		var out []string
-		for _, l := range strings.Split(s, "\n") {
-			if l = strings.TrimSpace(l); l != "" {
-				out = append(out, l)
-			}
-		}
-		return out
-	}
+	lines := nonEmptyLines
 	trackedOut, err := git("ls-files")
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "stand-ns inputs: перечень файлов не прочитан (%v)\n", err)
@@ -181,21 +183,26 @@ func inputs(stdout, stderr io.Writer, args []string) int {
 	}
 	tracked := lines(trackedOut)
 	untracked := lines(untrackedOut)
-	var dfs []standns.Dockerfile
-	for _, t := range tracked {
-		b := filepath.Base(t)
-		if b != "Dockerfile" && !strings.HasPrefix(b, "Dockerfile.") && !strings.HasSuffix(b, ".Dockerfile") {
-			continue
-		}
-		body, err := os.ReadFile(filepath.Clean(filepath.Join(*root, t)))
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "stand-ns inputs: %s не читается (%v)\n", t, err)
-			return 2
-		}
-		dfs = append(dfs, standns.ParseDockerfile(t, body))
+	dfs, err := readDockerfiles(*root, tracked)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "stand-ns inputs: %v\n", err)
+		return 2
 	}
 	all := append(append([]string(nil), tracked...), untracked...)
-	closure, err := standns.BuildClosure(all, dfs, goListDeps(*root, all))
+	deps := goListDeps(*root, all)
+	if *recFile != "" {
+		body, err := os.ReadFile(filepath.Clean(*recFile))
+		var recs []standns.GoDepsRecord
+		if err == nil {
+			err = json.Unmarshal(body, &recs)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "stand-ns inputs: запись замыкания %s не прочитана (%v)\n", *recFile, err)
+			return 2
+		}
+		deps = standns.ReplayGoDeps(recs)
+	}
+	closure, err := standns.BuildClosure(all, dfs, deps)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "stand-ns inputs: ОТКАЗ — %v\n", err)
 		return 2
@@ -228,6 +235,83 @@ func inputs(stdout, stderr io.Writer, args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// godeps — запись замыкания пакетов каждого образа go дерева (режим pod сборки, kacho#3353).
+// Перечни путей — машины (в pod нет git); Dockerfile и исходники — из дерева КОРЕНЬ.
+// Коды: 0 — запись напечатана; 2 — отказ входа либо замыкание не выведено.
+func godeps(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("godeps", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	root := fs.String("root", "", "корень дерева")
+	trackedFile := fs.String("tracked", "", "перечень отслеживаемых путей (git ls-files)")
+	untrackedFile := fs.String("untracked", "", "перечень новых неигнорируемых путей (git ls-files --others --exclude-standard)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *root == "" || *trackedFile == "" || *untrackedFile == "" {
+		_, _ = fmt.Fprintln(stderr, "stand-ns godeps: нужны -root, -tracked и -untracked")
+		return 2
+	}
+	var lists [2][]string
+	for i, f := range []string{*trackedFile, *untrackedFile} {
+		body, err := os.ReadFile(filepath.Clean(f))
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "stand-ns godeps: перечень %s не прочитан (%v)\n", f, err)
+			return 2
+		}
+		lists[i] = nonEmptyLines(string(body))
+	}
+	tracked, untracked := lists[0], lists[1]
+	if len(tracked) == 0 {
+		_, _ = fmt.Fprintln(stderr, "stand-ns godeps: перечень отслеживаемых пуст — слепой обход")
+		return 2
+	}
+	dfs, err := readDockerfiles(*root, tracked)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "stand-ns godeps: %v\n", err)
+		return 2
+	}
+	all := append(append([]string(nil), tracked...), untracked...)
+	recs := []standns.GoDepsRecord{}
+	closure, err := standns.BuildClosure(all, dfs, standns.RecordGoDeps(goListDeps(*root, all), &recs))
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "stand-ns godeps: ОТКАЗ — %v\n", err)
+		return 2
+	}
+	if err := json.NewEncoder(stdout).Encode(recs); err != nil {
+		_, _ = fmt.Fprintf(stderr, "stand-ns godeps: запись не напечатана (%v)\n", err)
+		return 2
+	}
+	_, _ = fmt.Fprintf(stderr, "stand-ns godeps: Dockerfile %d, образов go %d, записей замыкания %d\n", closure.Dockerfiles, closure.GoImages, len(recs))
+	return 0
+}
+
+// readDockerfiles — Dockerfile среди отслеживаемых путей, разобранные.
+func readDockerfiles(root string, tracked []string) ([]standns.Dockerfile, error) {
+	var dfs []standns.Dockerfile
+	for _, t := range tracked {
+		b := filepath.Base(t)
+		if b != "Dockerfile" && !strings.HasPrefix(b, "Dockerfile.") && !strings.HasSuffix(b, ".Dockerfile") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Clean(filepath.Join(root, t)))
+		if err != nil {
+			return nil, fmt.Errorf("%s не читается (%v)", t, err)
+		}
+		dfs = append(dfs, standns.ParseDockerfile(t, body))
+	}
+	return dfs, nil
+}
+
+func nonEmptyLines(s string) []string {
+	var out []string
+	for _, l := range strings.Split(s, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 // goListDeps — замыкание пакетов `go build` теми же GOOS и CGO, что у Dockerfile.

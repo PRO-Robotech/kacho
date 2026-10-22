@@ -46,6 +46,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
+	"github.com/PRO-Robotech/kacho/gateway/internal/upstreamfailure"
 )
 
 func main() {
@@ -104,7 +105,13 @@ func main() {
 	// present, else insecure — dev backward-compat). The "operation" self-loopback
 	// stays always-insecure (in-process re-entry). Fail-fast on misconfig
 	// (enabled edge w/o cert material) so the process never starts half-secured.
-	backends, closeBackends, err := dialBackends(cfg)
+	//
+	// Причина отказа соседу (kacho#3221) — ОДИН учёт на процесс, на каждом
+	// соединении к службе: мосту, маршрутизатору, полосе личности. Ответ
+	// вызывающему у неразрешённого адреса и у остановленной службы один (503),
+	// и различает их только клетка прибора.
+	upstreamFailures := upstreamfailure.NewTally(upstreamKeys(cfg))
+	backends, closeBackends, err := dialBackends(cfg, upstreamFailures)
 	if err != nil {
 		log.Fatalf("backend dial: %v", err)
 	}
@@ -120,17 +127,13 @@ func main() {
 	// `:check`), и на внешний listener они не попадают — это делает HasInternalSuffix
 	// у gRPC-роутера и `isInternalRoute` у REST. Прежняя редакция утверждала
 	// «НЕ регистрируется в restmux»; это неверно и уже вводило в заблуждение.
-	// Это ребро gateway→iam → те же MTLS_IAM_ENABLE creds, что и у iam
-	// backend conns. Fail-fast on misconfig.
-	iamSubjectCreds, err := iamEdgeDialCreds(cfg, cfg.IAMInternalAddr)
-	if err != nil {
-		log.Fatalf("iam subject mTLS creds: %v", err)
-	}
-	iamSubjectClient, err := clients.NewIAMSubjectClient(cfg.IAMInternalAddr, logger, iamSubjectCreds)
+	// Соединение — `iamInternal` карты бэкендов, то, что опрашивает `/readyz`
+	// (kacho#3284): удостоверение ребра (MTLS_IAM_ENABLE) и учёт причины отказа
+	// на нём ставит dialBackends, своего соединения клиент не заводит.
+	iamSubjectClient, err := subjectClientOf(cfg, backends, logger)
 	if err != nil {
 		log.Fatalf("iam subject client: %v", err)
 	}
-	defer func() { _ = iamSubjectClient.Close() }()
 
 	authInterceptor := middleware.NewAuthInterceptor(
 		// Ручка названа ЗДЕСЬ, а не спрятана за методом конфигурации: место сборки
@@ -184,6 +187,11 @@ func main() {
 		ourSessionReader = clients.NewSessionRevocationsAdapter(iamConn, cfg.IdentityCallBudget)
 	}
 	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
+	// Гашение носителя на отказе полосы — с тем доменом, с каким печенье выдаёт
+	// служба (kacho#3174): иначе браузер гашение не сопоставит и отказ останется
+	// стоящим. Ручка названа здесь — место сборки показывает, чем звено
+	// настраивается.
+	authInterceptor = authInterceptor.WithSessionCookieDomain(cfg.SessionCookieDomain)
 
 	// РЕТРАНСЛЯЦИЯ НА СЛУЖБУ ДОСТУПА — под `own`, как и наш читатель: форма
 	// входа и церемония авторизации принадлежат той чеканке, которая личность
@@ -846,6 +854,9 @@ func main() {
 	// Клетки полосы предъявителя (kacho#2740): исход вопроса об отзыве по
 	// источнику — на приборе, а не только строкой журнала раз в окно.
 	diagMetrics.RegisterBearerLane(authInterceptor.BearerLane().Snapshot)
+	// Клетки причины отказа соседу (kacho#3221): адрес, служба или бюджет —
+	// на приборе, при одном и том же ответе вызывающему.
+	diagMetrics.RegisterUpstreamFailures(upstreamFailures.Snapshot)
 	// Клетки окон доклада (kacho#2740): итог каждого окна журнала — на приборе,
 	// а строка журнала раз в окно называет лишь первое событие окна.
 	diagMetrics.RegisterLogWindows(func() gwmetrics.LogWindowSources {
@@ -1075,16 +1086,19 @@ func main() {
 	// REST-доступ к ним — только для UI / admin-tooling через cluster-internal
 	// REST listener.
 	restAddrs := cfg.BackendAddrs()
-	// The REST-mux is a SEPARATE proxy-path from the gRPC routing — it dials each
-	// backend itself. It threads the SAME per-edge dial creds the gRPC routing /
-	// authz use (mTLS client-cert + per-backend ServerName when the edge is
-	// enabled, else insecure) so backends requiring a verified client-cert do not
-	// reset the UI REST calls. Fail-fast on misconfig — never start half-secured.
+	// Мост ходит к службам соединениями карты `backends` — ОДНИМ на ключ адреса,
+	// тем же, что опрашивает `/readyz` (kacho#3284): прежде он заводил своё на
+	// каждую службу контракта и мультиплексор, и после переката службы «готов»
+	// ничего не говорил о соединении, которым шёл глагол. Соединение, ведущее не
+	// по адресу ключа, — отказ сборки моста. Транспорт ниже — для ключа, которого
+	// в карте нет: те же creds ребра (mTLS client-cert + ServerName при включённом
+	// ребре), так что и свой путь моста не стартует наполовину защищённым.
 	restDialCreds, err := buildBackendDialCreds(cfg)
 	if err != nil {
 		log.Fatalf("rest mux backend dial creds: %v", err)
 	}
-	restHandler, err := restmux.NewMux(ctx, restAddrs, backends, restDialCreds, cfg.BackendCallBudget)
+	restHandler, err := restmux.NewMux(ctx, restAddrs, backends, restDialCreds, cfg.BackendCallBudget,
+		restmux.WithUpstreamFailures(upstreamFailures))
 	if err != nil {
 		log.Fatalf("rest mux: %v", err)
 	}
@@ -1280,7 +1294,7 @@ func main() {
 	// cmux split is needed. Empty addr → disabled (Internal* REST unreachable via gateway).
 	//
 	// Transport (kacho#3131): mutual TLS only — a client leaf chaining to the
-	// installation CA whose URI-SAN is in KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS.
+	// operator anchor (kacho#3189) whose URI-SAN is in KACHO_API_GATEWAY_INTERNAL_REST_CLIENT_SANS.
 	// validateProductionInternalListener refuses to start a declared listener
 	// without that material at ANY KACHO_APP_ENV; there is no plaintext mode.
 	// mTLS authenticates the transport only — authz on this listener is unchanged.

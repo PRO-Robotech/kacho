@@ -391,6 +391,12 @@ var producedInAnotherRepository = map[string]string{
 	// проксирует. Дом кейса — набор платформы (e2e-flow.md §7а): чужой ресурс набор
 	// службы завести не может, а текст владелец здесь произвести не может.
 	"services/vpc/tests/newman/collections/project-container.postman_collection.json::poll-op-3": "PRO-Robotech/kaname",
+	// Ретрансляция краем выдачи испытания повышения ключом (kacho#3230, сценарий
+	// F8-S7-80 приёмки F8-S7): отказ `no access key is registered: register an
+	// access key first` производит служба доступа (PRO-Robotech/kaname#827,
+	// SUA-21 её приёмки), край его проксирует без изменения. Предмет кейса — запись
+	// ретрансляции края, а не текст; текст владелец здесь произвести не может.
+	"gateway/tests/newman/collections/iam-step-up-access-key-begin.postman_collection.json::begin-verified-no-key": "PRO-Robotech/kaname",
 }
 
 // rpStepKey — ключ ведомости: коллекция и имя шага. Номер строки не годится —

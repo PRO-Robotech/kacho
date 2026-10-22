@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, type TestInfo } from "@playwright/test";
-import { LANE, lastIssued, newSeed, seedAddress, seedConfirmedHuman, seedSecondFactor, totpCode, type Seed } from "./ceremony-seed";
+import { LANE, SESSION_IDENTITY, lastIssued, newSeed, seedAddress, seedConfirmedHuman, seedSecondFactor, totpCode, type Seed } from "./ceremony-seed";
 import { test } from "./fixtures";
 import { conditionNotCreated } from "./mail-receiver";
 import { answerOf, signedIn } from "./session-lane";
@@ -199,6 +199,55 @@ async function edgeDecidesAfterRollout(seed: Seed): Promise<string | null> {
   }
 }
 
+/** Текст отказа края, когда соединение моста со службой в отказе (grpc `Unavailable`). */
+const BRIDGE_REFUSED_TEXT = "connection error";
+
+/**
+ * Край снова ЧИТАЕТ перечень ключей после переката службы прав — второе условие
+ * возврата стенда (kacho#3284).
+ *
+ * Решение о праве край спрашивает своим соединением, а глаголы службы шли
+ * соединениями моста — по одному на службу контракта, мимо соединения, которое
+ * опрашивает `/readyz` (снято kacho#3284). Прогон console-e2e на
+ * 897e11c8f: после «готов» в `/readyz` и после решённого права следующая проба
+ * (F8-S7-11) получила на перечень ключей `503` «connection error … connection
+ * refused» за 0 мс — соединение моста осталось в отказе от переката. Поэтому
+ * здесь проверка, а не ожидание окна: после решённого права перечень ключей
+ * обязан читаться `200` без единого `503` моста. Такой `503` — дефект края, и
+ * проба красная с его словами, а не «следующая проба упала».
+ */
+async function edgeServesKeysAfterRollout(seed: Seed): Promise<string | null> {
+  const me = await seed.read(SESSION_IDENTITY);
+  const who = lastIssued(seed, SESSION_IDENTITY).body as { user?: { id?: unknown } } | null;
+  const userId = typeof who?.user?.id === "string" ? who.user.id : "";
+  if (me.status() !== 200 || userId === "") return `край не назвал человека сессии после переката: ${me.status()}`;
+  const keys = `/iam/v1/users/${userId}/accessKeys`;
+  let refused = 0;
+  let last = "перечень не запрошен";
+  try {
+    await expect
+      .poll(
+        async () => {
+          const got = await answerOf(await seed.read(keys));
+          if (got.status === 503 && got.text.includes(BRIDGE_REFUSED_TEXT)) refused += 1;
+          last = `${got.status} ${got.text}`;
+          return got.status;
+        },
+        { timeout: EDGE_DECIDES_BUDGET_MS, intervals: [250, 500, 1000] },
+      )
+      .toBe(200);
+  } catch {
+    return `край не читает перечень ключей после переката за ${EDGE_DECIDES_BUDGET_MS} мс (ответов 503 моста ${refused}); последний ответ: ${last}`;
+  }
+  if (refused > 0) {
+    return (
+      `край отвечал 503 «${BRIDGE_REFUSED_TEXT}» на перечень ключей ${refused} раз(а) после «готов» в /readyz ` +
+      `и решённого права — соединение моста со службой осталось в отказе от переката (kacho#3284)`
+    );
+  }
+  return null;
+}
+
 /** Шаг кода по времени (RFC 6238, 30 с) — тот, чей код проба предъявляет. */
 const stepOf = (ms: number) => Math.floor(ms / 30_000);
 
@@ -315,10 +364,11 @@ test("Ф12-35 (в) · перечень K2,K1 сверяет код, K2 без K1
     // Стенд возвращён, лишь когда край снова решает право (kacho#3200): иначе
     // следующая проба получает 503 на первом вопросе о праве по нашей вине.
     if (!failed && seeds.length > 0) failed = await edgeDecidesAfterRollout(seeds[0]);
+    if (!failed && seeds.length > 0) failed = await edgeServesKeysAfterRollout(seeds[0]);
     rotator.dispose();
     await Promise.all(seeds.map((s) => s.dispose()));
     if (failed) console.error(`[Ф12-35] ${failed}`);
   }
   // Проба прошла, а стенд не возвращён — это не зелёное: следующий прогон шёл бы по чужому перечню.
-  expect(failed, "перечень ключей стенда после пробы обязан быть восстановлен, а край — снова решать право").toBeNull();
+  expect(failed, "перечень ключей стенда после пробы обязан быть восстановлен, а край — снова решать право и читать перечень ключей").toBeNull();
 });

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/corelib/authz/proxytuple"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/kaname/pkg/generatedid"
 )
 
 // FGA-register-intent — чистые domain-value-типы transactional-outbox owner-tuple
@@ -19,8 +21,8 @@ import (
 // каждый intent через kaname InternalIAMService.RegisterResource /
 // UnregisterResource по mTLS — идемпотентно, at-least-once, owner-tuple не теряется.
 //
-// Файл — leaf (только stdlib): импортируется и writer-side (emit), и client-side
-// (decode) без import-цикла и без pgx/grpc в контракте.
+// Файл — leaf (stdlib и чистые пакеты без ввода-вывода): импортируется и writer-side
+// (emit), и client-side (decode) без import-цикла и без pgx/grpc в контракте.
 
 // FGAObjectTypeRegistry — FGA object-type namespace-реестра. object-prefix
 // `registry_` РАВЕН имени сервиса kacho-registry, и словарь имён модулей
@@ -106,11 +108,20 @@ const FGARelationAdmin = "admin"
 // плана резолвят ОДНО решение). Зеркалит compute/vpc/storage create-child = editor@project.
 const FGARelationEditor = "editor"
 
-// FGASubjectPublicWildcard — FGA subject-строка анонимного/публичного принципала
-// ("user:*"). visibility=PUBLIC ⟺ существует tuple "user:* v_get registry_repository:
-// <reg>/<repo>" (D-7): анонимный pull резолвится в этот wildcard subject. Governance —
-// register/unregister по ИТОГОВОМУ visibility overlay-строки (B01/B06/B12).
-const FGASubjectPublicWildcard = FGASubjectTypeUser + ":*"
+// FGASubjectAnonymousClass — системный класс `anonymous` (приёмка kaname
+// anonymous-and-authenticated-are-subject-classes.md, Р3, SC-12, SC-39). Одно
+// написание на обе стороны публикации:
+//   - субъект вопроса плоскости данных о вызывающем без личности (SC-39);
+//   - входное слово публикации: visibility=PUBLIC ⟺ реестр регистрирует пару
+//     "system_class:anonymous v_get registry_repository:<reg>/<repo>" через
+//     InternalIAMService.RegisterResource (D-7, kacho#3287). Служба прав хранит
+//     публикацию ровно этим субъектом, так что запись и снятие называют то же,
+//     что хранится. Governance — register/unregister по ИТОГОВОМУ visibility
+//     overlay-строки (B01/B06/B12).
+//
+// Анонимный pull читает только то, что выдано этому классу (публикация PUBLIC), и
+// не пишет никогда: пишущего глагола класс не получает (Р4).
+const FGASubjectAnonymousClass = "system_class:anonymous"
 
 // FGA subject-type namespaces аутентифицированного principal (parity с kaname
 // FGA-моделью). Разделяемы обоими encoders (FGASubjectFromPrincipal — control-plane
@@ -268,45 +279,51 @@ func FGASubjectFromPrincipal(principalType, principalID string) string {
 
 // FGASubjectFromID — FGA subject-строка из одного Kachō principal id (data-plane
 // имеет только `sub` из верифицированного JWT, без Principal.Type). Тип выводится по
-// id-prefix — единственному дискриминатору, доступному без обращения к iam: usr_ →
-// user, sva_ → service_account. В схеме ids Kachō id-prefix и Principal.Type
-// согласованы (usr_ всегда type=user), поэтому результат совпадает с
-// control-plane FGASubjectFromPrincipal для тех же principal'ов. Пустой id → ""
-// (невалидный caller — AuthN не должен был его пропустить). Неизвестный prefix
-// трактуется как service_account (docker login сейчас — SA-key only; сохраняет
-// прежнее поведение data-plane heuristic'а).
+// id-prefix — единственному дискриминатору, доступному без обращения к iam: usr →
+// user, sva → service_account. В схеме ids Kachō id-prefix и Principal.Type
+// согласованы (usr всегда type=user), поэтому результат совпадает с
+// control-plane FGASubjectFromPrincipal для тех же principal'ов.
+//
+// "" — субъекта нет, и вызывающий обязан отказать (kacho#3305): пустой id, id не
+// порождённой продуктом формы и id порождённой формы не субъектного вида. Форму
+// судит публичный предикат службы доступа (kaname pkg/generatedid, kaname#908), а
+// не своя копия выражения здесь. Вид внутри формы — ровно тот, каким служба
+// доступа чеканит человека и служебную учётку (`ids.NewID` corelib: префикс и
+// тело без разделителя), и судит его валидатор той же библиотеки: префикс без
+// длины вид не определяет (`sv` + тело на `a…` — тоже порождённая форма).
 func FGASubjectFromID(principalID string) string {
-	switch {
-	case principalID == "":
+	if !generatedid.Matches(principalID) {
 		return ""
-	case strings.HasPrefix(principalID, principalIDPrefixUser):
+	}
+	switch {
+	case ids.IsValid(principalID, principalIDPrefixUser):
 		return FGAObjectRef(FGASubjectTypeUser, principalID)
-	case strings.HasPrefix(principalID, principalIDPrefixServiceAccount):
+	case ids.IsValid(principalID, principalIDPrefixServiceAccount):
 		return FGAObjectRef(FGASubjectTypeServiceAccount, principalID)
 	default:
-		// docker login сейчас — SA-key only (identity-only токен); неизвестный prefix
-		// → service_account (сохраняет прежнее поведение data-plane heuristic'а).
-		return FGAObjectRef(FGASubjectTypeServiceAccount, principalID)
+		return ""
 	}
 }
 
-// FGASubjectForPrincipalID — resolve a verified data-plane principal id to its FGA
-// subject, honoring the configured anonymous principal id (RG-1 D-7). When
-// anonPrincipalID is non-empty AND principalID equals it, the caller is the public
-// anonymous principal and resolves to FGASubjectPublicWildcard ("user:*"): a valid
-// anon Bearer thus reads only PUBLIC repos (via the repo's `user:* v_get` tuple) and
-// can NEVER write (no wildcard write relation exists) — B03 / B14. Every other
-// principalID resolves by id-prefix via FGASubjectFromID.
+// FGASubjectForPrincipalID — FGA-субъект проверенного идентификатора принципала
+// плоскости данных с учётом настроенного анонимного идентификатора (RG-1 D-7). Если
+// anonPrincipalID не пуст И principalID с ним совпадает, вызывающий — публичный
+// аноним, и ответ — FGASubjectAnonymousClass («system_class:anonymous»): действующий
+// анонимный Bearer читает только PUBLIC-репозитории (публикация — грант этому классу)
+// и не пишет НИКОГДА (у класса нет глагола записи) — B03 / B14. Любой другой
+// principalID судит FGASubjectFromID: по форме и виду, а не по префиксу.
 //
-// anonPrincipalID=="" → anonymous pull DISABLED (secure-by-default): a token whose sub
-// happens to equal the anon id resolves as an ordinary principal, never silently
-// gaining the wildcard. The anon principal id is deployment-configured (kaname
-// AnonymousClientID); deploy MUST keep it reserved (no real principal shares it), since
-// then the access service mints a token with sub==anonPrincipalID only on the anonymous
-// flow of its /iam/token shim.
+// anonPrincipalID=="" → анонимный поток ВЫКЛЮЧЕН (secure-by-default): токен, чей sub
+// совпал с анонимным идентификатором, класса молча не получает и судится как любой
+// другой sub — по форме. Анонимный идентификатор не порождённой формы (kaname#908),
+// поэтому ответ — "" (субъекта нет), и вызывающий отказывает 401 до любого Check
+// (kacho#3305), а не сводит его к service_account. Анонимный идентификатор задаёт
+// посадка (kaname AnonymousClientID); посадка ОБЯЗАНА держать его зарезервированным
+// (ни один настоящий принципал его не носит): тогда служба доступа чеканит токен с
+// sub==anonPrincipalID только в анонимном потоке своей прослойки /iam/token.
 func FGASubjectForPrincipalID(principalID, anonPrincipalID string) string {
 	if anonPrincipalID != "" && principalID == anonPrincipalID {
-		return FGASubjectPublicWildcard
+		return FGASubjectAnonymousClass
 	}
 	return FGASubjectFromID(principalID)
 }
@@ -428,21 +445,22 @@ func UnregisterIntentForRepo(registryID, repo string) RegisterIntent {
 	}
 }
 
-// FGARepoPublicGetTuple — public-read wildcard tuple репозитория
-// "user:* #v_get @registry_repository:<reg>/<repo>". Существование этого tuple ⟺
-// visibility=PUBLIC (D-7): анонимный (`user:*`) data-plane read проходит Check.
+// FGARepoPublicGetTuple — кортеж публикации репозитория
+// "system_class:anonymous #v_get @registry_repository:<reg>/<repo>". Существование
+// этого кортежа ⟺ visibility=PUBLIC (D-7): анонимный data-plane read
+// (`system_class:anonymous`) проходит Check.
 func FGARepoPublicGetTuple(registryID, repo string) FGATuple {
 	return FGATuple{
-		SubjectID: FGASubjectPublicWildcard,
+		SubjectID: FGASubjectAnonymousClass,
 		Relation:  FGARelationVGet,
 		Object:    FGAObjectRef(FGAObjectTypeRepository, repoObjectID(registryID, repo)),
 	}
 }
 
-// RegisterIntentForRepoPublicGrant — register-intent public-read wildcard tuple:
-// материализует "user:* v_get" на repo (visibility стал PUBLIC — per-repo flip B01,
+// RegisterIntentForRepoPublicGrant — register-intent кортежа публикации:
+// материализует "system_class:anonymous v_get" на repo (visibility стал PUBLIC — per-repo flip B01,
 // create-with-PUBLIC B08, inherited-default B12). Идемпотентно at-least-once через
-// outbox: повторный register того же wildcard дедуплицируется iam-side.
+// outbox: повторный register той же публикации дедуплицируется iam-side.
 func RegisterIntentForRepoPublicGrant(registryID, repo string) RegisterIntent {
 	return RegisterIntent{
 		Kind:       RegisterIntentKindRepositoryPublicGrant,
@@ -451,9 +469,14 @@ func RegisterIntentForRepoPublicGrant(registryID, repo string) RegisterIntent {
 	}
 }
 
-// UnregisterIntentForRepoPublicGrant — unregister-intent public-read wildcard tuple:
-// снимает "user:* v_get" (visibility стал PRIVATE — flip B06 — либо repo удалён/
+// UnregisterIntentForRepoPublicGrant — unregister-intent кортежа публикации:
+// снимает "system_class:anonymous v_get" (visibility стал PRIVATE — flip B06 — либо repo удалён/
 // переименован). anon pull снова fail-closed 404. Per-subject grants не трогаются.
+//
+// Публикация, записанная прежним входным словом `user:*` (до kacho#3287, а также
+// строка outbox, ещё не доставленная на момент выкатки), снимается этим же
+// кортежем: служба прав принимает оба слова и хранит одну форму публикации
+// (corelib proxytuple.PublicReadSubjects, kaname#893).
 func UnregisterIntentForRepoPublicGrant(registryID, repo string) RegisterIntent {
 	return RegisterIntent{
 		Kind:       RegisterIntentKindRepositoryPublicGrant,

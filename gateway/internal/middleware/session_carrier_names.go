@@ -26,11 +26,16 @@
 // # Совпадение гашения зависит от `Domain`
 //
 // Выдать гашение и закрыть им печенье — не одно и то же: браузер сопоставляет
-// печенье по имени, пути и домену, а гашение края идёт БЕЗ `Domain`
-// ([SessionCarrierEndings]) и совпадает только с печеньем, выданным тоже без
-// `Domain`. НАШЕ имя гашение края закрывает: служба выдаёт его без `Domain` на
-// каждой цепочке, где оно выдаётся (`kaname.config.authn.login.cookieDomain:
-// none`).
+// печенье по имени, пути и домену. Домен печенья выбирает служба настройкой
+// `authn.login.cookie-domain` (слово `none` — только на хост), и гашение края
+// обязано идти с тем же доменом: гашение без `Domain` печенье, выданное С
+// доменом, не закрывает, и отказ по отсечке остаётся стоящим (kacho#3174).
+// Поэтому домен у края — своя ручка того же значения,
+// `KACHO_API_GATEWAY_SESSION_COOKIE_DOMAIN` (`config.SessionCookieDomain`):
+// пусто либо `none` у службы — пусто у края. Согласие двух величин на каждом
+// стенде держит проба отрисовки `gateway/deploy/session_cookie_domain_render_test.go`;
+// что гашение совпадает с выдачей, и браузер печенье удаляет, —
+// `session_carrier_domain_test.go`.
 //
 // Гейт `session_carrier_names_gate_test.go` требует у каждого имени
 // ПРОИЗВОДИТЕЛЯ — читателя на пути аутентификации — и объявляет второе
@@ -67,11 +72,11 @@ func SessionCarrierNames() []string {
 // чужим путём, и «выйти» оставит человека вошедшим.
 //
 // Атрибуты те же, что у выдачи НАШЕГО печенья (Ф1 §4.1: `Path=/`, `HttpOnly`,
-// `Secure`, `SameSite=Lax`): браузер сопоставляет печенье по имени, пути и
-// домену, и гашение с другим путём не нашло бы его. `Domain` не ставится;
-// предусловие, которое из этого следует, названо в шапке файла.
-func EndSessionCarriers(w http.ResponseWriter) {
-	for _, c := range SessionCarrierEndings() {
+// `Secure`, `SameSite=Lax`, `Domain` = домен печенья службы): браузер
+// сопоставляет печенье по имени, пути и домену, и гашение с другим путём или
+// доменом не нашло бы его.
+func EndSessionCarriers(w http.ResponseWriter, domain string) {
+	for _, c := range SessionCarrierEndings(domain) {
 		http.SetCookie(w, c)
 	}
 }
@@ -89,15 +94,16 @@ func EndSessionCarriers(w http.ResponseWriter) {
 // правящий свою копию, менял бы всем.
 //
 // Атрибуты те же, что у выдачи нашего печенья (Ф1 §4.1): `Path=/`, `HttpOnly`,
-// `Secure`, `SameSite=Lax`; `Domain` не ставится — предусловие, которое из
-// этого следует, названо в шапке файла.
-func SessionCarrierEndings() []*http.Cookie {
+// `Secure`, `SameSite=Lax`; `Domain` — domain, тот же, с каким печенье выдаёт
+// служба (пусто — только на хост; шапка файла).
+func SessionCarrierEndings(domain string) []*http.Cookie {
 	out := make([]*http.Cookie, 0, len(sessionCarrierNames))
 	for _, name := range sessionCarrierNames {
 		out = append(out, &http.Cookie{
 			Name:     name,
 			Value:    "",
 			Path:     "/",
+			Domain:   domain,
 			MaxAge:   -1,
 			HttpOnly: true,
 			Secure:   true,
@@ -105,4 +111,13 @@ func SessionCarrierEndings() []*http.Cookie {
 		})
 	}
 	return out
+}
+
+// WithSessionCookieDomain — домен, с которым служба выдаёт печенье нашей
+// сессии (kacho#3174): гашение края на отказе полосы идёт с ним. Пусто — только
+// на хост. Значение разобрано и проверено конфигурацией
+// (`config.ParseSessionCookieDomain`); здесь оно не переразбирается.
+func (a *AuthInterceptor) WithSessionCookieDomain(d string) *AuthInterceptor {
+	a.sessionCookieDomain = d
+	return a
 }

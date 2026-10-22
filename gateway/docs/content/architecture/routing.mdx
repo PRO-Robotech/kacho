@@ -13,14 +13,28 @@ title: Маршрутизация
 ## gRPC transparent-proxy
 
 Гейтвей не знает про конкретные ресурсы доменов — он транслирует gRPC прозрачно. `Resolver`
-(`internal/proxy`) разбирает полный метод `/kacho.cloud.<domain>.v1.<Service>/<Method>`, извлекает
-domain, сверяется с allowlist и возвращает адрес backend этого домена.
+(`internal/proxy`) разбирает полный метод, извлекает domain, сверяется с allowlist и возвращает
+адрес backend этого домена. Корней контракта у метода три, и у каждого своя форма пакета:
+
+<table>
+  <thead><tr><th>Корень</th><th>Форма полного метода</th><th>Domain — сегмент</th><th>Пример</th></tr></thead>
+  <tbody>
+    <tr><td>платформа</td><td><code>/kacho.cloud.&lt;domain&gt;.v1.&lt;Service&gt;/&lt;Method&gt;</code></td><td>третий</td><td><code>/kacho.cloud.vpc.v1.NetworkService/Create</code> → <code>vpc</code></td></tr>
+    <tr><td>служба доступа</td><td><code>/kaname.cloud.iam.v1.&lt;Service&gt;/&lt;Method&gt;</code></td><td>третий</td><td><code>/kaname.cloud.iam.v1.UserService/Get</code> → <code>iam</code></td></tr>
+    <tr><td>фундамент</td><td><code>/corelib.&lt;package&gt;.&lt;Service&gt;/&lt;Method&gt;</code></td><td>второй</td><td><code>/corelib.operation.OperationService/Get</code> → <code>operation</code></td></tr>
+  </tbody>
+</table>
+
+Публичный контракт `iam` — пакет `kaname.cloud.iam.v1`, и нативный клиент зовёт его методы этим
+именем. Написания `/kacho.cloud.iam.v1.…` в контракте нет: такой метод не стоит ни в
+permission-каталоге, ни в allowlist, и край отвечает на него как на любой неизвестный ему метод —
+отказом, а не пересылкой ([промах по каталогу](/architecture/authz#permission-каталог)).
 
 ```mermaid
 flowchart LR
   req["/kacho.cloud.vpc.v1.NetworkService/Create"] --> parse["Resolver: parse domain"]
   parse --> al{"в allowlist?"}
-  al -->|"нет"| deny["Unimplemented<br/>(как несуществующий)"]
+  al -->|"нет"| deny["NotFound<br/>(как несуществующий)"]
   al -->|"да"| suf{"*InternalService.*?"}
   suf -->|"да (HasInternalSuffix)"| deny
   suf -->|"нет"| be["backend домена<br/>(vpc / compute / geo / ...)"]
@@ -35,8 +49,8 @@ flowchart LR
   </tbody>
 </table>
 
-Allowlist активен для доменов: `iam`, `vpc`, `compute`, `geo`, `loadbalancer`, `registry` и
-`operation`. Каждый публичный RPC добавляется в него явно — это единственный источник истины по
+Allowlist активен для доменов: `iam`, `vpc`, `compute`, `storage`, `geo`, `loadbalancer`,
+`registry` и `operation`. Каждый публичный RPC добавляется в него явно — это единственный источник истины по
 публичной gRPC-поверхности (`internal/allowlist/list.go`).
 
 ## REST split-mux
@@ -94,6 +108,7 @@ flowchart TD
     <tr><td>geo</td><td><code>GEO&#95;GRPC</code></td><td><code>GEO&#95;INTERNAL&#95;GRPC</code></td></tr>
     <tr><td>nlb (loadbalancer)</td><td><code>NLB&#95;GRPC</code></td><td><code>NLB&#95;INTERNAL&#95;GRPC</code></td></tr>
     <tr><td>registry</td><td><code>REGISTRY&#95;GRPC</code></td><td><code>REGISTRY&#95;INTERNAL&#95;GRPC</code></td></tr>
+    <tr><td>storage</td><td><code>STORAGE&#95;GRPC</code></td><td><code>STORAGE&#95;INTERNAL&#95;GRPC</code></td></tr>
   </tbody>
 </table>
 
@@ -112,5 +127,6 @@ flowchart TD
 Server-reflection на этой поверхности **не подаётся**. Она освобождала бы и аутентификацию, и
 авторизацию на advertised-периметре, а разрешение символа идёт из глобального реестра
 дескрипторов — то есть короткий ответ `list` не ограничивает того, что вернёт `describe`.
-Схема остаётся доступной оператору на cluster-internal listener, где каждый вызов (включая
-стрим reflection) предъявляет проверенный клиентский сертификат из allow-list.
+Не подаётся она и ни на одном другом listener'е края: собственного internal gRPC-listener'а у
+края нет, а внутренний REST-listener gRPC не обслуживает (см.
+[Конфигурация](/install/configuration)).

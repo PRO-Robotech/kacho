@@ -87,10 +87,18 @@ import time
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import mint_rs256 as m  # noqa: E402
 import verified_human as vh  # noqa: E402
+import seed_transport  # noqa: E402
 # Declared id↔token pairings + their check. Own module because THIS one mints the
 # bootstrap Bearer at import time — a checker that cannot be imported without a
 # cluster cannot be self-tested, and this is the part that must be provable offline.
 from principal_pairings import unpaired_principals  # noqa: E402
+# Рецепты перевыпуска выданных предъявителей (kacho#3238): посев один на все суиты,
+# срок предъявителя короче прогона; рецепт позволяет выпустить тот же предъявитель
+# заново перед суитой и коллекцией. Значение → рецепт; выдача без рецепта
+# (`apiTokenExpired`) перевыпуску не подлежит по построению.
+import prodseed_refresh as refresh  # noqa: E402
+
+TOKEN_RECIPES: dict = {}
 
 # Endpoints. Defaults match the port-forwards the newman drivers establish
 # (deploy/scripts/newman-{e2e,parallel}.sh); every one is env-overridable so the
@@ -121,7 +129,8 @@ PLATFORM_TOKEN_URL = m.PLATFORM_TOKEN_URL
 # (deploy/scripts/newman-parallel.sh, MAILBOX_PORT) тем же порядком, что к краю.
 MAILBOX_URL = os.environ.get("MAILBOX_URL", "http://localhost:18025")
 PG_IAM_POD = os.environ.get("PG_IAM_POD", "kacho-umbrella-pg-iam-0")
-KACHO_NS = os.environ.get("KACHO_NAMESPACE", "kacho")
+# Пространство имён стенда — то же, что у чеканки (`stand_ns.py`, задача #2882).
+KACHO_NS = m.STAND_NS
 
 ROLE_ADMIN = "rol21232f297a57a5a74"  # md5('admin')[:17] -> FGA admin
 ROLE_EDIT = "rolde95b43bceeb4b998"   # md5('edit')[:17]  -> FGA editor
@@ -156,19 +165,14 @@ def _internal_tls_args():
 
 
 def _curl(method, path, token, body=None, base=PUBLIC):
-    args = ["curl", "-sS", "-m", "20", "-X", method, "-H", "Content-Type: application/json"]
-    if base == INTERNAL:
-        args += _internal_tls_args()
-    if token:
-        args += ["-H", f"Authorization: Bearer {token}"]
-    if body is not None:
-        args += ["--data", json.dumps(body)]
-    args.append(base + path)
-    out = subprocess.run(args, capture_output=True, text=True).stdout
-    try:
-        return json.loads(out or "{}")
-    except json.JSONDecodeError:
-        return {"raw": out}
+    # Обрыв транспорта и пустое тело — `SeedTransportError` (kacho#3246): прежняя
+    # форма превращала пустой вывод curl в `{}`, и посев F8-S7-80 упал «no op id: {}»
+    # там, где запрос до края не дошёл.
+    internal = base == INTERNAL
+    return seed_transport.curl_json(
+        method, base + path, token, body,
+        tls_args=_internal_tls_args() if internal else (),
+        surface="внутренний слушатель края" if internal else "публичный край")
 
 
 def _poll(op_id, token, budget=40):
@@ -210,8 +214,9 @@ def human(email, kind=vh.KIND_VERIFIED):
     """Завести человека шагами Р17; место заведения — строка ВЫЗЫВАЮЩЕГО.
 
     Вид объявлен здесь, у места заведения: по умолчанию Ф-п (подтверждённый).
-    Вид Ф-н посев наборов не заводит — его заводит только проба посева,
-    утверждающая положение подтверждения (F6b-47, F6b-49).
+    Ф-н посев наборов заводит одного — близнеца набора края
+    `iam-step-up-access-key-begin` (приёмка F8-S7, F8-S7-80); прочие Ф-н заводит
+    проба посева, утверждающая положение подтверждения (F6b-47, F6b-49).
     """
     place = f"{os.path.basename(__file__)}:{inspect.stack()[1].lineno}"
     h = vh.enroll(EDGE, MAILBOX, email, HUMAN_PASSWORD, kind, clock=_now, sleep=time.sleep, place=place)
@@ -315,8 +320,10 @@ def sa_token_with_key(sva):
     assertion = m.sign_client_assertion(
         registry_client_id, key, registry_client_id, PLATFORM_ASSERT_AUD,
         token_type=m.CLIENT_ASSERTION_TOKEN_TYPE)
-    return (m.exchange_at_platform(PLATFORM_TOKEN_URL, assertion, API_AUD),
-            registry_client_id)
+    token = m.exchange_at_platform(PLATFORM_TOKEN_URL, assertion, API_AUD)
+    refresh.remember(TOKEN_RECIPES, token,
+                     {"kind": "key", "clientId": registry_client_id, "key": key})
+    return token, registry_client_id
 
 
 def sa_token(sva):
@@ -352,8 +359,12 @@ def user_platform_token(uid, created_by):
     машина. Разбор и проверка «одно имя, а не два» — в godoc
     `m.user_platform_token`.
     """
-    return m.user_platform_token(PUBLIC, boot, uid, created_by,
-                                 PLATFORM_TOKEN_URL, API_AUD, PLATFORM_ASSERT_AUD)
+    got = {}
+    token = m.user_platform_token(PUBLIC, boot, uid, created_by,
+                                  PLATFORM_TOKEN_URL, API_AUD, PLATFORM_ASSERT_AUD,
+                                  on_key=lambda cid, key: got.update(clientId=cid, key=key))
+    refresh.remember(TOKEN_RECIPES, token, {"kind": "key", **got})
+    return token
 
 
 CLUSTER_ROOT_OBJECT = "cluster:cluster_root"
@@ -480,7 +491,7 @@ def subject(account_id, name, grants=()):
 
 
 # ── org structure ───────────────────────────────────────────────────────────
-boot = m.mint_bootstrap()
+boot = refresh.remember(TOKEN_RECIPES, m.mint_bootstrap(), {"kind": "bootstrap"})
 # Шаг, создающий ПРЕДМЕТ всего посева, несёт собственное утверждение: край
 # ПРИНЯЛ бутстрап-удостоверение. Без него отказ края проявляется через два-три
 # шага и обвиняет невиновного — то, что честно сделало своё дело при
@@ -809,6 +820,8 @@ def seed() -> dict:
     sva_apirev, _ = subject(acctA, f"ps-apitok-rev-{RID}", [(ROLE_EDIT, P, projA1)])
     tok_apirev, key_apirev = sa_token_with_key(sva_apirev)
     _curl("DELETE", f"/iam/v1/serviceAccounts/{sva_apirev}/keys/{key_apirev}", boot)
+    # Отозванный перевыпускается новым ключом с его снятием, а не обменом снятого.
+    refresh.remember(TOKEN_RECIPES, tok_apirev, {"kind": "revoked", "sva": sva_apirev})
 
     # ПРЕДЪЯВИТЕЛЬ НАШЕЙ ЧЕКАНКИ ДЛЯ СУИТЫ КРАЯ (#1014).
     #
@@ -859,13 +872,23 @@ def seed() -> dict:
     h_cloud_admin = human(f"prodseed-acc-id-admin-{RID}@example.com")
     _await(_curl("POST", "/iam/v1/internal/cluster/admins", boot,
                  {"subjectType": "USER", "subjectId": h_cloud_admin.user_id}, base=INTERNAL),
-           boot, "userId")
+           boot, "clusterAdminGrantId")
     tok_cloud_admin_human = user_platform_token(h_cloud_admin.user_id, h_cloud_admin.user_id)
     _await_cloud_admin_visible(h_cloud_admin.user_id)
     # Человек без роли на кластере — сторона отказа права (AID-K2) и её близнец.
     h_plain = human(f"prodseed-acc-id-plain-{RID}@example.com")
     _assert_not_cloud_admin(h_plain.user_id)
     tok_plain_human = user_platform_token(h_plain.user_id, h_plain.user_id)
+
+    # ДВА ЧЕЛОВЕКА НАБОРА `iam-step-up-access-key-begin` (kacho#3230; приёмка F8-S7
+    # воркспейса, F8-S7-80, DoD §8 п.3). Пара отличается ОДНИМ фактом — подтверждён ли
+    # адрес: Ф-п без ключа получает от службы отказ `ACCESS_KEY_NOT_REGISTERED`
+    # (край его ретранслирует), Ф-н — отказ положения края. Предъявитель — носитель
+    # сессии `kaname_session`, а не токен: полоса формы читает только сессию.
+    # Свои люди, а не матричные: ключа доступа ни один набор им не заводит, и
+    # исход «ключей ноль» не зависит от чужих наборов.
+    h_stepup_p = human(f"prodseed-stepup-p-{RID}@example.com")
+    h_stepup_n = human(f"prodseed-stepup-n-{RID}@example.com", vh.KIND_UNVERIFIED)
 
     fixtures = {
         "jwtBootstrap": boot,
@@ -883,6 +906,12 @@ def seed() -> dict:
         "cloudAdminHumanUserId": h_cloud_admin.user_id,
         "jwtPlainHuman": tok_plain_human,
         "plainHumanUserId": h_plain.user_id,
+        # Люди набора `iam-step-up-access-key-begin` (kacho#3230, F8-S7-80): носители
+        # сессии — Ф-п без ключа и Ф-н. Идентификаторы — для переписи людей (F6b-51).
+        "stepUpVerifiedHumanSession": h_stepup_p.bearer,
+        "stepUpVerifiedHumanUserId": h_stepup_p.user_id,
+        "stepUpUnverifiedHumanSession": h_stepup_n.bearer,
+        "stepUpUnverifiedHumanUserId": h_stepup_n.user_id,
         # no-grant slots
         "jwtNoBindings": tok_nogrant,
         "jwtSANoGrant": tok_nogrant,

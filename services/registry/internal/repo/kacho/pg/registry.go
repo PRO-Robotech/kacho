@@ -129,7 +129,7 @@ func registryListWhere(q registry.ListQuery) ([]string, []any, error) {
 }
 
 // List возвращает реестры project'а cursor-пагинацией (created_at,id) ASC.
-// filter — whitelist `name=` (corelib filter.Parse; garbage → InvalidArgument);
+// filter — допускается только `name=` (corelib filter.Parse; мусор → InvalidArgument);
 // garbage page_token → InvalidArgument. Запрашивает pageSize+1 для next-cursor.
 func (r *RegistryRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Registry, string, error) {
 	if err := r.ready(); err != nil {
@@ -597,7 +597,7 @@ func applyRepoRegistration(ctx context.Context, tx pgx.Tx, eventType string, int
 // RegisterIntent.Kind/ResourceID: те объявлены полями «для observability, не участвуют
 // в apply» (domain.RegisterIntent) — сделать их несущими значило бы оставить рядом
 // комментарий, противоречащий коду. По этому же признаку мимо проходят интенты
-// public-grant (их единственный tuple — "user:* v_get", привязку не трогает) и интенты
+// public-grant (их единственный tuple — "system_class:anonymous v_get", привязку не трогает) и интенты
 // самого реестра (их объект — registry_registry).
 func repoRegistrationKey(intent domain.RegisterIntent) (registryID, repo string, ok bool) {
 	const objectPrefix = domain.FGAObjectTypeRepository + ":"

@@ -100,7 +100,7 @@ export const AccountPanel: FC<{
             void navigate(ACCOUNT_SETTINGS_ADDRESS);
           }}
         >
-          Параметры учётной записи
+          Безопасность
         </Button>
         <Button danger loading={busy} onClick={() => void logout()}>
           Выйти

@@ -29,7 +29,7 @@
 него список отвечает отказом метода, и пообъектная фильтрация не проверяется
 вовсе. Оба субъекта — служебные учётки с токеном RS256.
 
-Читает /tmp/matrix.json (токен запуска + acctA), заводит ресурсы и выдачи и
+Читает матрицу своего прогона по пути `PRODSEED_MATRIX_PATH` (токен запуска + acctA), заводит ресурсы и выдачи и
 печатает на стандартный вывод ТОЛЬКО дополнительные фикстуры: list-filter и
 истёкший предъявитель `apiTokenExpired` (`expired_bearer.py`).
 """
@@ -42,9 +42,10 @@ import time
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import mint_rs256 as m  # noqa: E402
 import prodseed_matrix as pm  # noqa: E402  (reuse helpers: _curl,_await,make_sa,sa_token,etc.)
+import matrix_handoff as mh  # noqa: E402
 import expired_bearer as eb  # noqa: E402
 
-MATRIX = json.loads(open("/tmp/matrix.json").read())
+MATRIX = mh.read()   # матрица своего прогона (PRODSEED_MATRIX_PATH, #3264)
 # Mint a FRESH bootstrap token — the cached jwtBootstrap has a 1h TTL and may have
 # expired since the matrix was seeded (silent code=16 "token validation failed").
 pm.boot = m.mint_bootstrap()   # rebind module-level boot for helper reuse
@@ -193,4 +194,7 @@ try:
 except eb.StageError as e:
     eb.log(f"УСЛОВИЕ НЕ СОЗДАНО {e} — apiTokenExpired окружению не отдан")
 
+# Рецепты перевыпуска своих предъявителей (kacho#3238) — посеву, не окружению:
+# prodseed_all.run_ext снимает этот ключ до записи окружения.
+out[pm.refresh.TOKEN_RECIPES_KEY] = pm.refresh.recipes_for(pm.TOKEN_RECIPES, out)
 print(json.dumps(out))

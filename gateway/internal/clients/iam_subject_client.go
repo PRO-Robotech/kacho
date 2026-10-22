@@ -17,8 +17,6 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
@@ -27,11 +25,11 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// subjectLookupStub is the narrow subset of iamv1.InternalIAMServiceClient the
-// subject adapter actually calls. Depending on this port (not the full generated
-// client) lets unit tests substitute a deterministic fake without a network hop
-// (Clean Architecture: the use-case owns the port). The real
-// iamv1.NewInternalIAMServiceClient satisfies it.
+// subjectLookupStub — узкое подмножество iamv1.InternalIAMServiceClient,
+// которое адаптер субъекта действительно зовёт. Зависимость от порта, а не от
+// всего порождённого клиента, даёт пробам детерминированного дублёра без сети
+// (порт принадлежит потребителю). Настоящий iamv1.NewInternalIAMServiceClient
+// ему удовлетворяет.
 type subjectLookupStub interface {
 	LookupSubject(ctx context.Context, in *iamv1.LookupSubjectRequest, opts ...grpc.CallOption) (*iamv1.LookupSubjectResponse, error)
 	Check(ctx context.Context, in *iamv1.CheckRequest, opts ...grpc.CallOption) (*iamv1.CheckResponse, error)
@@ -43,39 +41,28 @@ type IAMSubjectClient struct {
 	cache  *cache.SubjectCache
 	logger *slog.Logger
 
-	// callTimeout is the single per-call deadline every sibling RPC of this
-	// client derives from (LookupSubject / Check). One
-	// configured source keeps behaviour uniform under IAM latency — per
-	// architecture.md: "все sibling-методы клиента обязаны применять один и тот
+	// callTimeout — единый срок вызова, от которого считают все соседние
+	// методы клиента (LookupSubject и Check). Один источник держит поведение
+	// одинаковым при задержке службы доступа — architecture.md: "все sibling-методы клиента обязаны применять один и тот
 	// же configured-timeout (не «часть — да, часть — нет»)".
 	callTimeout time.Duration
 }
 
-// NewIAMSubjectClient dials kaname:9091 for InternalIAMService.LookupSubject.
+// NewIAMSubjectClient — клиент `InternalIAMService` (kaname:9091) над
+// соединением, которое передаёт корень: соединение `iamInternal` карты
+// бэкендов, то самое, что опрашивает `/readyz` края.
 //
-// transportCreds is the per-edge transport-credentials dial-option for the
-// gateway→iam edge (mTLS client-cert when KACHO_API_GATEWAY_MTLS_IAM_ENABLE=true,
-// assembled in cmd/api-gateway). nil ⇒ insecure (dev backward-compat). The
-// transport layer is orthogonal to the principal-metadata propagated on each RPC.
-func NewIAMSubjectClient(addr string, logger *slog.Logger, transportCreds grpc.DialOption) (*IAMSubjectClient, error) {
-	if addr == "" {
-		return nil, fmt.Errorf("iam internal addr empty")
-	}
-	if transportCreds == nil {
-		transportCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
-	}
-	// Time=10s — держим idle subject-lookup conn теплым.
-	kp := keepalive.ClientParameters{
-		Time:                10 * time.Second,
-		Timeout:             3 * time.Second,
-		PermitWithoutStream: true,
-	}
-	conn, err := grpc.NewClient(addr,
-		transportCreds,
-		grpc.WithKeepaliveParams(kp),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("dial iam internal %s: %w", addr, err)
+// Своего соединения клиент НЕ заводит (kacho#3284). Прежде он набирал службу
+// доступа сам, сверх соединения карты; после переката службы оба
+// восстанавливались по своим таймерам, и «готов» говорил о соединении карты, а
+// вход по токену шёл своим — ещё в отказе, с ответом сразу «connection
+// refused». Удостоверение ребра, удержание простоя и учёт причины отказа соседу
+// (kacho#3221) несёт соединение карты: их ставит корень (`dialBackends`).
+//
+// Соединение принадлежит корню и закрывается им; у клиента закрывать нечего.
+func NewIAMSubjectClient(conn *grpc.ClientConn, logger *slog.Logger) (*IAMSubjectClient, error) {
+	if conn == nil || conn.Target() == "" {
+		return nil, fmt.Errorf("iam internal connection absent")
 	}
 	return &IAMSubjectClient{
 		conn:        conn,
@@ -104,10 +91,10 @@ func (c *IAMSubjectClient) LookupByExternalID(ctx context.Context, externalID st
 	if err != nil {
 		st, _ := status.FromError(err)
 		if st.Code() == codes.NotFound {
-			// Wrap the sentinel (%w) so errors.Is(err, errSubjectNotFound)
-			// matches regardless of the human-readable text: a caller that tells
-			// "no such subject" from "iam did not answer" must not be coupled to
-			// wording.
+			// Метка оборачивается (%w), чтобы errors.Is(err, errSubjectNotFound)
+			// узнавал её независимо от текста: вызывающий, отличающий «субъекта
+			// нет» от «служба доступа не ответила», не должен зависеть от
+			// формулировки.
 			return middleware.Subject{}, fmt.Errorf("%w: %s", errSubjectNotFound, externalID)
 		}
 		c.logger.Warn("iam.LookupSubject failed",
@@ -166,7 +153,6 @@ func (c *IAMSubjectClient) IsSystemAdmin(ctx context.Context, subject string) (b
 }
 
 func (c *IAMSubjectClient) InvalidateAll() { c.cache.InvalidateAll() }
-func (c *IAMSubjectClient) Close() error   { return c.conn.Close() }
 
 // BasicCredentialStub — тот же клиент внутреннего слушателя, что уже держит эта
 // связь, поданный как узкий порт авторитета о предъявленном базовом секрете

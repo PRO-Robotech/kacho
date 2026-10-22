@@ -58,7 +58,8 @@ func agreeingStack() map[string]any {
 						"enabled":           true,
 						"issuer":            "https://kaname.example.test",
 						"algorithm":         "ES256",
-						"allowedAlgorithms": "ES256,RS256",
+						"allowedAlgorithms": "ES256",
+						"keyLifetime":       "2160h",
 					},
 					"presentedCredential": map[string]any{"enabled": true},
 					"clientToken":         map[string]any{"enabled": true},
@@ -157,6 +158,32 @@ func TestMintingCensusInjection_MintingOnWithoutAlgorithmIsAFinding(t *testing.T
 
 	got := judgeStackMinting("synthetic", tree, emptyRegister())
 	assertNamed(t, got.findings, "допустимые подписи приёма")
+}
+
+func TestMintingCensusInjection_MintingOnWithoutKeyLifetimeIsAFinding(t *testing.T) {
+	tree := agreeingStack()
+	at(tree, "kaname", "config", "authn", "tokenSigning")["keyLifetime"] = ""
+
+	got := judgeStackMinting("synthetic", tree, emptyRegister())
+	assertNamed(t, got.findings, "срок ключа подписи")
+}
+
+func TestMintingCensusInjection_AcceptingMoreThanItSignsIsAFinding(t *testing.T) {
+	tree := agreeingStack()
+	// РОВНО ОДИН факт: в перечень приёма вернулся алгоритм без производителя.
+	at(tree, "kaname", "config", "authn", "tokenSigning")["allowedAlgorithms"] = "ES256,RS256"
+
+	got := judgeStackMinting("synthetic", tree, emptyRegister())
+	assertNamed(t, got.findings, "RS256")
+}
+
+func TestMintingCensusInjection_AcceptingExactlyWhatItSignsWithSpacesIsSilent(t *testing.T) {
+	tree := agreeingStack()
+	at(tree, "kaname", "config", "authn", "tokenSigning")["allowedAlgorithms"] = " ES256 "
+
+	if got := judgeStackMinting("synthetic", tree, emptyRegister()); len(got.findings) != 0 {
+		t.Fatalf("законный близнец назван находкой: %v", got.findings)
+	}
 }
 
 func TestMintingCensusInjection_ConsumerNamingAnotherPlatformIssuerIsAFinding(t *testing.T) {
