@@ -301,7 +301,7 @@ deploy/own_lane_memory_budget_test.go.
 
 {{/*
 kaname.manifests.selected — ИСТОЧНИКИ каталога доставки, подобранные по метке
-(`manifests.selector`, kacho#3356), вместе с прежним единым (`configMapName`).
+(`manifests.selector`, #3356), вместе с прежним единым (`configMapName`).
 Выход — JSON `{"sources": [{"name", "items": [{"key", "path"}]}], "digest"}`;
 зовётся ТОЛЬКО при объявленном селекторе.
 

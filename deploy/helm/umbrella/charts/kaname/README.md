@@ -203,7 +203,7 @@ connecting the two. Pin it, and drive changes through the list above.
 
 Каталог доставки манифестов (`manifests.mountPath`) собирается из прежнего
 единого ConfigMap (`manifests.configMapName`) и из ConfigMap пространства имён
-релиза, подобранных меткой (`manifests.selector`, kacho#3356). Поставщик модуля
+релиза, подобранных меткой (`manifests.selector`, #3356). Поставщик модуля
 кладёт свой манифест в собственный ConfigMap с меткой:
 
 ```yaml
@@ -225,7 +225,7 @@ data:
 
 ```yaml
 manifests:
-  configMapName: kacho-module-manifests   # пусто — только подобранные
+  configMapName: <единый ConfigMap>   # пусто — только подобранные
   selector:
     kaname.in-cloud.io/module-manifest: "true"
   required: true
@@ -239,7 +239,7 @@ manifests:
 | рендер без чтения кластера (`helm template` без `--dry-run=server`, офлайн-рендер конвейера) | отказ рендера: подбор по метке без кластера невыразим |
 | `configMapName` назван, объекта нет | отказ рендера |
 | `binaryData` у источника | отказ рендера |
-| правка любого подобранного или единого источника | меняет `kacho.cloud/module-manifests-selected-digest` шаблона пода на следующей выкатке |
+| правка любого подобранного или единого источника | меняет `kaname.cloud/module-manifests-selected-digest` шаблона пода на следующей выкатке |
 
 Подбор — свойство рендера: источник, поставленный после выкатки kaname, доезжает
 следующей выкаткой (`helm upgrade`).

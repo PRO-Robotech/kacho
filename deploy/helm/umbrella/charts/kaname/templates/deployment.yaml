@@ -130,12 +130,12 @@ spec:
         kacho.cloud/module-manifests-digest: {{ dig "kachoModuleManifests" "digest" "unset" (.Values.global | default dict) | quote }}
         {{- end }}
         {{- if .Values.manifests.selector }}
-        # ОТПЕЧАТОК ПОДОБРАННОГО (kacho#3356). Источники под селектором рендер
+        # ОТПЕЧАТОК ПОДОБРАННОГО (#3356). Источники под селектором рендер
         # ЧИТАЕТ, поэтому отпечаток считается здесь, по прочитанному содержимому,
         # а не приезжает величиной от производителя: поставщик модуля — чужой
         # чарт, и величину ему отдать некуда. Правка любого подобранного
         # источника (и единого) меняет шаблон пода на следующей выкатке.
-        kacho.cloud/module-manifests-selected-digest: {{ $selected.digest | quote }}
+        kaname.cloud/module-manifests-selected-digest: {{ $selected.digest | quote }}
         {{- end }}
     spec:
       # KANAME_* — собственный config-namespace сервиса. К-net auto-инжектит
@@ -156,7 +156,7 @@ spec:
         - name: tmp
           emptyDir: {}
         {{- if .Values.manifests.selector }}
-        # МАНИФЕСТЫ МОДУЛЕЙ ИЗ НЕСКОЛЬКИХ ИСТОЧНИКОВ (kacho#3356): единый и
+        # МАНИФЕСТЫ МОДУЛЕЙ ИЗ НЕСКОЛЬКИХ ИСТОЧНИКОВ (#3356): единый и
         # подобранные по метке — одним проецируемым томом, ключ за ключом под
         # путём `<источник>__<ключ>` (почему — _helpers.tpl,
         # `kaname.manifests.selected`). `optional` НЕ объявлен: источник прочитан

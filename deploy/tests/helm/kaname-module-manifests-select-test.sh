@@ -46,7 +46,7 @@ CHART="$REPO_ROOT/helm/umbrella/charts/kaname"
 GOLDEN="$HERE/testdata/kaname-module-manifests"
 NS=kaname-probe
 LABEL_KEY="kaname.in-cloud.io/module-manifest"
-DIGEST_KEY="kacho.cloud/module-manifests-selected-digest"
+DIGEST_KEY="kaname.cloud/module-manifests-selected-digest"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
