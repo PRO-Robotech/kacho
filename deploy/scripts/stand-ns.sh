@@ -1599,7 +1599,8 @@ cmd_run() {
 #                 `npm i -g newman@N` из .github/workflows/e2e-newman.yml; browser —
 #                 образ playwright версии пина `@playwright/test` ui-future/e2e (chromium —
 #                 его). Версии читаются из ДЕРЕВА головы (runner_versions), второго
-#                 объявления нет; kubectl pod — версии сервера кластера;
+#                 объявления нет; kubectl pod — клиент машины тем же потоком (той же
+#                 архитектуры), иначе загрузка версии сервера кластера с суммой;
 #   исходники     `git archive` головы рабочей копии потоком в pod (образы — ревизии REF, их
 #                 расхождение судит ref_guard подъёма); незакоммиченная правка — отказ 2 до подъёма;
 #   окружение     тем же cmd_forward изнутри pod (`pod-forward`): происхождение консоли
@@ -1637,15 +1638,23 @@ export DEBIAN_FRONTEND=noninteractive
 say "инструменты: apt"
 { apt-get update -q && apt-get install -y -q --no-install-recommends ca-certificates curl git jq openssl tar gzip \
     python3 python3-yaml python3-jwt python3-cryptography; } > /work/apt.log 2>&1 || { tail -n 5 /work/apt.log; unmet "apt-get"; }
-say "инструменты: kubectl $RUNNER_KUBECTL"
-ku="https://dl.k8s.io/release/$RUNNER_KUBECTL/bin/linux/$ka/kubectl"
-{ curl -fsSL --retry 3 -o /usr/local/bin/kubectl "$ku" &&
-  echo "$(curl -fsSL --retry 3 "$ku.sha256")  /usr/local/bin/kubectl" | sha256sum -c --quiet - &&
-  chmod +x /usr/local/bin/kubectl; } || unmet "kubectl $RUNNER_KUBECTL не получен либо сумма не сошлась"
+# kubectl — клиент машины, которым говорит сам stand-ns (тот же поток, что исходники): выход
+# узла к dl.k8s.io бывал ~25 КБ/с (замер kacho#3346 — 2,5 МБ из 57 за 90 с). Его нет либо он
+# не исполняется здесь — загрузка версии сервера с суммой, с пределом скорости.
+if [ -x /work/bin/kubectl ] && /work/bin/kubectl version --client > /dev/null 2>&1; then
+  install -m 0755 /work/bin/kubectl /usr/local/bin/kubectl || unmet "kubectl машины не поставлен"
+  say "инструменты: kubectl — клиент машины ($(kubectl version --client 2>/dev/null | head -n 1))"
+else
+  say "инструменты: kubectl $RUNNER_KUBECTL — загрузкой"
+  ku="https://dl.k8s.io/release/$RUNNER_KUBECTL/bin/linux/$ka/kubectl"
+  { curl -fsSL --retry 3 --speed-limit 200000 --speed-time 60 -o /usr/local/bin/kubectl "$ku" &&
+    echo "$(curl -fsSL --retry 3 --max-time 60 "$ku.sha256")  /usr/local/bin/kubectl" | sha256sum -c --quiet - &&
+    chmod +x /usr/local/bin/kubectl; } || unmet "kubectl $RUNNER_KUBECTL не получен либо сумма не сошлась"
+fi
 case "$RUNNER_KIND" in
   newman)
     say "инструменты: grpcurl $RUNNER_GRPCURL, newman@$RUNNER_NEWMAN"
-    curl -fsSL --retry 3 "https://github.com/fullstorydev/grpcurl/releases/download/v$RUNNER_GRPCURL/grpcurl_${RUNNER_GRPCURL}_linux_$ga.tar.gz" |
+    curl -fsSL --retry 3 --speed-limit 50000 --speed-time 60 "https://github.com/fullstorydev/grpcurl/releases/download/v$RUNNER_GRPCURL/grpcurl_${RUNNER_GRPCURL}_linux_$ga.tar.gz" |
       tar -xz -C /usr/local/bin grpcurl || unmet "grpcurl $RUNNER_GRPCURL"
     npm i -g "newman@$RUNNER_NEWMAN" > /work/npm.log 2>&1 || { tail -n 5 /work/npm.log; unmet "newman@$RUNNER_NEWMAN"; }
     say "newman $(newman --version)" ;;
@@ -1851,6 +1860,11 @@ runner_run() {
   # Сжатием: дерево — ~150 МБ tar, поток идёт через API-сервер (замер kacho#3346: 158 МБ tar → 33 МБ gzip -1).
   git -C "$REPO_ROOT" archive --format=tar "$sha" | gzip -1 | kubectl -n "$ns" exec -i "$RUNNER_POD" -c run -- tar -xz -C /src ||
     { warn "исходники ревизии $sha в pod не доставлены"; return "$RUN_UNMET"; }
+  # kubectl машины — тем же потоком (шапка текста pod): лишь при той же архитектуре узла.
+  if [ "$(kubectl -n "$ns" exec "$RUNNER_POD" -c run -- uname -m 2>/dev/null)" = "$(uname -m)" ]; then
+    gzip -1 <"$(type -P kubectl)" | kubectl -n "$ns" exec -i "$RUNNER_POD" -c run -- sh -c 'mkdir -p /work/bin && gzip -dc > /work/bin/kubectl && chmod 0755 /work/bin/kubectl' ||
+      warn "kubectl машины в pod не доставлен — pod загрузит версию сервера"
+  fi
   kubectl -n "$ns" exec "$RUNNER_POD" -c run -- touch /work/.go || { warn "pod не принял сигнал старта"; return "$RUN_UNMET"; }
   kubectl -n "$ns" logs -f "pod/$RUNNER_POD" -c run & RUN_LOGS=$!
   while :; do
