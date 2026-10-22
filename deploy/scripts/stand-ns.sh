@@ -549,7 +549,7 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   tool_probe() {
     rm -rf "$tx/work" "$tx/st"; mkdir -p "$tx/work/out" "$tx/st"
     printf 'standns-bin\n' >"$tx/work/out/stand-ns"; printf 'producer-bin\n' >"$tx/work/out/module-manifests-configmap"
-    printf '[]\n' >"$tx/work/out/godeps.json"
+    printf '[]\n' >"$tx/work/out/godeps.json"; printf 'names-bin\n' >"$tx/work/out/product-names"
     ( cd "$tx/work/out" && sha256sum -- * >"$tx/work/sums" )
     case "$1" in
       ok) echo 0 >"$tx/work/.rc" ;;
@@ -577,7 +577,7 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   }
   trc=0; tool_probe ok || trc=$?
   if [ "$trc" -eq 0 ] && [ "$(cat "$tx/st/bin/stand-ns")" = standns-bin ] && [ "$(cat "$tx/st/bin/module-manifests-configmap")" = producer-bin ] &&
-     [ "$(cat "$tx/st/bin/godeps.json")" = '[]' ] && [ ! -s "$tx/trap" ] && [ -s "$tx/work/src/go.mod" ] &&
+     [ "$(cat "$tx/st/bin/godeps.json")" = '[]' ] && [ "$(cat "$tx/st/bin/product-names")" = names-bin ] && [ ! -s "$tx/trap" ] && [ -s "$tx/work/src/go.mod" ] &&
      cmp -s "$tx/work/tracked.txt" <(git -C "$REPO_ROOT" ls-files) && [ -e "$tx/work/untracked.txt" ]; then
     ok "инструменты подъёма: собраны в pod кластера, суммы сверены, go на машине (ловушка) не звался, дерево и перечни git ls-files — в pod, запись замыкания забрана"
   else bad "инструменты подъёма: код $trc, ловушка «$(tr '\n' ' ' <"$tx/trap")», $(tail -n 2 "$tx/out" | tr '\n' ' ')"; fi
@@ -730,10 +730,12 @@ ns_state() {
 #
 # Решение владельца 2026-10-22 (kacho-workspace#1301) дословно: «запиши в рул что бы не
 # использовал мою локальную тачку. использовать только в одном случае если доступа к
-# кластеру нету». Подъёму нужен Go трижды: перенос рендера (tools/standns), производитель
+# кластеру нету». Подъёму нужен Go четырежды: перенос рендера (tools/standns), производитель
 # манифестов модулей (tools/modulemanifests, цель module-manifests-configmap получает его
-# готовым через MODULE_MANIFESTS_PRODUCER) и замыкание пакетов образов go (`go list -deps`,
-# суд входов ref_guard — `stand-ns inputs -godeps`). `go` на машине не запускается: всё это
+# готовым через MODULE_MANIFESTS_PRODUCER), читатель имён частей продукта
+# (tools/productnames, lib/product-names.sh и все шаги подъёма получают его готовым через
+# KACHO_PRODUCT_NAMES_BIN) и замыкание пакетов образов go (`go list -deps`, суд входов
+# ref_guard — `stand-ns inputs -godeps`). `go` на машине не запускается: всё это
 # делает короткий pod кластера, на машине — kubectl, git, tar, gzip и сверка сумм.
 #
 #   пространство  своё, `t<задача>-tool-<6 hex>`: пространства стенда ещё нет (фаза 1 подъёма
@@ -759,7 +761,7 @@ TOOL_WAIT="${STAND_TOOL_WAIT:-900}"
 TOOL_TTL_MIN=60
 TOOL_NS=""
 # «имя=пакет» — что собирается и под каким именем ложится в каталог bin стенда.
-STAND_TOOLS="stand-ns=./tools/standns/cmd/stand-ns module-manifests-configmap=./tools/modulemanifests/cmd/module-manifests-configmap"
+STAND_TOOLS="stand-ns=./tools/standns/cmd/stand-ns module-manifests-configmap=./tools/modulemanifests/cmd/module-manifests-configmap product-names=./tools/productnames/cmd/product-names"
 MM_PRODUCER="" STAND_GODEPS=""
 
 # Текст pod сборки: ждёт исходники (метка .go), собирает STAND_TOOLS, пишет суммы и код в
@@ -930,6 +932,7 @@ build_tool() {
   STAND_NS_BIN="$out/stand-ns"
   MM_PRODUCER="$out/module-manifests-configmap"
   STAND_GODEPS="$out/godeps.json"
+  export KACHO_PRODUCT_NAMES_BIN="$out/product-names"
 }
 
 # ca_namespace — пространство ресурсов cert-manager, ИЗМЕРЕННОЕ у его контроллера.
