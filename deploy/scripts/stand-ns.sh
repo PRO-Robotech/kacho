@@ -368,10 +368,11 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   fetch_probe() {
     rm -rf "$fx/out"; mkdir -p "$fx/out"; : >"$fx/cuts"
     ( RUNNER_SRC="$fx/src" RUNNER_WORK="$fx/work" RUN_RUNNER=newman STAND_RUNNER_FETCH_TRIES="$2" CUT="$1" MFAIL="${3:-}"
+      runner_put() { sh -c 'cat > "$1"' put "$2"; }
       runner_exec() {
         shift
         case "$3" in
-          *"tar -c"*) if [ "$(wc -l <"$fx/cuts")" -lt "$CUT" ]; then echo >>"$fx/cuts"; "$@" | head -c 100000; else "$@"; fi ;;
+          *"tar -c"*) if [ "$(wc -l <"$fx/cuts")" -lt "$CUT" ]; then echo >>"$fx/cuts"; "$@" | head -c "${CUTB:-100000}"; else "$@"; fi ;;
           *) [ -z "$MFAIL" ] || return 1; "$@" ;;
         esac
       }
@@ -393,6 +394,20 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   if [ "$frc" -eq 0 ] && [[ "$fo" == *"попытка 1 из 3 — доставлено 0 из 3"*"повтор"* ]] && [[ "$fo" == *"доставлено 3 из 3"*"попытка 2 из 3"* ]]; then
     ok "забор отчётов: обрыв первой попытки — назван, повтор доставил 3 из 3"
   else bad "забор отчётов: обрыв первой попытки (код $frc): $(tr '\n' ' ' <<<"$fo")"; fi
+  # Обрыв после первого файла: повтор тянет лишь два недоставленных, сверенный не трогает.
+  frc=0; CUTB=350000 fetch_probe 1 3 || frc=$?
+  fo="$(cat "$fx/fetch.out")"
+  if [ "$frc" -eq 0 ] && [[ "$fo" == *"попытка 1 из 3 — доставлено 1 из 3"*"повтор недоставленного (2)"* ]] &&
+     [ "$(tr '\0' '\n' <"$fx/work/.fetch.retry0" | sort | tr '\n' '|')" = "a/tests/newman/out/sub/small.json|a/tests/newman/out/sub/with space.json|" ] &&
+     cmp -s "$fx/src/a/tests/newman/out/big.json" "$fx/out/a/tests/newman/out/big.json"; then
+    ok "забор отчётов: повтор — лишь недоставленное (2 из 3), доставлено 3 из 3"
+  else bad "забор отчётов: повтор недоставленного (код $frc): $(tr '\n' ' ' <<<"$fo")"; fi
+  # Отчёт, которого прогон не пишет (шаблон без звезды на отсутствующий путь), — не отказ перечня.
+  frc=0; ( RUNNER_SRC="$fx/src" RUNNER_WORK="$fx/work" bash -c "$RUNNER_MANIFEST_SH" manifest "$fx/src" "$fx/work" \
+      'a/tests/newman/out' 'a/selection.json' 'a/playwright-report' >"$fx/man.out" 2>&1 ) || frc=$?
+  if [ "$frc" -eq 0 ] && [ "$(wc -l <"$fx/man.out")" -eq 3 ]; then
+    ok "перечень отчётов: отсутствующие selection.json и отчёт html — не в перечне, не отказ (3 файла)"
+  else bad "перечень отчётов: отсутствующий путь шаблона — код $frc: $(tr '\n' ' ' <"$fx/man.out")"; fi
   frc=0; fetch_probe 0 3 manifest-fail || frc=$?
   if [ "$frc" -ne 0 ] && grep -q 'перечень отчётов в pod не собран' "$fx/fetch.out"; then
     ok "забор отчётов: перечень pod не собран — код $frc, а не «путей 0»"
@@ -2021,7 +2036,9 @@ src="$1" work="$2"; shift 2
 cd "$src" || exit 1
 shopt -s globstar nullglob
 pats=("$@"); set --
-for g in "${pats[@]}"; do for p in $g; do set -- "$@" "$p"; done; done
+# Шаблон без звезды раскрывается в себя и при отсутствии файла: отчёта, которого прогон не
+# пишет (selection.json — лишь при отборе, отчёт html — не у каждого набора), в перечне нет.
+for g in "${pats[@]}"; do for p in $g; do [ -e "$p" ] && set -- "$@" "$p"; done; done
 { [ $# -eq 0 ] || find "$@" -type f -print0; } | sort -zu > "$work/.fetch.files0" || exit 1
 : > "$work/.manifest" || exit 1
 while IFS= read -r -d '' f; do
@@ -2035,14 +2052,16 @@ POD
 read -r -d '' RUNNER_TAR_SH <<'POD'
 cd "$1" || exit 1
 echo $$ > "$2/.fetching.pid"
-exec tar -c --null --verbatim-files-from -T "$2/.fetch.files0"
+exec tar -c --null --verbatim-files-from -T "${3:-$2/.fetch.files0}"
 POD
 
 # runner_fetch NS OUT — отчёты из pod в OUT со сверкой полноты (⛔ приёмки ws#1303: забор терял
 # файлы молча — путей 17 из 35, целых отчётов 5 из 10, код 0). Перечень собран в pod до
 # передачи; после каждой попытки каждый его путь сверяется на машине по размеру и сумме.
-# Неполная доставка — повтор (STAND_RUNNER_FETCH_TRIES, умолчание 3); не сошлось и после —
-# код 1 и перечень недоставленного. Исход печатается всегда: «доставлено N из M».
+# Неполная доставка — повтор (STAND_RUNNER_FETCH_TRIES, умолчание 3) ЛИШЬ недоставленного:
+# поток через API-сервер рвётся на длинном потоке (прогон w14: 226 и 231 из 237 при повторе
+# целиком), сверенное повторно не тянется; не сошлось и после — код 1 и перечень
+# недоставленного. Исход печатается всегда: «доставлено N из M».
 runner_fetch() {
   local ns="$1" out="$2" tries="${STAND_RUNNER_FETCH_TRIES:-3}" man line path f size sum try n=0 m=0 prc xrc
   local -a globs lost=() st
@@ -2062,10 +2081,21 @@ runner_fetch() {
     log "отчёты раннера: в pod файлов по шаблонам ${globs[*]} — 0, доставлять нечего"
     return 0
   fi
+  local -a want=()
   for try in $(seq 1 "$tries"); do
-    while IFS= read -r line; do rm -f -- "$out/${line#* * }"; done <"$man"
-    runner_exec "$ns" bash -c "$RUNNER_TAR_SH" fetch "$RUNNER_SRC" "$RUNNER_WORK" | tar -x -C "$out" 2>"$out/.fetch.err"
-    st=("${PIPESTATUS[@]}"); prc="${st[0]}"; xrc="${st[1]}"
+    if [ "$try" -eq 1 ]; then
+      while IFS= read -r line; do rm -f -- "$out/${line#* * }"; done <"$man"
+      runner_exec "$ns" bash -c "$RUNNER_TAR_SH" fetch "$RUNNER_SRC" "$RUNNER_WORK" | tar -x -C "$out" 2>"$out/.fetch.err"
+      st=("${PIPESTATUS[@]}")
+    else
+      local lf="$RUNNER_WORK/.fetch.retry0"
+      for path in "${want[@]}"; do rm -f -- "$out/$path"; done
+      printf '%s\0' "${want[@]}" | runner_put "$ns" "$lf" >/dev/null 2>&1 ||
+        { warn "перечень повтора в pod не передан — повтор целиком"; lf="$RUNNER_WORK/.fetch.files0"; }
+      runner_exec "$ns" bash -c "$RUNNER_TAR_SH" fetch "$RUNNER_SRC" "$RUNNER_WORK" "$lf" | tar -x -C "$out" 2>"$out/.fetch.err"
+      st=("${PIPESTATUS[@]}")
+    fi
+    prc="${st[0]}"; xrc="${st[1]}"
     n=0; lost=(); : >"$out/.fetched.list"
     while IFS= read -r line; do
       read -r size sum _ <<<"$line"; path="${line#* * }"; f="$out/$path"
@@ -2079,7 +2109,8 @@ runner_fetch() {
       log "отчёты раннера: доставлено $n из $m (размер и сумма каждого сверены с перечнем pod; попытка $try из $tries) в $out"
       return 0
     fi
-    warn "отчёты раннера: попытка $try из $tries — доставлено $n из $m (код tar в pod $prc, на машине $xrc: $(tail -n 1 "$out/.fetch.err"))$([ "$try" -lt "$tries" ] && printf ' — повтор')"
+    warn "отчёты раннера: попытка $try из $tries — доставлено $n из $m (код tar в pod $prc, на машине $xrc: $(tail -n 1 "$out/.fetch.err"))$([ "$try" -lt "$tries" ] && printf ' — повтор недоставленного (%d)' "${#lost[@]}")"
+    want=("${lost[@]}")
   done
   warn "ОТЧЁТЫ ДОСТАВЛЕНЫ НЕПОЛНО: $n из $m после $tries попыток; недоставлено либо расходится с перечнем pod (${#lost[@]}):"
   printf '  %s\n' "${lost[@]}" >&2
