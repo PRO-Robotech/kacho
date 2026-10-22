@@ -70,7 +70,9 @@ REST») падал ровно по этой причине.
 (`--namespace`, умолчание `kacho`; стенд проб выпускает листы на СВОЁ
 пространство), поэтому проба идёт с **полной проверкой
 цепочки** (`-cacert` + `-authority`), а не с отключённой верификацией: доверие к
-внутреннему CA — часть постановки, а не то, что обходится флагом.
+внутреннему CA — часть постановки, а не то, что обходится флагом. Якорь — `ca.crt`
+листа, который проба предъявляет сама (`LEAF_SECRET`); секрет корня с его закрытым
+ключом проба не читает (`leaf_material`, kacho#3349).
 
 ТРИ КОНТРОЛЯ, БЕЗ КОТОРЫХ ВЕРДИКТ НИЧЕГО НЕ ЗНАЧИТ
 ---------------------------------------------------
@@ -571,6 +573,51 @@ def _kube_secret_file(ns: str, secret: str, key: str, dest: str) -> bool:
     return True
 
 
+# Материал пробы — ОДИН секрет: лист, который проба сама предъявляет встречному
+# контролю. Якорь доверия — `ca.crt` этого же листа, а не секрет корня.
+#
+# Почему не корень. Секрет корня внутреннего CA несёт ЗАКРЫТЫЙ КЛЮЧ, а право
+# чтения секрета до одного его ключа не сужается: учётка, способная прочесть
+# `ca.crt` корня, прочтёт и ключ, то есть выпустит лист на любое имя внутренней
+# сети. Пробе ключ корня не нужен ни для чего. И второе, наблюдаемое: в посадке,
+# где корень рождается вне namespace релиза (стенд проб во внешнем кластере),
+# копии корня в namespace стенда нет и быть не должно
+# (`deploy/tests/helm/internal-ca-root-copy-test.sh`), — проба, искавшая его там,
+# не исполнялась вовсе («HARNESS: не прочитан internal-CA», kacho#3349).
+#
+# Почему `ca.crt` листа годится как якорь. cert-manager кладёт его рядом с листом
+# и обновляет вместе с ним; он от того удостоверяющего центра, что выпустил лист.
+# Внешний и внутренние листенеры подписаны тем же внутренним CA, поэтому якорь
+# листа проверяет их цепочки полностью. Якорь ЧУЖОГО корня цепочку не сведёт:
+# проба уйдёт в отказ харнесса (CONTROL-LIVENESS), а не в зелёное.
+LEAF_SECRET = "api-gateway-client-tls"
+LEAF_KEYS = ("ca.crt", "tls.crt", "tls.key")
+
+
+def leaf_material(ns: str, wd: str, fetch=None) -> tuple[tuple[str, str, str] | None, str]:
+    """Якорь, лист и ключ листа пробы — из секрета листа и только из него.
+
+    Возвращает ((ca, crt, key), "") либо (None, причина). Запасного пути к секрету
+    корня НЕТ сознательно: отсутствие `ca.crt` у листа — отказ харнесса с
+    названной причиной, а не повод прочесть секрет с ключом корня.
+
+    `fetch(ns, secret, key, dest) -> bool` подменяется самопроверкой.
+    """
+    fetch = fetch or _kube_secret_file
+    dest = {"ca.crt": "ca.crt", "tls.crt": "client.crt", "tls.key": "client.key"}
+    out = []
+    for k in LEAF_KEYS:
+        path = os.path.join(wd, dest[k])
+        if not fetch(ns, LEAF_SECRET, k, path):
+            # Без листа встречный контроль не проводится ни для одного домена, а
+            # без якоря не проверяется ни одна цепочка: вердикт об изоляции пуст.
+            return None, (f"не прочитан ключ {k} секрета листа {LEAF_SECRET} — "
+                          f"без него проба не проверит цепочку либо не проведёт "
+                          f"встречный контроль, а вердикт об изоляции был бы пуст")
+        out.append(path)
+    return (out[0], out[1], out[2]), ""
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--namespace", default=os.environ.get("KACHO_NS", "kacho"))
@@ -601,20 +648,11 @@ def main(argv: list[str]) -> int:
         print("HARNESS: grpcurl не найден в PATH — проба невозможна", file=sys.stderr)
         return 2
 
-    ca = os.path.join(wd, "ca.crt")
-    crt = os.path.join(wd, "client.crt")
-    key = os.path.join(wd, "client.key")
-    if not _kube_secret_file(ns, "kacho-internal-ca-root", "ca.crt", ca):
-        print("HARNESS: не прочитан internal-CA (secret kacho-internal-ca-root)", file=sys.stderr)
+    paths, why = leaf_material(ns, wd)
+    if paths is None:
+        print(f"HARNESS: {why}", file=sys.stderr)
         return 2
-    # Client-cert — НЕ «если получится». Без него встречный контроль не проводится
-    # ни для одного домена, а прогон без встречного контроля не имеет предмета.
-    if not (_kube_secret_file(ns, "api-gateway-client-tls", "tls.crt", crt)
-            and _kube_secret_file(ns, "api-gateway-client-tls", "tls.key", key)):
-        print("HARNESS: не прочитан client-cert (secret api-gateway-client-tls) — "
-              "встречный контроль невозможен, а без него вердикт об изоляции пуст",
-              file=sys.stderr)
-        return 2
+    ca, crt, key = paths
 
     # Дескрипторы предмета. Без них grpcurl спрашивал бы их у сервера
     # (reflection), а на cluster-internal листенерах reflection закрыт намеренно.
@@ -910,6 +948,82 @@ def authority_self_test() -> int:
     return rc
 
 
+# Секрет корня — только ИМЕНЕМ в подменном мире самопроверки: проба его не читает.
+_ROOT_SECRET = "kacho-internal-ca-root"
+
+
+def _secret_world(secrets: dict[str, dict[str, bytes]]):
+    """Подменный kubectl: (fetch, журнал запрошенных секретов) над словарём мира."""
+    asked: list[str] = []
+
+    def fetch(_ns: str, secret: str, key: str, dest: str) -> bool:
+        asked.append(secret)
+        data = secrets.get(secret, {}).get(key)
+        if data is None:
+            return False
+        with open(dest, "wb") as fh:
+            fh.write(data)
+        return True
+    return fetch, asked
+
+
+def leaf_material_self_test() -> int:
+    """Проба берёт якорь из листа и НИ В ОДНОМ мире не спрашивает секрет корня.
+
+    Три мира и инъекция прежней формы. Судится журнал запросов, а не исход:
+    прежняя форма на мире «kind» тоже доходила до зелёного, читая при этом
+    секрет с ключом корня, — исход этого не видит, журнал видит.
+    """
+    import tempfile
+    rc = 0
+    leaf = {"ca.crt": b"anchor", "tls.crt": b"leaf", "tls.key": b"leaf-key"}
+    root = {"ca.crt": b"anchor", "tls.crt": b"anchor", "tls.key": b"root-key"}
+    leaf_no_anchor = {k: v for k, v in leaf.items() if k != "ca.crt"}
+    worlds = [
+        # (имя, секреты пространства, ждём материал)
+        ("stand-ns: корня в пространстве нет", {LEAF_SECRET: leaf}, True),
+        ("kind: корень в пространстве ЕСТЬ (близнец)", {LEAF_SECRET: leaf, _ROOT_SECRET: root}, True),
+        ("у листа нет ca.crt, корень есть", {LEAF_SECRET: leaf_no_anchor, _ROOT_SECRET: root}, False),
+    ]
+
+    def prior_form(ns: str, wd: str, fetch) -> tuple[tuple[str, str, str] | None, str]:
+        # Форма до kacho#3349: якорь — из секрета корня.
+        ca = os.path.join(wd, "ca.crt")
+        if not fetch(ns, _ROOT_SECRET, "ca.crt", ca):
+            return None, "не прочитан internal-CA"
+        crt, key = os.path.join(wd, "client.crt"), os.path.join(wd, "client.key")
+        if not (fetch(ns, LEAF_SECRET, "tls.crt", crt) and fetch(ns, LEAF_SECRET, "tls.key", key)):
+            return None, "не прочитан client-cert"
+        return (ca, crt, key), ""
+
+    def judge(impl, secrets: dict, want: bool) -> tuple[bool, str]:
+        fetch, asked = _secret_world(secrets)
+        with tempfile.TemporaryDirectory() as wd:
+            paths, why = impl("t0-x", wd, fetch=fetch)
+            got = paths is not None
+            anchor_ok = (not got) or open(paths[0], "rb").read() == secrets[LEAF_SECRET]["ca.crt"]
+        beyond = sorted(set(asked) - {LEAF_SECRET})
+        ok = got == want and anchor_ok and not beyond and (got or bool(why))
+        return ok, (f"материал {'есть' if got else 'нет'}; спрошены секреты: "
+                    f"{', '.join(sorted(set(asked))) or '—'}"
+                    + (f"; ВНЕ листа: {', '.join(beyond)}" if beyond else "")
+                    + (f"; причина: {why[:60]}" if why else ""))
+
+    for name, secrets, want in worlds:
+        ok, detail = judge(leaf_material, secrets, want)
+        print(f"  {name:<44} {'ОК' if ok else 'ПРОВАЛ'}  [{detail}]")
+        rc |= 0 if ok else 1
+    # Способность упасть: прежняя форма обязана краснеть в обоих мирах с листом —
+    # на stand-ns она не исполняется, на kind исполняется, но читает секрет корня.
+    for name, secrets, want in worlds[:2]:
+        ok, detail = judge(prior_form, secrets, want)
+        caught = not ok
+        print(f"  инъекция «якорь из секрета корня», {name:<36} поймана — "
+              f"{'да' if caught else 'НЕТ'} — {'ОК' if caught else 'ПРОВАЛ'}  [{detail}]")
+        rc |= 0 if caught else 1
+    return rc
+
+
 def self_test() -> int:
     """Гейт обязан краснеть на внесённом дефекте и молчать на законной записи той же формы.
 
@@ -1034,6 +1148,9 @@ def self_test() -> int:
 
     print("\nсамопроверка адресов TLS от пространства имён:")
     rc |= authority_self_test()
+
+    print("\nсамопроверка материала пробы (только секрет листа, ключа корня не видит):")
+    rc |= leaf_material_self_test()
 
     print("\nсамопроверка карты внутренних эндпоинтов:")
     # Домен без эндпоинта роняет прогон, поэтому карта обязана покрывать каждый
