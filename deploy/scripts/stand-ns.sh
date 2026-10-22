@@ -549,6 +549,7 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   tool_probe() {
     rm -rf "$tx/work" "$tx/st"; mkdir -p "$tx/work/out" "$tx/st"
     printf 'standns-bin\n' >"$tx/work/out/stand-ns"; printf 'producer-bin\n' >"$tx/work/out/module-manifests-configmap"
+    printf '[]\n' >"$tx/work/out/godeps.json"
     ( cd "$tx/work/out" && sha256sum -- * >"$tx/work/sums" )
     case "$1" in
       ok) echo 0 >"$tx/work/.rc" ;;
@@ -570,12 +571,15 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
       }
       stand_nodes() { :; }
       sleep() { :; }
+      # Близнецам дерево целиком не нужно: перечень — один go.mod (законный случай несёт всё).
+      [ "$1" = ok ] || tool_lists() { printf 'go.mod\n' >"$1/tracked.txt" && : >"$1/untracked.txt"; }
       build_tool "$tx/st" t3102-probe 3102 && [ -x "$STAND_NS_BIN" ] && [ -x "$MM_PRODUCER" ] ) >"$tx/out" 2>&1
   }
   trc=0; tool_probe ok || trc=$?
   if [ "$trc" -eq 0 ] && [ "$(cat "$tx/st/bin/stand-ns")" = standns-bin ] && [ "$(cat "$tx/st/bin/module-manifests-configmap")" = producer-bin ] &&
-     [ ! -s "$tx/trap" ] && [ -s "$tx/work/src/go.mod" ] && [ "$(tool_sources | tar -t | grep -c '_test\.go$')" = 0 ]; then
-    ok "инструменты подъёма: собраны в pod кластера, суммы сверены, go на машине (ловушка) не звался, исходники — без _test.go"
+     [ "$(cat "$tx/st/bin/godeps.json")" = '[]' ] && [ ! -s "$tx/trap" ] && [ -s "$tx/work/src/go.mod" ] &&
+     cmp -s "$tx/work/tracked.txt" <(git -C "$REPO_ROOT" ls-files) && [ -e "$tx/work/untracked.txt" ]; then
+    ok "инструменты подъёма: собраны в pod кластера, суммы сверены, go на машине (ловушка) не звался, дерево и перечни git ls-files — в pod, запись замыкания забрана"
   else bad "инструменты подъёма: код $trc, ловушка «$(tr '\n' ' ' <"$tx/trap")», $(tail -n 2 "$tx/out" | tr '\n' ' ')"; fi
   for twin in "build-fail|сборка в pod отказала|не собраны" "sum-bad|сумма забранного не сумма pod|не доставлен целым"; do
     trc=0; tool_probe "${twin%%|*}" || trc=$?
@@ -726,10 +730,11 @@ ns_state() {
 #
 # Решение владельца 2026-10-22 (kacho-workspace#1301) дословно: «запиши в рул что бы не
 # использовал мою локальную тачку. использовать только в одном случае если доступа к
-# кластеру нету». Подъёму нужны два Go-инструмента — перенос рендера (tools/standns) и
-# производитель манифестов модулей (tools/modulemanifests, цель module-manifests-configmap
-# получает его готовым через MODULE_MANIFESTS_PRODUCER). `go` на машине не запускается: оба
-# собирает короткий pod кластера, на машине — kubectl, git, tar, gzip и сверка сумм.
+# кластеру нету». Подъёму нужен Go трижды: перенос рендера (tools/standns), производитель
+# манифестов модулей (tools/modulemanifests, цель module-manifests-configmap получает его
+# готовым через MODULE_MANIFESTS_PRODUCER) и замыкание пакетов образов go (`go list -deps`,
+# суд входов ref_guard — `stand-ns inputs -godeps`). `go` на машине не запускается: всё это
+# делает короткий pod кластера, на машине — kubectl, git, tar, gzip и сверка сумм.
 #
 #   пространство  своё, `t<задача>-tool-<6 hex>`: пространства стенда ещё нет (фаза 1 подъёма
 #                 в него не пишет), рабочий стенд не трогается. Помечено как стенд проб
@@ -739,11 +744,12 @@ ns_state() {
 #                 конвейер (setup-go, go-version-file: go.mod), зеркалом Docker Hub; GOTOOLCHAIN=local;
 #   pod           Pod Security restricted: не root, токен учётки не монтируется, возможности
 #                 сброшены, предел памяти; срок — STAND_TOOL_DEADLINE;
-#   исходники     не-тестовые `.go`, go.mod и go.sum рабочей копии (отслеживаемые и новые
-#                 неигнорируемые — тот же вход, что видел `go build` на машине) потоком
-#                 tar|gzip (замер @af1130cea7: 1305 файлов, 5,9 МБ). Встроенный (`go:embed`)
-#                 не-.go файл в замыкании сборки — громкий отказ сборки, а не подмена;
+#   исходники     файлы рабочей копии — отслеживаемые и новые неигнорируемые, ровно перечни
+#                 `git ls-files` машины (их же читает суд входов), потоком tar|gzip; сами
+#                 перечни — файлами рядом (в pod нет git);
 #   сборка        CGO_ENABLED=0, GOOS/GOARCH машины, -trimpath; модули — из сети pod;
+#   замыкание     `stand-ns godeps` над тем же деревом и перечнями — запись godeps.json: её
+#                 читает `stand-ns inputs -godeps` на машине вместо `go list`;
 #   забор         каждый бинарь gzip-потоком; сумма посчитана в pod ДО передачи и сверена на
 #                 машине; не сошлась — повтор (STAND_TOOL_FETCH_TRIES), затем отказ без бинаря.
 TOOL_POD=stand-tool
@@ -754,7 +760,7 @@ TOOL_TTL_MIN=60
 TOOL_NS=""
 # «имя=пакет» — что собирается и под каким именем ложится в каталог bin стенда.
 STAND_TOOLS="stand-ns=./tools/standns/cmd/stand-ns module-manifests-configmap=./tools/modulemanifests/cmd/module-manifests-configmap"
-MM_PRODUCER=""
+MM_PRODUCER="" STAND_GODEPS=""
 
 # Текст pod сборки: ждёт исходники (метка .go), собирает STAND_TOOLS, пишет суммы и код в
 # /work/.rc и ждёт снятия пространства (срок pod — activeDeadlineSeconds).
@@ -765,7 +771,11 @@ mkdir -p "$w/src" "$w/out" "$w/go" "$w/cache" || exit 1
 until [ -e "$w/.go" ]; do sleep 1; done
 ( cd "$w/src" && go version && for t in $STAND_TOOLS; do
     go build -trimpath -o "$w/out/${t%%=*}" "${t#*=}" || exit 1
-  done ) > "$w/build.log" 2>&1
+  done &&
+  # Запись замыкания — тем же инструментом, собранным под узел pod (бинарь машины — под машину).
+  env -u GOOS -u GOARCH go build -o "$w/stand-ns-pod" ./tools/standns/cmd/stand-ns &&
+  "$w/stand-ns-pod" godeps -root "$w/src" -tracked "$w/tracked.txt" -untracked "$w/untracked.txt" > "$w/out/godeps.json"
+) > "$w/build.log" 2>&1
 rc=$?
 [ "$rc" -ne 0 ] || ( cd "$w/out" && sha256sum -- * > "$w/sums" ) || rc=1
 echo "$rc" > "$w/.rc.tmp" && mv "$w/.rc.tmp" "$w/.rc"
@@ -816,13 +826,18 @@ tool_objects() {
          volumes: [{name: "work", emptyDir: {sizeLimit: "6Gi"}}]}}]}'
 }
 
-# tool_sources — поток tar исходников сборки из рабочей копии (состав — шапка раздела).
+# tool_lists DIR — перечни путей рабочей копии, которые читает суд входов (`stand-ns inputs`):
+# DIR/tracked.txt (`git ls-files`) и DIR/untracked.txt (новые неигнорируемые).
+tool_lists() {
+  git -C "$REPO_ROOT" ls-files >"$1/tracked.txt" &&
+    git -C "$REPO_ROOT" ls-files --others --exclude-standard >"$1/untracked.txt"
+}
+
+# tool_sources DIR — поток tar существующих файлов перечней DIR (состав — шапка раздела).
 tool_sources() {
-  git -C "$REPO_ROOT" ls-files -z --cached --others --exclude-standard -- go.mod go.sum '*.go' |
-    while IFS= read -r -d '' f; do
-      case "$f" in *_test.go) continue ;; esac
-      [ -f "$REPO_ROOT/$f" ] && printf '%s\0' "$f"
-    done | tar -c -C "$REPO_ROOT" --null --verbatim-files-from -T -
+  cat "$1/tracked.txt" "$1/untracked.txt" |
+    while IFS= read -r f; do [ -f "$REPO_ROOT/$f" ] && [ ! -L "$REPO_ROOT/$f" ] && printf '%s\0' "$f"; done |
+    tar -c -C "$REPO_ROOT" --null --verbatim-files-from -T -
 }
 
 # Обращения к кластеру сборки — функциями: самопроверка подменяет их фикстурой.
@@ -869,8 +884,13 @@ build_tool() {
   log "инструменты подъёма: сборка во внешнем кластере — пространство $tns, образ $image, GOARCH=$arch (go на машине не запускается)"
   jq '.items[0]' <<<"$objs" | tool_apply || { warn "пространство сборки $tns не заведено"; tool_drop; return 1; }
   tool_ready "$tns" "$objs" || { tool_drop; return 1; }
+  tool_lists "$out" || { warn "перечни путей рабочей копии не прочитаны"; tool_drop; return 1; }
   for try in 1 2 3; do
-    tool_sources | gzip -1 | tool_exec "$tns" sh -c 'rm -rf "$1/src" && mkdir -p "$1/src" && tar -xz -C "$1/src"' put "$TOOL_WORK" && break
+    if tool_sources "$out" | gzip -1 | tool_exec "$tns" sh -c 'rm -rf "$1/src" && mkdir -p "$1/src" && tar -xz -C "$1/src"' put "$TOOL_WORK" &&
+       tool_exec "$tns" sh -c 'cat > "$1"' put "$TOOL_WORK/tracked.txt" <"$out/tracked.txt" &&
+       tool_exec "$tns" sh -c 'cat > "$1"' put "$TOOL_WORK/untracked.txt" <"$out/untracked.txt"; then
+      break
+    fi
     warn "исходники в pod сборки не доставлены (попытка $try из 3)"
     [ "$try" -lt 3 ] || { tool_drop; return 1; }
   done
@@ -890,7 +910,7 @@ build_tool() {
   fi
   local sums
   sums="$(tool_exec "$tns" cat "$TOOL_WORK/sums" </dev/null)" || { warn "суммы сборки из pod не прочитаны"; tool_drop; return 1; }
-  for t in $STAND_TOOLS; do
+  for t in $STAND_TOOLS godeps.json=; do
     name="${t%%=*}"
     want="$(awk -v n="$name" '$2 == n && $1 ~ /^[0-9a-f]{64}$/ { print $1 }' <<<"$sums")"
     [ -n "$want" ] || { warn "суммы $name в перечне pod нет"; tool_drop; return 1; }
@@ -903,12 +923,13 @@ build_tool() {
       warn "$name: сумма забранного ($got) не сумма pod ($want) — попытка $try"
     done
     [ "$got" = "$want" ] || { rm -f "$out/$name.part"; warn "$name из pod не доставлен целым — инструмента нет"; tool_drop; return 1; }
-    chmod 0755 "$out/$name.part" && mv "$out/$name.part" "$out/$name" || { tool_drop; return 1; }
-    log "инструмент $name: собран в $tns, сумма $want сверена с pod"
+    chmod "$([ -n "${t#*=}" ] && echo 0755 || echo 0644)" "$out/$name.part" && mv "$out/$name.part" "$out/$name" || { tool_drop; return 1; }
+    log "$([ -n "${t#*=}" ] && echo инструмент || echo запись) $name: из $tns, сумма $want сверена с pod"
   done
   tool_drop
   STAND_NS_BIN="$out/stand-ns"
   MM_PRODUCER="$out/module-manifests-configmap"
+  STAND_GODEPS="$out/godeps.json"
 }
 
 # ca_namespace — пространство ресурсов cert-manager, ИЗМЕРЕННОЕ у его контроллера.
@@ -1734,7 +1755,7 @@ ref_guard() {
   head="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   git -C "$REPO_ROOT" merge-base --is-ancestor "$sha" "$head" || {
     warn "ревизия образов $sha не предок рабочей копии $head — чарт и образы из разных историй"; return 1; }
-  out="$("$STAND_NS_BIN" inputs -root "$REPO_ROOT" -base "$sha")"; rc=$?
+  out="$("$STAND_NS_BIN" inputs -root "$REPO_ROOT" -base "$sha" -godeps "$STAND_GODEPS")"; rc=$?
   case "$rc" in
     0) log "чарт рабочей копии $head поверх образов $sha: $(tail -1 <<<"$out" | sed 's/^stand-ns inputs: //')" ;;
     1) warn "между ревизией образов $sha и рабочей копией менялись входы сборки образов:"
