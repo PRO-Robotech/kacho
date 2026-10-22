@@ -2,7 +2,7 @@ module github.com/PRO-Robotech/kacho
 
 go 1.26.0
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
@@ -117,7 +117,7 @@ require (
 
 require (
 	github.com/PRO-Robotech/corelib v1.15.0
-	github.com/PRO-Robotech/kaname v0.5.0
+	github.com/PRO-Robotech/kaname v0.5.1-0.20261019211037-a490918c4aee
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0

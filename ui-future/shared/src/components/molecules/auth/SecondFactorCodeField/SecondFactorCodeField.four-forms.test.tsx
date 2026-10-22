@@ -31,7 +31,7 @@ const CEREMONY: LaneAnswer = {
 };
 const ENROLLED: LaneAnswer = {
   status: 200,
-  body: { totp: { enrolled: true, confirmedAt: "x" }, backupCodes: { remaining: 10, total: 10 } },
+  body: { totp: { enrolled: true, confirmedAt: "x" }, backupCodeSet: { remaining: 10, total: 10 } },
 };
 
 const CHOICES = [

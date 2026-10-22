@@ -18,7 +18,7 @@ const NOT_ENROLLED: LaneAnswer = { status: 200, body: { totp: { enrolled: false 
 const PENDING: LaneAnswer = { status: 200, body: { totp: { enrolled: false, pendingUntil: "2026-09-23T12:15:00Z" } } };
 const ENROLLED: LaneAnswer = {
   status: 200,
-  body: { totp: { enrolled: true, confirmedAt: "2026-09-23T12:00:00Z" }, backupCodes: { remaining: 10, total: 10 } },
+  body: { totp: { enrolled: true, confirmedAt: "2026-09-23T12:00:00Z" }, backupCodeSet: { remaining: 10, total: 10 } },
 };
 /** Ответ формы SUA (Р6): моменты, доступность ключей и способы подтверждения. */
 function suaState(over: Record<string, unknown> = {}): LaneAnswer {
@@ -26,7 +26,7 @@ function suaState(over: Record<string, unknown> = {}): LaneAnswer {
     status: 200,
     body: {
       totp: { enrolled: true, confirmedAt: "2026-10-14T18:04:00Z" },
-      backupCodes: { remaining: 10, total: 10, issuedAt: "2026-10-14T18:04:00Z" },
+      backupCodeSet: { remaining: 10, total: 10, issuedAt: "2026-10-14T18:04:00Z" },
       accessKeys: { available: true },
       stepUpMethods: ["lookup_secret", "totp"],
       ...over,
@@ -156,7 +156,12 @@ describe("второй фактор и запасные коды (F8-S7, Р2, Р
       "GET /iam/v1/auth/me": SIGNED_IN,
       "GET /iam/v1/auth/second-factor": suaState({
         totp: { enrolled: true, confirmedAt: "2026-10-14T18:04:00Z", lastUsedAt: "2026-10-15T09:30:00Z" },
-        backupCodes: { remaining: 9, total: 10, issuedAt: "2026-10-14T18:04:00Z", lastUsedAt: "2026-10-15T09:31:00Z" },
+        backupCodeSet: {
+          remaining: 9,
+          total: 10,
+          issuedAt: "2026-10-14T18:04:00Z",
+          lastUsedAt: "2026-10-15T09:31:00Z",
+        },
       }),
       ...SCREEN_READS,
     });
@@ -466,7 +471,7 @@ describe("второй фактор и запасные коды (F8-S7, Р2, Р
     lane = installLane({
       "GET /iam/v1/auth/me": SIGNED_IN,
       "GET /iam/v1/auth/second-factor": suaState({
-        backupCodes: { remaining: 2, total: 10, issuedAt: "2026-10-14T18:04:00Z" },
+        backupCodeSet: { remaining: 2, total: 10, issuedAt: "2026-10-14T18:04:00Z" },
       }),
       ...SCREEN_READS,
     });
