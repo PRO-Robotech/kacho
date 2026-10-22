@@ -66,6 +66,14 @@ case "$args" in
   *" config view "*"jsonpath"*) printf 'https://127.0.0.1:6443' ;;
   *" config view "*)
     printf 'apiVersion: v1\nkind: Config\ncurrent-context: %s\n' "$FAKE_CURRENT" ;;
+  *" get deploy -o jsonpath="*)
+    # Выборка шага машины (write_target): строка на Deployment «имя<TAB>секрет ключ;».
+    # Иная выборка — не та, что задаёт скрипт: отказ, а не ответ наугад.
+    case "$args" in
+      *'{range .items[*]}{.metadata.name}{"\t"}{range .spec.template.spec.containers[*]}{range .env[?(@.name=="KANAME_SECOND_FACTOR_ENC_KEY")]}{.valueFrom.secretKeyRef.name}{" "}{.valueFrom.secretKeyRef.key}{";"}{end}{end}{"\n"}{end}'*) ;;
+      *) echo "error: выборка jsonpath не та: $args" >&2; exit 1 ;;
+    esac
+    printf 'vpc\t\n%s\tsf-secret enc_key;%s\n' "${FAKE_DEPLOY:-kaname-x}" "${FAKE_SECOND_REF:+$FAKE_SECOND_REF;}" ;;
   *" get deploy -o json "*|*" get deployment "*" -o json "*)
     case "$args" in
       *" api-gateway "*)
@@ -88,7 +96,10 @@ JSON
     f=""; prev=""
     for a in "$@"; do [ "$prev" = "--patch-file" ] && f="$a"; prev="$a"; done
     [ -n "$f" ] || { echo "patch без --patch-file" >&2; exit 1; }
-    python3 -c 'import json,sys,base64; print(base64.b64decode(json.load(open(sys.argv[1]))["data"]["enc_key"]).decode(), end="")' "$f" >"$FAKE_DIR/secret" ;;
+    # Без интерпретатора: подставной kubectl исполняется и окружением машины, где python3 — ловушка.
+    v="$(sed -n 's/^{"data":{"enc_key":"\([A-Za-z0-9+\/=]*\)"}}$/\1/p' "$f")"
+    [ -n "$v" ] || { echo "заплатка не в форме {\"data\":{\"enc_key\":\"…\"}}: $(cat "$f")" >&2; exit 1; }
+    printf '%s' "$v" | base64 -d >"$FAKE_DIR/secret" ;;
   *" get configmap kaname-x-config "*)
     printf 'logger:\n  level: INFO\nauthn:\n  login:\n    address-attempts: %s\n    address-window: "15m"\n' "${FAKE_CM_ATTEMPTS:-5}" ;;
   *" rollout restart "*) : ;;
@@ -748,11 +759,57 @@ func (e *wrapEnv) podEnv(t *testing.T, ns string) (pod []string, cond string) {
 		"KACHO_WRAP_POD_NS_FILE=" + nsf, "KACHO_STAND_NS=" + ns, "HOME=" + t.TempDir()}, cond
 }
 
+// machineTraps — каталог ловушек машины: python3 и openssl пишут вызов в $FAKE_DIR/trap
+// и отвечают 97. Шаг машины (write) не зовёт ни того, ни другого (⛔ приёмки w14, вариант
+// диспетчера «а»: суд цели, заплатки и конечных точек — в pod).
+func (e *wrapEnv) machineTraps(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(e.dir, "trap-bin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"python3", "openssl"} {
+		body := "#!/bin/sh\necho \"" + name + " $*\" >>\"$FAKE_DIR/trap\"\nexit 97\n"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// ledgerStep — строка ведомости условий для просьбы pod так, как её читает runner_conds
+// stand-ns.sh: команда (путь и закреплённые слова) и операция из перечня строки. Нет
+// строки machine либо операции нет в перечне — 125 без исполнения.
+func ledgerStep(ledger string, f []string) (argv []string, rc int) {
+	if len(f) < 2 {
+		return nil, 125
+	}
+	for _, l := range strings.Split(ledger, "\n") {
+		c := strings.Split(l, "\t")
+		if strings.HasPrefix(l, "#") || len(c) < 6 || c[0] != f[0] || c[1] != "machine" {
+			continue
+		}
+		for _, op := range strings.Split(c[5], ",") {
+			if op == f[1] {
+				words := strings.Fields(c[3])
+				return append(append([]string{filepath.Join("..", words[0])}, words[1:]...), f[1:]...), 0
+			}
+		}
+		return nil, 125
+	}
+	return nil, 125
+}
+
 // serveMachine — машина стенда (цикл runner_run stand-ns.sh): каждую просьбу pod
-// «<id>.req» исполняет этим же скриптом в окружении машины и кладёт «<id>.out»,
-// «<id>.rc». Возвращает остановку.
+// «<id>.req» исполняет командой строки ведомости в окружении машины (python3 и
+// openssl — ловушки) и кладёт «<id>.out», «<id>.rc». Возвращает остановку.
 func (e *wrapEnv) serveMachine(t *testing.T, cond, ns string) func() {
 	t.Helper()
+	traps := e.machineTraps(t)
+	ledger, err := os.ReadFile("scripts/stand-conditions.tsv")
+	if err != nil {
+		t.Fatal(err)
+	}
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
@@ -772,9 +829,15 @@ func (e *wrapEnv) serveMachine(t *testing.T, cond, ns string) func() {
 				id := strings.TrimSuffix(req, ".req")
 				_ = os.Rename(req, id+".taken")
 				f := strings.Split(strings.TrimRight(string(b), "\n"), "\t")
-				cmd := exec.Command("bash", append([]string{"scripts/stand-second-factor-wrap-rotate.sh"}, f[1:]...)...)
+				argv, rc := ledgerStep(string(ledger), f)
+				if rc != 0 {
+					_ = os.WriteFile(id+".out", []byte("шаг не объявлен ведомостью\n"), 0o600)
+					_ = os.WriteFile(id+".rc", []byte(strconv.Itoa(rc)+"\n"), 0o600)
+					continue
+				}
+				cmd := exec.Command("bash", argv...)
 				cmd.Env = append([]string{
-					"PATH=" + filepath.Join(e.dir, "bin") + ":" + os.Getenv("PATH"),
+					"PATH=" + traps + ":" + filepath.Join(e.dir, "bin") + ":" + os.Getenv("PATH"),
 					"HOME=" + os.Getenv("HOME"),
 					"FAKE_DIR=" + e.dir,
 					"FAKE_CURRENT=u/x-infra",
@@ -855,6 +918,17 @@ func TestWrapRotate_InRunnerPodTheWriteIsAMachineStep(t *testing.T) {
 	if strings.Contains(r.out, k1) || strings.Contains(r.out, k2) {
 		t.Fatalf("материал ключа напечатан в выводе pod")
 	}
+	// Машина в шаге условия — только kubectl и оболочка: ловушки python3 и openssl молчат
+	// за четыре шага (set K2,K1 · set K2 · restore · restore без ключа).
+	if b, _ := os.ReadFile(filepath.Join(e.dir, "trap")); len(b) != 0 {
+		t.Fatalf("шаг машины звал интерпретатор либо openssl:\n%s", b)
+	}
+	// Конечные точки служб судит pod: опросы конечных точек — без контекста -client.
+	for _, l := range strings.Split(r.log, "\n") {
+		if strings.Contains(l, " get endpointslices ") && strings.Contains(l, "--context u/x-client") {
+			t.Errorf("конечные точки опрошены контекстом машины, а не учёткой pod: %s", l)
+		}
+	}
 
 	// Шаг машины — только на машине и только своим пространством.
 	e2 := newWrapEnv(t, k1)
@@ -872,6 +946,52 @@ func TestWrapRotate_InRunnerPodTheWriteIsAMachineStep(t *testing.T) {
 		r = e2.run(t, mach, args...)
 		if r.code != 2 || e2.secret(t) != k1 {
 			t.Errorf("write %v: ждался отказ 2, получен %d:\n%s", args, r.code, r.out)
+		}
+	}
+
+	// Координату секрета машина выводит сама: две ссылки на секрет в пространстве — отказ 3,
+	// секрет не тронут (близнец — законный шаг выше, одна ссылка).
+	e3 := newWrapEnv(t, k1)
+	mach3 := []string{"KACHO_CLIENT_CONTEXT=u/x-client", "KACHO_STAND_NS=" + ns,
+		"KACHO_STAND_COND_STATE=" + filepath.Join(e3.dir, "ms"), "FAKE_SECOND_REF=other-secret enc_key"}
+	r = e3.run(t, mach3, "write", "set", "K2,K1", "key1")
+	if r.code != 3 || e3.secret(t) != k1 || !strings.Contains(r.out, "2, а не 1") {
+		t.Fatalf("write при двух ссылках на секрет: ждался отказ 3, получен %d, секрет %q:\n%s", r.code, e3.secret(t), r.out)
+	}
+
+	// Ловушка способна сработать: тот же скрипт на машине мимо write (set — разбор
+	// Deployment'ов интерпретатором) зовёт python3 — ловушка пишет вызов.
+	e4 := newWrapEnv(t, k1)
+	traps := e4.machineTraps(t)
+	r = e4.run(t, []string{"PATH=" + traps + ":" + filepath.Join(e4.dir, "bin") + ":" + os.Getenv("PATH"),
+		"KACHO_CLIENT_CONTEXT=u/x-client", "KACHO_STAND_NS=" + ns}, "set", "K2,K1", "--state", e4.state)
+	if b, _ := os.ReadFile(filepath.Join(e4.dir, "trap")); r.code == 0 || !strings.Contains(string(b), "python3") {
+		t.Fatalf("ловушка python3 не сработала на пути мимо write: код %d, ловушка %q", r.code, b)
+	}
+}
+
+// TestWrapRotate_LedgerFixesTheWriteSubcommand — ⛔ приёмки w14 (опыты J4–J6): строка
+// ведомости закрепляет подкоманду write, просьба pod выбирает лишь операцию из перечня
+// строки. limit, cell, errors, set мимо write, сам write и имя с escape-последовательностью
+// — 125 без исполнения; законная просьба — «write set KEYS KEY».
+func TestWrapRotate_LedgerFixesTheWriteSubcommand(t *testing.T) {
+	b, err := os.ReadFile("scripts/stand-conditions.tsv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv, rc := ledgerStep(string(b), []string{"wrap-rotate", "set", "K2,K1", "k"})
+	if rc != 0 || strings.Join(argv[1:], " ") != "write set K2,K1 k" || !strings.HasSuffix(argv[0], "scripts/stand-second-factor-wrap-rotate.sh") {
+		t.Fatalf("законная просьба set: argv %q, код %d", argv, rc)
+	}
+	if argv, rc = ledgerStep(string(b), []string{"wrap-rotate", "restore", "k"}); rc != 0 || strings.Join(argv[1:], " ") != "write restore k" {
+		t.Fatalf("законная просьба restore: argv %q, код %d", argv, rc)
+	}
+	for _, f := range [][]string{
+		{"wrap-rotate", "limit"}, {"wrap-rotate", "cell", "x"}, {"wrap-rotate", "errors", "2026-01-01T00:00:00Z"},
+		{"wrap-rotate", "write", "set", "K2,K1", "k"}, {`wrap\055rotate`, "set", "K2,K1", "k"}, {"wrap-rotate"},
+	} {
+		if argv, rc := ledgerStep(string(b), f); rc != 125 {
+			t.Errorf("просьба %q: ждался 125 без исполнения, получен argv %q", f, argv)
 		}
 	}
 }
