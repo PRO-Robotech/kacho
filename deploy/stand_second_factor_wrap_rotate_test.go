@@ -730,3 +730,148 @@ func lastLine(s string) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	return lines[len(lines)-1]
 }
+
+// podEnv — окружение pod раннера своего пространства (kacho#3346): учётка pod
+// называет пространство стенда, каталог просьб машине есть, файла конфигурации
+// kubectl нет. machine — окружение шага машины: названный контекст -client.
+func (e *wrapEnv) podEnv(t *testing.T, ns string) (pod []string, cond string) {
+	t.Helper()
+	cond = filepath.Join(e.dir, "cond")
+	if err := os.MkdirAll(cond, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	nsf := filepath.Join(e.dir, "sa-namespace")
+	if err := os.WriteFile(nsf, []byte(ns), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return []string{"KUBERNETES_SERVICE_HOST=10.0.0.1", "KACHO_STAND_COND_DIR=" + cond,
+		"KACHO_WRAP_POD_NS_FILE=" + nsf, "KACHO_STAND_NS=" + ns, "HOME=" + t.TempDir()}, cond
+}
+
+// serveMachine — машина стенда (цикл runner_run stand-ns.sh): каждую просьбу pod
+// «<id>.req» исполняет этим же скриптом в окружении машины и кладёт «<id>.out»,
+// «<id>.rc». Возвращает остановку.
+func (e *wrapEnv) serveMachine(t *testing.T, cond, ns string) func() {
+	t.Helper()
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(50 * time.Millisecond):
+			}
+			reqs, _ := filepath.Glob(filepath.Join(cond, "*.req"))
+			for _, req := range reqs {
+				b, err := os.ReadFile(req)
+				if err != nil {
+					continue
+				}
+				id := strings.TrimSuffix(req, ".req")
+				_ = os.Rename(req, id+".taken")
+				f := strings.Split(strings.TrimRight(string(b), "\n"), "\t")
+				cmd := exec.Command("bash", append([]string{"scripts/stand-second-factor-wrap-rotate.sh"}, f[1:]...)...)
+				cmd.Env = append([]string{
+					"PATH=" + filepath.Join(e.dir, "bin") + ":" + os.Getenv("PATH"),
+					"HOME=" + os.Getenv("HOME"),
+					"FAKE_DIR=" + e.dir,
+					"FAKE_CURRENT=u/x-infra",
+					"KACHO_WRAP_ENDPOINTS_INTERVAL=0",
+					"KACHO_CLIENT_CONTEXT=u/x-client",
+					"KACHO_STAND_NS=" + ns,
+					"KACHO_STAND_COND_STATE=" + filepath.Join(e.dir, "machine-state"),
+				}, e.extra...)
+				out, err := cmd.CombinedOutput()
+				code := 0
+				if ee, ok := err.(*exec.ExitError); ok {
+					code = ee.ExitCode()
+				} else if err != nil {
+					code = 125
+				}
+				_ = os.WriteFile(id+".out", out, 0o600)
+				_ = os.WriteFile(id+".rc", []byte(strconv.Itoa(code)+"\n"), 0o600)
+			}
+		}
+	}()
+	return func() { close(stop); <-done }
+}
+
+// TestWrapRotate_InRunnerPodTheWriteIsAMachineStep — kacho#3346, kacho#3348: в
+// pod раннера учётка только читает, поэтому запись условия (секрет, перекат) —
+// просьба машине, а исход (край, маршрут, самоотчёт старта) pod судит сам. Ни
+// одной записи из pod: patch и rollout restart идут лишь контекстом -client машины.
+// Инъекция — шаг машины убран (просьбу никто не взял): код 3 «условие не
+// создано», секрет не тронут, а не 0 и не зелёное.
+func TestWrapRotate_InRunnerPodTheWriteIsAMachineStep(t *testing.T) {
+	const ns = "t3038-wrap"
+
+	// Инъекция: машины нет.
+	e0 := newWrapEnv(t, k1)
+	pod0, cond0 := e0.podEnv(t, ns)
+	r := e0.run(t, append(pod0, "KACHO_WRAP_MACHINE_WAIT=2"), "set", "K2,K1", "--state", e0.state)
+	if r.code != 3 || !strings.Contains(r.out, "условие не создано") || !strings.Contains(r.out, "шаг машины") {
+		t.Fatalf("шаг машины убран: ждался код 3 «условие не создано: шаг машины…», получен %d:\n%s", r.code, r.out)
+	}
+	if e0.secret(t) != k1 || strings.Contains(r.log, " patch ") || strings.Contains(r.log, "rollout restart") {
+		t.Fatalf("без шага машины pod записал сам: секрет %q, журнал:\n%s", e0.secret(t), r.log)
+	}
+	if left, _ := filepath.Glob(filepath.Join(cond0, "*.req")); len(left) != 0 {
+		t.Fatalf("невзятая просьба осталась лежать: %v", left)
+	}
+
+	// Близнец: машина служит — тот же вызов создаёт условие.
+	e := newWrapEnv(t, k1)
+	pod, cond := e.podEnv(t, ns)
+	stop := e.serveMachine(t, cond, ns)
+	defer stop()
+	r = e.run(t, pod, "set", "K2,K1", "--state", e.state)
+	if r.code != 0 || !strings.Contains(r.out, "keys=2") {
+		t.Fatalf("pod раннера с машиной: set K2,K1 — код %d:\n%s", r.code, r.out)
+	}
+	parts := strings.Split(e.secret(t), ",")
+	if len(parts) != 2 || parts[1] != k1 || !hex64.MatchString(parts[0]) {
+		t.Fatalf("K2,K1 через шаг машины: секрет %q", e.secret(t))
+	}
+	k2 := parts[0]
+	r = e.run(t, pod, "set", "K2", "--state", e.state)
+	if r.code != 0 || e.secret(t) != k2 || !strings.Contains(r.out, "keys=1") {
+		t.Fatalf("pod раннера: set K2 — код %d, секрет %q:\n%s", r.code, e.secret(t), r.out)
+	}
+	r = e.run(t, pod, "restore", "--state", e.state)
+	if r.code != 0 || e.secret(t) != k1 {
+		t.Fatalf("pod раннера: restore — код %d, секрет %q:\n%s", r.code, e.secret(t), r.out)
+	}
+	r = e.run(t, pod, "restore", "--state", e.state)
+	if r.code != 0 || e.secret(t) != k1 || !strings.Contains(r.out, "восстанавливать нечего") {
+		t.Fatalf("pod раннера: повторный restore — код %d, секрет %q:\n%s", r.code, e.secret(t), r.out)
+	}
+	for _, l := range strings.Split(r.log, "\n") {
+		if (strings.Contains(l, " patch ") || strings.Contains(l, "rollout restart")) && !strings.Contains(l, "--context u/x-client") {
+			t.Errorf("запись не шагом машины (без контекста -client): %s", l)
+		}
+	}
+	if strings.Contains(r.out, k1) || strings.Contains(r.out, k2) {
+		t.Fatalf("материал ключа напечатан в выводе pod")
+	}
+
+	// Шаг машины — только на машине и только своим пространством.
+	e2 := newWrapEnv(t, k1)
+	pod2, _ := e2.podEnv(t, ns)
+	r = e2.run(t, append(pod2, "KACHO_STAND_COND_STATE="+filepath.Join(e2.dir, "ms")), "write", "set", "K2,K1", "key1")
+	if r.code != 2 || e2.secret(t) != k1 {
+		t.Fatalf("write в pod раннера: ждался отказ 2, получен %d:\n%s", r.code, r.out)
+	}
+	mach := []string{"KACHO_CLIENT_CONTEXT=u/x-client", "KACHO_STAND_NS=" + ns, "KACHO_STAND_COND_STATE=" + filepath.Join(e2.dir, "ms")}
+	for _, args := range [][]string{
+		{"write", "set", "K2,K1", "key1", "--ns", "t1-other"},
+		{"write", "set", "K2,K1", "../up"},
+		{"write", "drop", "key1"},
+	} {
+		r = e2.run(t, mach, args...)
+		if r.code != 2 || e2.secret(t) != k1 {
+			t.Errorf("write %v: ждался отказ 2, получен %d:\n%s", args, r.code, r.out)
+		}
+	}
+}
