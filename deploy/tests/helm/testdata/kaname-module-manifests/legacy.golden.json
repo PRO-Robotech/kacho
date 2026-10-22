@@ -1,0 +1,29 @@
+{
+  "annotations": {
+    "kacho.cloud/module-manifests-digest": "unset"
+  },
+  "config_manifests": {
+    "admission": "",
+    "compose-model": false,
+    "dir": "/etc/kaname/manifests",
+    "required": true
+  },
+  "mounts": {
+    "kaname": [
+      {
+        "mountPath": "/etc/kaname/manifests",
+        "name": "module-manifests",
+        "readOnly": true
+      }
+    ]
+  },
+  "volumes": [
+    {
+      "configMap": {
+        "name": "kacho-module-manifests",
+        "optional": true
+      },
+      "name": "module-manifests"
+    }
+  ]
+}

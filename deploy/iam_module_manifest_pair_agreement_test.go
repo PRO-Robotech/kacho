@@ -213,6 +213,26 @@ func TestManifestPairAuditFindsEitherHalf(t *testing.T) {
 		}
 	})
 
+	// ПОДБОР ПО МЕТКЕ — второй способ НАЗВАТЬ источник (kacho#3356). Пара судится
+	// по источнику, а не по одному из его написаний: селектор без опоры — та же
+	// половина пары, что имя без опоры, а селектор с опорой — пара целиком.
+	selector := func(required string) []byte {
+		return []byte("kaname:\n  manifests:\n" +
+			"    selector: {\"kaname.in-cloud.io/module-manifest\": \"true\"}\n" +
+			"    required: " + required + "\n")
+	}
+	t.Run("селектор назван, опоры нет — находка", func(t *testing.T) {
+		findings, census, err := auditManifestPairAgreement(map[string][][]byte{
+			"проба": {selector("false")},
+		})
+		if err != nil {
+			t.Fatalf("обход не состоялся: %v", err)
+		}
+		if len(findings) != 1 || !strings.Contains(findings[0].Text, "selector") {
+			t.Fatalf("половина пары с селектором не найдена либо не названа: %+v (%s)", findings, census)
+		}
+	})
+
 	// ЗАКОННЫЕ БЛИЗНЕЦЫ. Без них краснота выше неотличима от судьи, отвергающего
 	// всякий вход.
 	twins := []struct {
@@ -224,6 +244,10 @@ func TestManifestPairAuditFindsEitherHalf(t *testing.T) {
 		{"цепочка не объявляет ни одной половины", [][]byte{[]byte("kaname: {}\n")}},
 		{"последнее объявление цепочки достраивает пару", [][]byte{
 			body("kacho-module-manifests", "-"), body("-", "true"),
+		}},
+		{"селектор вместо имени, опора объявлена", [][]byte{selector("true")}},
+		{"селектор пуст — подбора нет, пара по имени", [][]byte{
+			body("", "false"), []byte("kaname:\n  manifests:\n    selector: {}\n"),
 		}},
 	}
 	for _, tw := range twins {

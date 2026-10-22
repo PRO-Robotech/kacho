@@ -1,0 +1,11 @@
+{
+  "annotations": {},
+  "config_manifests": {
+    "admission": "",
+    "compose-model": false,
+    "dir": "",
+    "required": false
+  },
+  "mounts": {},
+  "volumes": []
+}
