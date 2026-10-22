@@ -45,13 +45,23 @@ OFFLINE_SOURCE="kaname-offline-render-not-installable"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
-# shellcheck source=deploy/tests/helm/premise.sh
-. "$HERE/premise.sh"
 EXPECTED_ASSERTIONS=3
 
 require_helm
 require_python_yaml
-premise_chart_deps "$SCRIPT"
+command -v openssl >/dev/null 2>&1 || fatal "нет openssl — предполёт его требует, и без него он отказал бы раньше рендера"
+# Зависимости умбреллы — вопрос их владельца (тот же, что у premise.sh), но ответ
+# — исходом этого каталога: «условие не создано» обязано нести перепись
+# (three-outcomes-distinguishable-test.sh), а пропуск premise.sh её не печатает.
+DEPS_RC=0
+DEPS_OUT="$(bash "$DEPLOY/scripts/helm-umbrella-deps.sh" --check 2>&1)" || DEPS_RC=$?
+case "$DEPS_RC" in
+  0) ;;
+  2) printf '%s\n' "$DEPS_OUT" >&2
+     fatal "зависимости умбреллы не материализованы — рендер цепочки невозможен (собрать: bash deploy/scripts/helm-umbrella-deps.sh)" ;;
+  *) printf '%s\n' "$DEPS_OUT" >&2
+     fail "владелец вопроса о зависимостях сам отказал кодом $DEPS_RC — это не «условие не создано»" ;;
+esac
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

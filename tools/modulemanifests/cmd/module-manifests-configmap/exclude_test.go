@@ -38,6 +38,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/gitenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -243,9 +244,9 @@ func TestUnifiedExcludeRemovesTheModuleCollisionWithASecondSupplier(t *testing.T
 		}
 		writeFile(t, filepath.Join(tree, "registry-platform", "manifest.yaml"), string(secondSupplier))
 		for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}} {
-			cmd := exec.Command("git", args...)
-			cmd.Dir = tree
-			if b, err := cmd.CombinedOutput(); err != nil {
+			// Окружение вычищено помощником: GIT_DIR вызывающего иначе увёл бы
+			// индекс фикстуры в рабочую копию прогона.
+			if b, err := gitenv.Command(tree, args...).CombinedOutput(); err != nil {
 				t.Fatalf("git %v: %v\n%s", args, err, b)
 			}
 		}
