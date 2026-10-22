@@ -344,8 +344,8 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
     '(.items[] | select(.kind == "Pod") | .spec.hostAliases[0].hostnames) = ["t3102-probe.example"]|чужое имя' \
     '(.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.valueFrom) | .valueFrom.secretKeyRef.optional) = false|обязательный секрет' \
     '(.items[] | select(.kind == "Pod") | .metadata.namespace) = "kacho"|пространство kacho'; do
-    rj="$(jq "${twin%|*}" <<<"$ro" | runner_judge t3102-probe)" && bad "раннер: близнец «${twin#*|}» прошёл суд" ||
-      { [ -n "$rj" ] && ok "раннер: близнец «${twin#*|}» — находка"; } || bad "раннер: близнец «${twin#*|}» — код без находки"
+    rj="$(jq "${twin%|*}" <<<"$ro" | runner_judge t3102-probe)" && bad "раннер: близнец «${twin##*|}» прошёл суд" ||
+      { [ -n "$rj" ] && ok "раннер: близнец «${twin##*|}» — находка"; } || bad "раннер: близнец «${twin##*|}» — код без находки"
   done
   if jq -e '[.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.name | startswith("KACHO_CLOUD_ADMIN"))] | length == 0' \
       <<<"$(runner_objects t3102-probe newman img:1 '' deploy true v1.35.7 6 1.9.3)" >/dev/null; then
