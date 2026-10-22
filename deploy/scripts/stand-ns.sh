@@ -1554,6 +1554,8 @@ cmd_run() {
   [ -z "$RUN_OUT" ] || [ -n "$RUN_RUNNER" ] || die "run: --out — лишь с --runner (без раннера отчёты пишет команда на машине сама)" 2
   ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу t<номер задачи>-<коротко>; пространство kacho цель не трогает" 2
   ttl_valid "$TTL_HOURS" || die "STAND_TTL_HOURS=«$TTL_HOURS» вне 1..$TTL_MAX_HOURS" 2
+  [ -z "$RUN_RUNNER" ] || [ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ] ||
+    die "run --runner: в рабочей копии незакоммиченные правки — pod исполняет коммит (git archive HEAD), закоммить их" 2
   need_tools; guard_context
   state="$(ns_state "$ns")" || die "состояние пространства $ns НЕ ПРОЧИТАНО — кластер не ответил" 2
   [ "$state" = absent ] || die "пространство $ns уже есть ($state): прогон поднимает СВОЙ стенд и его же снимает — возьми другое имя" 1
@@ -1596,9 +1598,10 @@ cmd_run() {
 #   образ         по виду: newman — node мажорной версии setup-node и newman мажорной
 #                 `npm i -g newman@N` из .github/workflows/e2e-newman.yml; browser —
 #                 образ playwright версии пина `@playwright/test` ui-future/e2e (chromium —
-#                 его). Версии читаются из ДЕРЕВА ревизии стенда (runner_versions), второго
+#                 его). Версии читаются из ДЕРЕВА головы (runner_versions), второго
 #                 объявления нет; kubectl pod — версии сервера кластера;
-#   исходники     `git archive` ревизии стенда потоком в pod: правки рабочей копии туда не едут;
+#   исходники     `git archive` головы рабочей копии потоком в pod (образы — ревизии REF, их
+#                 расхождение судит ref_guard подъёма); незакоммиченная правка — отказ 2 до подъёма;
 #   окружение     тем же cmd_forward изнутри pod (`pod-forward`): происхождение консоли
 #                 `https://<ns>.kacho.test:<порт>` — то же, что запечено при подъёме, имя —
 #                 на петлю pod (hostAliases), сам проброс — kubectl учёткой pod;
@@ -1816,7 +1819,10 @@ runner_explain() {
 runner_run() {
   local ns="$1" ref="$2" sha vers node newman grpc pw image kver rel secret out rc="" phase miss=0
   shift 2
-  sha="$(git -C "$REPO_ROOT" rev-parse --verify "${ref}^{commit}" 2>/dev/null)" || { warn "ревизия «$ref» не разрешается"; return "$RUN_UNMET"; }
+  # Исходники — коммит рабочей копии (пробы и их окружение — его), образы — ревизии REF
+  # (правило их расхождения — ref_guard подъёма); правки вне коммита pod не увидел бы — их
+  # отклонил cmd_run до подъёма.
+  sha="$(git -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" || { warn "голова рабочей копии не разрешается"; return "$RUN_UNMET"; }
   vers="$(runner_versions "$sha")" || return "$RUN_UNMET"
   read -r node newman grpc pw <<<"$vers"
   kver="$(kubectl version -o json --request-timeout=30s 2>/dev/null | jq -r '.serverVersion.gitVersion // empty')"
@@ -1833,7 +1839,7 @@ runner_run() {
   runner_judge "$ns" <<<"$objs" >&2 || { warn "форма объектов раннера не прошла суд (выше)"; return "$RUN_UNMET"; }
   stand_nodes "раннер $RUN_RUNNER"
   kubectl apply -f - <<<"$objs" >/dev/null || { warn "объекты раннера не применены"; return "$RUN_UNMET"; }
-  log "раннер $RUN_RUNNER: образ $image, kubectl $kver, ревизия $sha${secret:+, администратор облака — секрет $secret}"
+  log "раннер $RUN_RUNNER: образ $image, kubectl $kver, исходники $sha, образы стенда — ревизии $ref${secret:+, администратор облака — секрет $secret}"
   kubectl -n "$ns" wait --for=condition=Ready "pod/$RUNNER_POD" --timeout="${STAND_RUNNER_READY_WAIT:-600}s" >/dev/null ||
     { runner_explain "$ns"; warn "pod раннера не готов — команда НЕ исполнялась"; return "$RUN_UNMET"; }
   git -C "$REPO_ROOT" archive --format=tar "$sha" | kubectl -n "$ns" exec -i "$RUNNER_POD" -c run -- tar -x -C /src ||
