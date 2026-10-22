@@ -465,7 +465,7 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   for twin in "BUF_STUB_SUMS=sha256.bad|сумма не сошлась" "BUF_STUB_GONE=1|выпуска нет" "BUF_STUB_SAYS=1.71.0|бинарь называет другую версию"; do
     brc=0; buf_probe 1.72.0 "${twin%|*}" || brc=$?
     bo="$(tr '\n' ' ' <"$bx/out")"
-    if [ "$brc" -ne 0 ] && [[ "$bo" == "buf 1.72.0:"* ]] && [ ! -e "$bx/bin/buf" ]; then ok "раннер: buf — ${twin##*|}: код $brc, «$bo», в каталоге пусто"
+    if [ "$brc" -ne 0 ] && [[ "$bo" == *"buf 1.72.0: "* ]] && [ ! -e "$bx/bin/buf" ]; then ok "раннер: buf — ${twin##*|}: код $brc, «$bo», в каталоге пусто"
     else bad "раннер: buf — ${twin##*|}: код $brc, «$bo», в каталоге $(ls "$bx/bin")"; fi
   done
   brc=0; buf_probe 1.72 || brc=$?
