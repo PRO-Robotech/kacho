@@ -50,9 +50,9 @@ SCRIPT="$(basename "$0")"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
-# Семь режимов подставного kubectl · одно утверждение «край спрошен» · провязка
+# Восемь режимов подставного kubectl · «край спрошен» · файл учётки pod снят · провязка
 # на настоящем рецепте и на трёх близнецах.
-EXPECTED_ASSERTIONS=12
+EXPECTED_ASSERTIONS=14
 
 good() { echo "  ✓ $1"; }
 
@@ -87,6 +87,31 @@ mode="${KSTUB_MODE:-}"
 if [ "$mode" = unreachable ]; then
   echo "E: The connection to the server localhost:8080 was refused" >&2
   exit 1
+fi
+
+# Свойство настоящего kubectl (client-go clientcmd, `IsDefaultConfig`): без файла
+# конфигурации учётка pod (in-cluster) берётся, лишь пока конфигурация равна
+# умолчанию; `--request-timeout` её меняет — и kubectl идёт на localhost:8080
+# (kacho#3346, прогон 5 сборки #3317: Ф12-35 «край не готов» в pod раннера).
+# Подставной обязан вести себя так же во ВСЕХ режимах — иначе он снисходительнее
+# продукта.
+if [ -z "${KUBECONFIG:-}" ] && [ ! -e "${HOME:-/nonexistent}/.kube/config" ] && [[ "$args" == *--request-timeout* ]]; then
+  echo "E1022 memcache.go:381] \"Couldn't get current server API group list\" err=\"Get \\\"http://localhost:8080/api?timeout=10s\\\": dial tcp [::1]:8080: connect: connection refused\"" >&2
+  exit 1
+fi
+if [ "$mode" = in-pod ]; then
+  # Учётка pod обязана прийти файлом конфигурации: адрес службы API, CA и файл
+  # токена pod — ссылкой, не копией величины.
+  cfg="${KUBECONFIG:-}"
+  echo "$cfg" >>"$st/kubeconfigs"
+  sa="${KACHO_SA_DIR:?}"
+  if [ ! -r "$cfg" ] || ! grep -qxF "    server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}" "$cfg" ||
+    ! grep -qxF "    certificate-authority: $sa/ca.crt" "$cfg" || ! grep -qxF "    tokenFile: $sa/token" "$cfg" ||
+    grep -qF "$(cat "$sa/token")" "$cfg"; then
+    echo "подставной kubectl: учётка pod не выписана файлом конфигурации (KUBECONFIG=${cfg:-<нет>})" >&2
+    exit 3
+  fi
+  mode=healthy
 fi
 
 case "$args" in
@@ -124,10 +149,23 @@ esac
 STUB
 chmod +x "$TMP/bin/kubectl"
 
+# Машина говорит файлом конфигурации (контекст -client выписан вызывающим), pod
+# раннера — без файла, учёткой pod. Режим in-pod воспроизводит окружение pod:
+# адрес службы API в окружении, каталог учётки pod, ни KUBECONFIG, ни ~/.kube/config.
+: >"$TMP/kubeconfig.machine"
+mkdir -p "$TMP/sa" "$TMP/home.pod"
+printf 'stub-pod-token-value' >"$TMP/sa/token"
+printf 'stub-ca' >"$TMP/sa/ca.crt"
+
 run_target() { # <режим> → код возврата цели; вывод — в $TMP/out.<режим>
   local mode="$1" code
+  local -a envs=(KUBECONFIG="$TMP/kubeconfig.machine")
+  if [ "$mode" = in-pod ]; then
+    envs=(-u KUBECONFIG HOME="$TMP/home.pod" KUBERNETES_SERVICE_HOST=10.96.0.1 KUBERNETES_SERVICE_PORT=443
+      KACHO_SA_DIR="$TMP/sa")
+  fi
   mkdir -p "$TMP/state.$mode"
-  (cd "$DEPLOY_ROOT" && PATH="$TMP/bin:$PATH" KSTUB_MODE="$mode" KSTUB_STATE="$TMP/state.$mode" \
+  (cd "$DEPLOY_ROOT" && env "${envs[@]}" PATH="$TMP/bin:$PATH" KSTUB_MODE="$mode" KSTUB_STATE="$TMP/state.$mode" \
     timeout 120 make --no-print-directory wait-edge-ready \
       EDGE_READY_ATTEMPTS=12 EDGE_READY_INTERVAL=0 EDGE_READY_STREAK=3) >"$TMP/out.$mode" 2>&1
   code=$?
@@ -162,6 +200,19 @@ probe "край отвечает «не готов» всегда"              
 probe "край ответил «готов» один раз и перестал"              lone-ok               red   'мерцание'
 probe "замена закончена, край готов"                          healthy               green
 probe "замена идёт, затем край переустанавливает соединение"  terminating-then-gone green
+probe "pod раннера без файла конфигурации: учётка pod"        in-pod                green
+
+# ── Учётка pod выписана во временный файл; по выходу его быть не должно.
+ok
+left=""
+while IFS= read -r f; do [ -n "$f" ] && [ -e "$f" ] && left="$left $f"; done <"$TMP/state.in-pod/kubeconfigs" 2>/dev/null
+if [ ! -s "$TMP/state.in-pod/kubeconfigs" ]; then
+  violation "файл учётки pod не наблюдался ни одним вызовом kubectl — судить его снятие нечем"
+elif [ -n "$left" ]; then
+  violation "файл учётки pod остался после выхода:$left"
+else
+  good "файл учётки pod снят по выходу (вызовов с ним $(grep -c . "$TMP/state.in-pod/kubeconfigs"))"
+fi
 
 # ── Зелёное обязано быть ОТВЕТОМ КРАЯ, а не отсутствием вопроса.
 ok
@@ -239,4 +290,4 @@ twin "ожидание после посева"      "$TMP/mk.order"   "order:п
 
 echo
 echo "проверок исполнено: $N из $EXPECTED_ASSERTIONS"
-outcome_verdict "режимов подставного kubectl: 7; близнецов провязки: 3"
+outcome_verdict "режимов подставного kubectl: 8; близнецов провязки: 3"

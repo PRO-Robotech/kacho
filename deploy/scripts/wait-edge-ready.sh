@@ -65,6 +65,43 @@ command -v jq >/dev/null 2>&1 || {
   exit 2
 }
 
+# УЧЁТКА POD — ФАЙЛОМ (kacho#3346, прогон 5 сборки #3317, Ф12-35 «край не готов»).
+# В pod раннера файла конфигурации нет, и kubectl берёт учётку pod (in-cluster)
+# лишь пока конфигурация равна умолчанию (client-go clientcmd, `IsDefaultConfig`).
+# `--request-timeout` её меняет: kubectl идёт на localhost:8080, и каждый опрос
+# ниже — «НЕ ПРОЧИТАН» при живом крае. Поэтому учётка pod выписывается во
+# временный файл явно: адрес службы API, CA и файл токена pod ссылкой (величина
+# токена не копируется и после ротации читается заново). Машина говорит своим
+# файлом конфигурации — ветка её не трогает.
+SA_DIR="${KACHO_SA_DIR:-/var/run/secrets/kubernetes.io/serviceaccount}"
+if [ -z "${KUBECONFIG:-}" ] && [ ! -e "${HOME:-/nonexistent}/.kube/config" ] &&
+  [ -n "${KUBERNETES_SERVICE_HOST:-}" ] && [ -r "$SA_DIR/token" ] && [ -r "$SA_DIR/ca.crt" ]; then
+  pod_cfg="$(mktemp)" || { echo "wait-edge-ready: файл учётки pod не заведён" >&2; exit 2; }
+  trap 'rm -f "$pod_cfg"' EXIT
+  api_host="$KUBERNETES_SERVICE_HOST"
+  case "$api_host" in *:*) api_host="[$api_host]" ;; esac
+  cat >"$pod_cfg" <<EOF || { echo "wait-edge-ready: файл учётки pod не записан" >&2; exit 2; }
+apiVersion: v1
+kind: Config
+clusters:
+- name: in-cluster
+  cluster:
+    server: https://$api_host:${KUBERNETES_SERVICE_PORT:-443}
+    certificate-authority: $SA_DIR/ca.crt
+users:
+- name: pod
+  user:
+    tokenFile: $SA_DIR/token
+contexts:
+- name: pod
+  context:
+    cluster: in-cluster
+    user: pod
+current-context: pod
+EOF
+  export KUBECONFIG="$pod_cfg"
+fi
+
 kc() { kubectl -n "$ns" "$@" --request-timeout=10s; }
 
 VIA="${EDGE_READY_VIA:-proxy}"
