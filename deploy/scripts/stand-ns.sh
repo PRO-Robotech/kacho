@@ -367,12 +367,16 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   # fetch_probe CUT TRIES [manifest-fail] — код runner_fetch; вывод — в $fx/fetch.out.
   fetch_probe() {
     rm -rf "$fx/out"; mkdir -p "$fx/out"; : >"$fx/cuts"
+    # PRE — в OUT уже лежит связь из прежнего забора: часть пути отчётов ведёт в victim.
+    [ -z "${PRE:-}" ] || { mkdir -p "$fx/out/a/tests/newman"; ln -s "$fx/victim" "$fx/out/a/tests/newman/out"; }
     ( RUNNER_SRC="$fx/src" RUNNER_WORK="$fx/work" RUN_RUNNER=newman STAND_RUNNER_FETCH_TRIES="$2" CUT="$1" MFAIL="${3:-}"
       runner_put() { sh -c 'cat > "$1"' put "$2"; }
       runner_exec() {
         shift
         case "$3" in
-          *"tar -c"*) if [ "$(wc -l <"$fx/cuts")" -lt "$CUT" ]; then echo >>"$fx/cuts"; "$@" | head -c "${CUTB:-100000}"; else "$@"; fi ;;
+          # EVIL — поток pod не тот, что перечень: он несёт связь на victim вместо каталога sub.
+          *"tar -c"*) if [ -n "${EVIL:-}" ]; then tar -c -C "$fx/evil" a
+                      elif [ "$(wc -l <"$fx/cuts")" -lt "$CUT" ]; then echo >>"$fx/cuts"; "$@" | head -c "${CUTB:-100000}"; else "$@"; fi ;;
           *) [ -z "$MFAIL" ] || return 1; "$@" ;;
         esac
       }
@@ -380,8 +384,8 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   }
   frc=0; fetch_probe 0 3 || frc=$?
   if [ "$frc" -eq 0 ] && grep -q 'доставлено 3 из 3' "$fx/fetch.out" && cmp -s "$fx/src/a/tests/newman/out/big.json" "$fx/out/a/tests/newman/out/big.json" &&
-     [ -f "$fx/out/a/tests/newman/out/sub/with space.json" ]; then
-    ok "забор отчётов: целый поток — код 0, «доставлено 3 из 3», файлы равны исходным"
+     [ -f "$fx/out/a/tests/newman/out/sub/with space.json" ] && [ -z "$(ls -d "$fx/out.fetch."* 2>/dev/null)" ]; then
+    ok "забор отчётов: целый поток — код 0, «доставлено 3 из 3», файлы равны исходным, вложенный каталог принят, каталог распаковки снят"
   else bad "забор отчётов: целый поток — код $frc: $(tr '\n' ' ' <"$fx/fetch.out")"; fi
   frc=0; fetch_probe 99 3 || frc=$?
   fo="$(cat "$fx/fetch.out")"
@@ -412,6 +416,26 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   if [ "$frc" -ne 0 ] && grep -q 'перечень отчётов в pod не собран' "$fx/fetch.out"; then
     ok "забор отчётов: перечень pod не собран — код $frc, а не «путей 0»"
   else bad "забор отчётов: перечень pod не собран — код $frc: $(tr '\n' ' ' <"$fx/fetch.out")"; fi
+  # Граница pod → машина (⛔ приёмки w14, runner_fetch): (1) поток pod несёт связь на каталог
+  # вне OUT — отказ целиком, файл вне OUT цел, связи в OUT нет; (2) в OUT уже лежит связь из
+  # прежнего забора — отказ до удаления: недоставленное не удаляется по связи за пределами OUT.
+  mkdir -p "$fx/victim/sub" "$fx/evil/a/tests/newman/out"
+  printf 'keep' >"$fx/victim/small.json"; printf 'keep' >"$fx/victim/sub/small.json"
+  cp "$fx/src/a/tests/newman/out/big.json" "$fx/evil/a/tests/newman/out/big.json"
+  ln -s "$fx/victim" "$fx/evil/a/tests/newman/out/sub"
+  frc=0; EVIL=1 fetch_probe 0 3 || frc=$?
+  fo="$(cat "$fx/fetch.out")"
+  if [ "$frc" -ne 0 ] && [[ "$fo" == *"ПОТОК POD НЁС НЕ ОБЫЧНЫЙ ФАЙЛ"*"a/tests/newman/out/sub"* ]] && [ "$(cat "$fx/victim/small.json")" = keep ] &&
+     [ ! -L "$fx/out/a/tests/newman/out/sub" ] && [ ! -e "$fx/out/a/tests/newman/out/big.json" ] && [ -z "$(ls -d "$fx/out.fetch."* 2>/dev/null)" ]; then
+    ok "забор отчётов: поток pod несёт связь — отказ $frc целиком, вне каталога отчётов не тронуто, связи в нём нет"
+  else bad "забор отчётов: поток pod со связью (код $frc): $(tr '\n' ' ' <<<"$fo")"; fi
+  frc=0; PRE=1 fetch_probe 0 3 || frc=$?
+  fo="$(cat "$fx/fetch.out")"
+  if [ "$frc" -ne 0 ] && [[ "$fo" == *"ведёт из каталога отчётов по связи"* ]] && [ "$(cat "$fx/victim/sub/small.json" 2>/dev/null)" = keep ] &&
+     [ "$(cat "$fx/victim/small.json")" = keep ]; then
+    ok "забор отчётов: связь в каталоге отчётов — отказ $frc до удаления и сверки, файл вне каталога цел"
+  else bad "забор отчётов: связь в каталоге отчётов (код $frc): $(tr '\n' ' ' <<<"$fo"); victim: $(ls -R "$fx/victim" | tr '\n' ' ')"; fi
+  rm -rf "$fx/out" "$fx/victim" "$fx/evil"
   rm -rf "$fx"
   # Шаг условия машины (kacho#3348): просьба pod исполняется командой строки ведомости с
   # исполнителем machine; инъекция — строка убрана (либо исполнитель pod, либо аргумент с
@@ -422,7 +446,7 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   printf '#!/usr/bin/env bash\necho "ran ns=$KACHO_STAND_NS state=$KACHO_STAND_COND_STATE args=$*"\n' >"$cx/repo/s/cond.sh"
   # cond_probe ВЕДОМОСТЬ ПРОСЬБА — код ответа pod; вывод ответа — в $cx/out.
   cond_probe() {
-    rm -f "$cx/work/cond/"*; printf '%b\n' "$2" >"$cx/work/cond/r1.req"
+    rm -f "$cx/work/cond/"*; rm -rf "$cx/stand"; mkdir -p "$cx/stand"; printf '%b\n' "$2" >"$cx/work/cond/r1.req"
     printf '%b\n' "$1" >"$cx/ledger"
     ( RUNNER_WORK="$cx/work" REPO_ROOT="$cx/repo" WORK_ROOT="$cx/stand" STAND_CONDITIONS="$cx/ledger"
       runner_exec() { shift; "$@"; }
@@ -431,26 +455,53 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
     cat "$cx/work/cond/r1.out" >"$cx/out" 2>/dev/null
     cat "$cx/work/cond/r1.rc" 2>/dev/null || echo none
   }
-  crc="$(cond_probe 'rot\tmachine\twrite: x\ts/cond.sh\tr' 'rot\twrite\tset\tK2,K1\tkacho-wrap-rotate-ab12')"; co="$(cat "$cx/out")"
+  local lrow='rot\tmachine\twrite: x\ts/cond.sh write\tr\tset,restore'
+  crc="$(cond_probe "$lrow" 'rot\tset\tK2,K1\tkacho-wrap-rotate-ab12')"; co="$(cat "$cx/out")"
   if [ "$crc" = 0 ] && [ "$co" = "ran ns=t3102-probe state=$cx/stand/t3102-probe/cond/rot args=write set K2,K1 kacho-wrap-rotate-ab12" ] &&
      [ ! -e "$cx/work/cond/r1.req" ]; then
-    ok "шаг условия машины: строка ведомости machine — исполнена своим пространством и каталогом, ответ 0 в pod"
+    ok "шаг условия машины: строка ведомости machine — команда с закреплённой подкомандой и операцией из перечня, своё пространство и каталог, ответ 0 в pod"
   else bad "шаг условия машины: строка machine — код $crc, ответ «$co» ($(tr '\n' ' ' <"$cx/log"))"; fi
-  for twin in 'other\tmachine\tw\ts/cond.sh\tr|строка убрана' 'rot\tpod\tw\ts/cond.sh\tr|исполнитель pod'; do
-    crc="$(cond_probe "${twin%|*}" 'rot\twrite\tset\tK2,K1\tk')"; co="$(cat "$cx/out")"
-    if [ "$crc" = 125 ] && [[ "$co" == *"не объявлен в ведомости"* ]]; then
+  crc="$(cond_probe "$lrow" 'rot\trestore\tk')"; co="$(cat "$cx/out")"
+  if [ "$crc" = 0 ] && [ "$co" = "ran ns=t3102-probe state=$cx/stand/t3102-probe/cond/rot args=write restore k" ]; then
+    ok "шаг условия машины: вторая операция перечня (restore) — исполнена той же закреплённой подкомандой"
+  else bad "шаг условия машины: restore из перечня — код $crc, ответ «$co»"; fi
+  for twin in 'other\tmachine\tw\ts/cond.sh write\tr\tset|строка убрана' 'rot\tpod\tw\ts/cond.sh write\tr\tset|исполнитель pod' \
+              'rot\tmachine\tw\ts/cond.sh write\tr|перечня операций нет'; do
+    crc="$(cond_probe "${twin%|*}" 'rot\tset\tK2,K1\tk')"; co="$(cat "$cx/out")"
+    if [ "$crc" = 125 ] && [[ "$co" == *"не объявлен в ведомости"* ]] && [[ "$co" != *ran* ]]; then
       ok "шаг условия машины: инъекция «${twin##*|}» — 125 без исполнения (условие не создано, не зелёное)"
     else bad "шаг условия машины: инъекция «${twin##*|}» — код $crc, ответ «$co»"; fi
   done
-  crc="$(cond_probe 'rot\tmachine\tw\ts/cond.sh\tr' 'rot\twrite\tset\tK2\t--ns\tkacho')"; co="$(cat "$cx/out")"
+  # Подкоманда скрипта вне закреплённой (⛔ приёмки w14, опыты J4 и J6): pod называет
+  # limit, cell, errors, set без write либо сам write — машина не исполняет ничего.
+  for twin in 'rot\tlimit|limit' 'rot\tcell\tx|cell' 'rot\terrors\t2026-01-01T00:00:00Z|errors' \
+              'rot\twrite\tset\tK2,K1\tk|write из просьбы' 'rot\tself-test|self-test' 'rot|без операции'; do
+    crc="$(cond_probe "$lrow" "${twin%|*}")"; co="$(cat "$cx/out")"
+    if [ "$crc" = 125 ] && [[ "$co" != *ran* ]] && [ -z "$(ls -A "$cx/stand" 2>/dev/null)" ]; then
+      ok "шаг условия машины: операция вне перечня строки («${twin##*|}») — 125 без исполнения и без каталога условия"
+    else bad "шаг условия машины: операция вне перечня («${twin##*|}») — код $crc, ответ «$co»"; fi
+  done
+  # Имя с escape-последовательностью (приёмка w14, опыт J5): сверка с ведомостью буквальная,
+  # форма имени — до поиска; каталог условия не заводится.
+  for twin in 'r\\157t|\\157 вместо o' 'ROT|регистр' 'rot.|точка'; do
+    crc="$(cond_probe "$lrow" "${twin%|*}"'\tset\tK2,K1\tk')"; co="$(cat "$cx/out")"
+    if [ "$crc" = 125 ] && [[ "$co" == *"не объявлен в ведомости"* ]] && [[ "$co" != *ran* ]] && [ -z "$(ls -A "$cx/stand" 2>/dev/null)" ]; then
+      ok "шаг условия машины: имя «${twin##*|}» — не строка ведомости, 125 без исполнения и без каталога"
+    else bad "шаг условия машины: имя «${twin##*|}» — код $crc, ответ «$co», каталоги: $(ls -A "$cx/stand" 2>/dev/null)"; fi
+  done
+  crc="$(cond_probe "$lrow" 'rot\tset\tK2\t--ns\tkacho')"; co="$(cat "$cx/out")"
   if [ "$crc" = 125 ] && [[ "$co" == *"вне формы слова"* ]] && [[ "$co" != *ran* ]]; then
     ok "шаг условия машины: аргумент «--ns» из просьбы pod — 125 без исполнения"
   else bad "шаг условия машины: аргумент «--ns» — код $crc, ответ «$co»"; fi
+  crc="$(cond_probe 'rot\tmachine\tw\ts/cond.sh --ns\tr\tset' 'rot\tset\tK2\tk')"; co="$(cat "$cx/out")"
+  if [ "$crc" = 125 ] && [[ "$co" != *ran* ]]; then
+    ok "шаг условия машины: закреплённое слово команды вне формы («--ns») — 125 без исполнения"
+  else bad "шаг условия машины: закреплённое слово «--ns» — код $crc, ответ «$co»"; fi
   rm -rf "$cx"
-  co="$(STAND_CONDITIONS="$HERE/stand-conditions.tsv" cond_command wrap-rotate)"
-  if [ -f "$REPO_ROOT/$co" ] && [ "$co" = deploy/scripts/stand-second-factor-wrap-rotate.sh ]; then
-    ok "ведомость условий: wrap-rotate — шаг машины, команда есть в дереве"
-  else bad "ведомость условий: wrap-rotate не шаг машины либо команды «$co» нет"; fi
+  local lrw lops; lrw="$(STAND_CONDITIONS="$HERE/stand-conditions.tsv" cond_row wrap-rotate)"; lops="${lrw#*$'\t'}"; lrw="${lrw%%$'\t'*}"
+  if [ "$lrw" = "deploy/scripts/stand-second-factor-wrap-rotate.sh write" ] && [ -f "$REPO_ROOT/${lrw%% *}" ] && [ "$lops" = set,restore ]; then
+    ok "ведомость условий: wrap-rotate — шаг машины, подкоманда write закреплена строкой, операции set и restore, команда есть в дереве"
+  else bad "ведомость условий: wrap-rotate — команда «$lrw», операции «$lops»"; fi
   if jq -e '[.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.name == "KACHO_STAND_COND_DIR") | .value] == ["/work/cond"]' \
       <<<"$(runner_objects t3102-probe browser img:1 '' ui-future/e2e true v1.35.7 6 1.9.3)" >/dev/null &&
      [[ "$RUNNER_POD_SH" == *'mkdir -p "$HOME" "$KACHO_STAND_NS_WORKDIR" "$KACHO_STAND_COND_DIR"'* ]]; then
@@ -1795,14 +1846,19 @@ cmd_run() {
 #   запись        условия, которому нужна запись на стенде (Ф12-35: секрет обёртки и перекат
 #                 службы доступа), учётка pod не получает: pod просит машину файлом в
 #                 /work/cond, машина исполняет строку ведомости stand-conditions.tsv с
-#                 исполнителем machine своим контекстом -client (runner_conds), pod судит
-#                 исход сам; строки нет — 125, «условие не создано» (kacho#3348);
+#                 исполнителем machine своим контекстом -client (runner_conds) — её команду
+#                 с закреплёнными словами и операцию из её закрытого перечня, иного не
+#                 исполняет; pod судит исход сам; строки или операции нет — 125, «условие
+#                 не создано» (kacho#3348);
 #   отчёты        файлами из pod в --out (умолчание .stand-ns/out/<ns>/ — каталог стенда
 #                 снимает down, отчёт переживает его): newman — каталоги out наборов,
 #                 browser — results*.json, selection.json, test-results (trace), playwright-report;
 #                 Доставка сверяется: перечень «размер сумма путь» собран в pod до передачи,
 #                 каждый путь сверен на машине; неполная — повтор, затем 125 с перечнем
-#                 недоставленного (runner_fetch);
+#                 недоставленного (runner_fetch). Поток pod распаковывается в пустой каталог
+#                 рядом с --out, в --out ложатся лишь обычные файлы перечня; связь либо иной
+#                 не обычный член потока, путь, ведущий из --out по связи, — отказ до любого
+#                 удаления и сверки на машине;
 #   код           код КОМАНДЫ; 125 — команда не исполнялась (образ не встал, инструменты не
 #                 поставились, проброс не поднялся, pod исчез) либо её отчёты не доставлены
 #                 целиком — «не выполнилось», не красное.
@@ -1980,47 +2036,83 @@ runner_put() { kubectl -n "$1" exec -i "$RUNNER_POD" -c run -- sh -c 'cat > "$1.
 
 # ── УСЛОВИЯ С ЗАПИСЬЮ — ШАГ МАШИНЫ (kacho#3346, kacho#3348) ──────────────────────
 # Учётка pod только читает (runner_judge); условие, которому нужна запись, pod просит
-# машину: «<id>.req» в /work/cond — строка «имя<TAB>аргументы…». Машина исполняет команду
-# строки ведомости STAND_CONDITIONS с исполнителем machine — аргументы просьбы argv-ом,
-# без оболочки, каждый в форме слова без «-» впереди; пространство — только своё (env
-# KACHO_STAND_NS), каталог условия — в рабочем каталоге стенда (его снимает down). Ответ —
-# «<id>.out» (хвост вывода) и «<id>.rc»; строки нет либо аргумент вне формы — 125 без
-# исполнения: проба читает «условие не создано», а не зелёное.
+# машину: «<id>.req» в /work/cond — строка «имя<TAB>операция<TAB>аргументы…». Машина
+# исполняет КОМАНДУ строки ведомости STAND_CONDITIONS с исполнителем machine — путь и
+# закреплённые ею слова (подкоманду скрипта pod не выбирает), затем операцию просьбы, только
+# из закрытого перечня строки (поле «операции»), затем аргументы — argv-ом, без оболочки,
+# каждый в форме слова без «-» впереди; пространство — только своё (env KACHO_STAND_NS),
+# каталог условия — в рабочем каталоге стенда (его снимает down). Имя строки сверяется
+# с ведомостью буквально (сравнение строк оболочки, без разбора escape-последовательностей)
+# и лишь после суда формы имени. Ответ — «<id>.out» (хвост вывода) и «<id>.rc»; имя вне
+# формы, строки нет, операции нет в перечне, аргумент вне формы — 125 без исполнения: проба
+# читает «условие не создано», а не зелёное.
 STAND_CONDITIONS="${STAND_CONDITIONS:-$HERE/stand-conditions.tsv}"
+COND_NAME_RE='^[a-z][a-z0-9-]{0,63}$'
+COND_WORD_RE='^[A-Za-z0-9][A-Za-z0-9.,_:=-]{0,127}$'
 
-# cond_command ИМЯ — команда строки ведомости с исполнителем machine; строки нет — код 1.
-cond_command() {
-  awk -F'\t' -v n="$1" '!/^#/ && NF >= 4 && $1 == n && $2 == "machine" { print $4; f = 1; exit } END { exit !f }' "$STAND_CONDITIONS"
+# cond_row ИМЯ — строка ведомости с исполнителем machine: печатает «команда<TAB>операции».
+# Имя вне формы, строки нет, команда либо перечень операций пусты — код 1.
+cond_row() {
+  local n e _r c _d ops
+  [[ "$1" =~ $COND_NAME_RE ]] || return 1
+  while IFS=$'\t' read -r n e _r c _d ops; do
+    case "$n" in '#'*|'') continue ;; esac
+    [ "$n" = "$1" ] && [ "$e" = machine ] || continue
+    [ -n "$c" ] && [ -n "$ops" ] || return 1
+    printf '%s\t%s\n' "$c" "$ops"
+    return 0
+  done <"$STAND_CONDITIONS"
+  return 1
+}
+
+# cond_argv КОМАНДА — слова команды строки (путь от корня дерева и закреплённые слова) в
+# массив CMDV; путь вне дерева либо слово вне формы — код 1.
+cond_argv() {
+  local w
+  read -r -a CMDV <<<"$1"
+  [ "${#CMDV[@]}" -ge 1 ] || return 1
+  case "/${CMDV[0]}/" in //*|*/../*|*/./*) return 1 ;; esac
+  [ -f "$REPO_ROOT/${CMDV[0]}" ] || return 1
+  for w in "${CMDV[@]:1}"; do [[ "$w" =~ $COND_WORD_RE ]] || return 1; done
 }
 
 # runner_conds NS — исполнить просьбы pod, лежащие сейчас; печатает исход каждой.
 runner_conds() {
-  local ns="$1" id line cmd rc out a
-  local -a ids f
+  local ns="$1" id line row cmd ops rc out a name
+  local -a ids f CMDV
   mapfile -t ids < <(runner_exec "$ns" sh -c 'cd "$1" 2>/dev/null || exit 0; for f in *.req; do [ -e "$f" ] && echo "${f%.req}"; done' ls "$RUNNER_WORK/cond" </dev/null 2>/dev/null)
   for id in "${ids[@]}"; do
-    [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || { warn "просьба pod с именем вне формы «$id» — пропущена"; continue; }
+    [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || { warn "просьба pod с именем вне формы «$(printf '%q' "$id")» — пропущена"; continue; }
     line="$(runner_exec "$ns" cat "$RUNNER_WORK/cond/$id.req" </dev/null 2>/dev/null)" || continue
     runner_exec "$ns" mv "$RUNNER_WORK/cond/$id.req" "$RUNNER_WORK/cond/$id.taken" </dev/null >/dev/null 2>&1 || continue
     IFS=$'\t' read -r -a f <<<"$line"
-    rc=0 out=""
-    if [ "${#f[@]}" -lt 1 ] || ! cmd="$(cond_command "${f[0]}")"; then
-      rc=125 out="шаг условия «${f[0]:-}» не объявлен в ведомости $(basename "$STAND_CONDITIONS") с исполнителем machine — не исполнялся"
+    rc=0 out="" name="${f[0]:-}"
+    # В журнал машины и в ответ имя просьбы идёт лишь в форме имени: прочее — экранированным.
+    [[ "$name" =~ $COND_NAME_RE ]] || name="$(printf '%q' "$name")"
+    if [ "${#f[@]}" -lt 2 ] || ! row="$(cond_row "${f[0]}")"; then
+      rc=125 out="шаг условия «$name» не объявлен в ведомости $(basename "$STAND_CONDITIONS") с исполнителем machine (либо просьба без операции) — не исполнялся"
     else
-      for a in "${f[@]:1}"; do
-        [[ "$a" =~ ^[A-Za-z0-9][A-Za-z0-9.,_:=-]{0,127}$ ]] || { rc=125 out="аргумент просьбы «$a» вне формы слова — шаг ${f[0]} не исполнялся"; break; }
-      done
+      cmd="${row%%$'\t'*}" ops="${row#*$'\t'}"
+      if ! cond_argv "$cmd"; then
+        rc=125 out="команда строки $name ведомости $(basename "$STAND_CONDITIONS") вне дерева либо вне формы слов — шаг не исполнялся"
+      elif [[ ",$ops," != *",${f[1]},"* ]] || ! [[ "${f[1]}" =~ $COND_WORD_RE ]]; then
+        rc=125 out="операция «$(printf '%q' "${f[1]}")» не объявлена строкой $name ведомости (перечень: $ops) — шаг не исполнялся"
+      else
+        for a in "${f[@]:2}"; do
+          [[ "$a" =~ $COND_WORD_RE ]] || { rc=125 out="аргумент просьбы «$(printf '%q' "$a")» вне формы слова — шаг $name не исполнялся"; break; }
+        done
+      fi
       if [ "$rc" -eq 0 ]; then
-        if mkdir -p "$WORK_ROOT/$ns/cond/${f[0]}" && chmod 700 "$WORK_ROOT/$ns/cond" "$WORK_ROOT/$ns/cond/${f[0]}"; then
-          log "шаг условия машины по просьбе pod: ${f[*]}"
-          out="$(KACHO_STAND_NS="$ns" KACHO_STAND_COND_STATE="$WORK_ROOT/$ns/cond/${f[0]}" \
-            timeout "${STAND_COND_TIMEOUT:-900}" bash "$REPO_ROOT/$cmd" "${f[@]:1}" </dev/null 2>&1)"; rc=$?
+        if mkdir -p "$WORK_ROOT/$ns/cond/$name" && chmod 700 "$WORK_ROOT/$ns/cond" "$WORK_ROOT/$ns/cond/$name"; then
+          log "шаг условия машины по просьбе pod: $name ${CMDV[*]:1} ${f[*]:1}"
+          out="$(KACHO_STAND_NS="$ns" KACHO_STAND_COND_STATE="$WORK_ROOT/$ns/cond/$name" \
+            timeout "${STAND_COND_TIMEOUT:-900}" bash "$REPO_ROOT/${CMDV[0]}" "${CMDV[@]:1}" "${f[@]:1}" </dev/null 2>&1)"; rc=$?
         else
-          rc=125 out="каталог условия ${f[0]} в рабочем каталоге стенда не заведён — шаг не исполнялся"
+          rc=125 out="каталог условия $name в рабочем каталоге стенда не заведён — шаг не исполнялся"
         fi
       fi
     fi
-    log "шаг условия ${f[0]:-?} (просьба $id): код $rc"
+    log "шаг условия $name (просьба $id): код $rc"
     { printf '%s\n' "$out" | tail -n 40 | runner_put "$ns" "$RUNNER_WORK/cond/$id.out" &&
       printf '%s\n' "$rc" | runner_put "$ns" "$RUNNER_WORK/cond/$id.rc"; } >/dev/null 2>&1 ||
       warn "ответ на просьбу $id в pod не доставлен — pod прочтёт «условие не создано» по сроку"
@@ -2055,6 +2147,15 @@ echo $$ > "$2/.fetching.pid"
 exec tar -c --null --verbatim-files-from -T "${3:-$2/.fetch.files0}"
 POD
 
+# out_inside OUT ПУТЬ — ПУТЬ перечня pod внутри OUT (OUT уже разрешён realpath): разрешённая
+# форма (связи раскрыты) равна буквальной (связи не раскрыты) и лежит под OUT. Связь в любой
+# существующей части пути — код 1: удаление, запись и сверка по ней ушли бы за пределы OUT.
+out_inside() {
+  local lit res
+  lit="$(realpath -m -s -- "$1/$2")" && res="$(realpath -m -- "$1/$2")" || return 1
+  [ "$lit" = "$res" ] && [[ "$res" == "$1/"?* ]]
+}
+
 # runner_fetch NS OUT — отчёты из pod в OUT со сверкой полноты (⛔ приёмки ws#1303: забор терял
 # файлы молча — путей 17 из 35, целых отчётов 5 из 10, код 0). Перечень собран в pod до
 # передачи; после каждой попытки каждый его путь сверяется на машине по размеру и сумме.
@@ -2062,18 +2163,31 @@ POD
 # поток через API-сервер рвётся на длинном потоке (прогон w14: 226 и 231 из 237 при повторе
 # целиком), сверенное повторно не тянется; не сошлось и после — код 1 и перечень
 # недоставленного. Исход печатается всегда: «доставлено N из M».
+#
+# Граница pod → машина (приёмка w14): удаление, запись и сверка на машине идут лишь по путям
+# внутри OUT. Pod — недоверенный источник: путь перечня — относительный,
+# без «.», «..», пустых частей и ведущей точки; КАЖДАЯ попытка распаковывается в свой пустой
+# каталог рядом с OUT, и член потока, не являющийся обычным файлом или каталогом (связь,
+# жёсткая ссылка, устройство), — отказ всего забора; в OUT ложатся лишь сверенные обычные
+# файлы перечня, и путь каждого до удаления, записи и сверки проверен: он лежит в OUT и не
+# проходит ни через одну связь (out_inside).
 runner_fetch() {
-  local ns="$1" out="$2" tries="${STAND_RUNNER_FETCH_TRIES:-3}" man line path f size sum try n=0 m=0 prc xrc
+  local ns="$1" out="$2" tries="${STAND_RUNNER_FETCH_TRIES:-3}" man line path f size sum try n=0 m=0 prc xrc stage odd
   local -a globs lost=() st
+  local -A got=()
   [[ "$tries" =~ ^[1-9][0-9]?$ ]] || { warn "STAND_RUNNER_FETCH_TRIES=«$tries» — не число 1..99"; return 1; }
+  out="$(realpath -e -- "$out")" && [ -d "$out" ] || { warn "каталог отчётов «$2» не заведён"; return 1; }
   man="$out/.manifest"
   read -r -a globs <<<"$(runner_globs "$RUN_RUNNER")"
   runner_exec "$ns" bash -c "$RUNNER_MANIFEST_SH" manifest "$RUNNER_SRC" "$RUNNER_WORK" "${globs[@]}" >"$man" ||
     { warn "перечень отчётов в pod не собран — доставку сверить не с чем"; return 1; }
   while IFS= read -r line; do
-    [[ "$line" =~ ^[0-9]+\ [0-9a-f]{64}\ .+$ ]] || { warn "перечень pod не в форме «размер сумма путь»: «$line»"; return 1; }
+    [[ "$line" =~ ^[0-9]+\ [0-9a-f]{64}\ .+$ ]] || { warn "перечень pod не в форме «размер сумма путь»: «$(printf '%q' "$line")»"; return 1; }
     path="${line#* * }"
-    case "/$path/" in //*|*/../*) warn "путь перечня pod вне каталога отчётов: «$path»"; return 1 ;; esac
+    case "/$path/" in
+      //*|*/../*|*/./*|*//*|/.*) warn "путь перечня pod вне каталога отчётов: «$(printf '%q' "$path")»"; return 1 ;;
+    esac
+    out_inside "$out" "$path" || { warn "путь перечня pod ведёт из каталога отчётов по связи: «$(printf '%q' "$path")»"; return 1; }
     m=$((m + 1))
   done <"$man"
   : >"$out/.fetched.list"
@@ -2081,30 +2195,49 @@ runner_fetch() {
     log "отчёты раннера: в pod файлов по шаблонам ${globs[*]} — 0, доставлять нечего"
     return 0
   fi
+  while IFS= read -r line; do rm -f -- "$out/${line#* * }"; done <"$man"
   local -a want=()
   for try in $(seq 1 "$tries"); do
+    stage="$(mktemp -d "$out.fetch.XXXXXX")" || { warn "каталог распаковки рядом с $out не заведён"; return 1; }
     if [ "$try" -eq 1 ]; then
-      while IFS= read -r line; do rm -f -- "$out/${line#* * }"; done <"$man"
-      runner_exec "$ns" bash -c "$RUNNER_TAR_SH" fetch "$RUNNER_SRC" "$RUNNER_WORK" | tar -x -C "$out" 2>"$out/.fetch.err"
+      runner_exec "$ns" bash -c "$RUNNER_TAR_SH" fetch "$RUNNER_SRC" "$RUNNER_WORK" | tar -x --no-same-owner -C "$stage" 2>"$out/.fetch.err"
       st=("${PIPESTATUS[@]}")
     else
       local lf="$RUNNER_WORK/.fetch.retry0"
-      for path in "${want[@]}"; do rm -f -- "$out/$path"; done
       printf '%s\0' "${want[@]}" | runner_put "$ns" "$lf" >/dev/null 2>&1 ||
         { warn "перечень повтора в pod не передан — повтор целиком"; lf="$RUNNER_WORK/.fetch.files0"; }
-      runner_exec "$ns" bash -c "$RUNNER_TAR_SH" fetch "$RUNNER_SRC" "$RUNNER_WORK" "$lf" | tar -x -C "$out" 2>"$out/.fetch.err"
+      runner_exec "$ns" bash -c "$RUNNER_TAR_SH" fetch "$RUNNER_SRC" "$RUNNER_WORK" "$lf" | tar -x --no-same-owner -C "$stage" 2>"$out/.fetch.err"
       st=("${PIPESTATUS[@]}")
     fi
     prc="${st[0]}"; xrc="${st[1]}"
+    # Суд ТИПА членов распакованного потока pod (не состава дерева): каталог распаковки — не
+    # рабочая копия, индекса у него нет; вопрос — есть ли в нём что-то кроме файлов и каталогов.
+    find "$stage" -mindepth 1 \( \( ! -type f ! -type d \) -o \( -type f -links +1 \) \) -printf '%P (%y)\n' -quit >"$out/.fetch.odd" 2>&1 ||
+      echo "каталог распаковки не обойдён" >>"$out/.fetch.odd"
+    odd="$(head -n 1 "$out/.fetch.odd")"
+    if [ -n "$odd" ]; then
+      chmod -R u+rwX -- "$stage" 2>/dev/null; rm -rf -- "$stage"
+      warn "ПОТОК POD НЁС НЕ ОБЫЧНЫЙ ФАЙЛ: «$(printf '%q' "$odd")» — забор отклонён целиком, в каталоге отчётов ничего не тронуто"
+      return 1
+    fi
     n=0; lost=(); : >"$out/.fetched.list"
     while IFS= read -r line; do
-      read -r size sum _ <<<"$line"; path="${line#* * }"; f="$out/$path"
-      if [ -f "$f" ] && [ ! -L "$f" ] && [ "$(stat -c %s -- "$f")" = "$size" ] && [ "$(sha256sum <"$f" | cut -d' ' -f1)" = "$sum" ]; then
+      read -r size sum _ <<<"$line"; path="${line#* * }"
+      if [ -z "${got[$path]:-}" ]; then
+        f="$stage/$path"
+        if [ -f "$f" ] && [ ! -L "$f" ] && [ "$(stat -c %s -- "$f")" = "$size" ] && [ "$(sha256sum <"$f" | cut -d' ' -f1)" = "$sum" ] &&
+           out_inside "$out" "$path" && mkdir -p -- "$(dirname -- "$out/$path")" && out_inside "$out" "$path" &&
+           mv -f -T -- "$f" "$out/$path"; then
+          got[$path]=1
+        fi
+      fi
+      if [ -n "${got[$path]:-}" ]; then
         n=$((n + 1)); printf '%s\n' "$path" >>"$out/.fetched.list"
       else
         lost+=("$path")
       fi
     done <"$man"
+    chmod -R u+rwX -- "$stage" 2>/dev/null; rm -rf -- "$stage"
     if [ "$n" -eq "$m" ]; then
       log "отчёты раннера: доставлено $n из $m (размер и сумма каждого сверены с перечнем pod; попытка $try из $tries) в $out"
       return 0
@@ -2136,6 +2269,7 @@ runner_objects() {
         {apiGroups: [""], resources: ["pods/log"], verbs: ["get"]},
         {apiGroups: ["apps"], resources: ["deployments", "statefulsets", "replicasets", "daemonsets"], verbs: ["get", "list", "watch"]},
         {apiGroups: ["batch"], resources: ["jobs", "cronjobs"], verbs: ["get", "list", "watch"]},
+        {apiGroups: ["discovery.k8s.io"], resources: ["endpointslices"], verbs: ["get", "list", "watch"]},
         {apiGroups: ["cert-manager.io"], resources: ["certificates", "issuers"], verbs: ["get", "list"]}]},
       {apiVersion: "rbac.authorization.k8s.io/v1", kind: "RoleBinding", metadata: meta,
         roleRef: {apiGroup: "rbac.authorization.k8s.io", kind: "Role", name: $name},
