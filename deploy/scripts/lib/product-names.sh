@@ -77,8 +77,11 @@
 # вызывающего за его спиной. Конвейеров тут нет — ответ инструмента читается
 # через файл, а не через трубу, — поэтому и нужды в них нет.
 
-# _PRODUCT_NAMES_BIN — собранный инструмент. Собирается один раз на процесс.
-_PRODUCT_NAMES_BIN=""
+# _PRODUCT_NAMES_BIN — собранный инструмент. Собирается один раз на процесс; готовый
+# называет KACHO_PRODUCT_NAMES_BIN — так его получает подъём стенда проб, собравший
+# инструмент из ЭТОГО дерева во внешнем кластере (scripts/stand-ns.sh, build_tool,
+# kacho#3353: Go на машине оператора не запускается), и все его шаги-потомки.
+_PRODUCT_NAMES_BIN="${KACHO_PRODUCT_NAMES_BIN:-}"
 declare -gA _PRODUCT_IMAGE_NAME=()
 
 # _product_names_root — корень дерева, выведенный из МЕСТА ЭТОГО ФАЙЛА, а не из
@@ -117,7 +120,11 @@ _product_names_cache_dir() {
 # _product_names_build — собрать инструмент. Отказ сборки ГРОМКИЙ: молча
 # продолжить значило бы вернуться к выводу имени по памяти.
 _product_names_build() {
-  [ -n "$_PRODUCT_NAMES_BIN" ] && return 0
+  if [ -n "$_PRODUCT_NAMES_BIN" ]; then
+    [ -x "$_PRODUCT_NAMES_BIN" ] && return 0
+    echo "product-names: готовый инструмент «$_PRODUCT_NAMES_BIN» не исполняемый файл — имена НЕ прочитаны" >&2
+    return 1
+  fi
   local root out
   root="$(_product_names_root)" || {
     echo "product-names: корень дерева не разрешается — читать имена неоткуда" >&2
