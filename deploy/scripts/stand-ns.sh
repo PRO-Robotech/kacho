@@ -1842,7 +1842,8 @@ runner_run() {
   log "раннер $RUN_RUNNER: образ $image, kubectl $kver, исходники $sha, образы стенда — ревизии $ref${secret:+, администратор облака — секрет $secret}"
   kubectl -n "$ns" wait --for=condition=Ready "pod/$RUNNER_POD" --timeout="${STAND_RUNNER_READY_WAIT:-600}s" >/dev/null ||
     { runner_explain "$ns"; warn "pod раннера не готов — команда НЕ исполнялась"; return "$RUN_UNMET"; }
-  git -C "$REPO_ROOT" archive --format=tar "$sha" | kubectl -n "$ns" exec -i "$RUNNER_POD" -c run -- tar -x -C /src ||
+  # Сжатием: дерево — ~150 МБ tar, поток идёт через API-сервер (замер kacho#3346: 158 МБ tar → 33 МБ gzip -1).
+  git -C "$REPO_ROOT" archive --format=tar "$sha" | gzip -1 | kubectl -n "$ns" exec -i "$RUNNER_POD" -c run -- tar -xz -C /src ||
     { warn "исходники ревизии $sha в pod не доставлены"; return "$RUN_UNMET"; }
   kubectl -n "$ns" exec "$RUNNER_POD" -c run -- touch /src/.go || { warn "pod не принял сигнал старта"; return "$RUN_UNMET"; }
   kubectl -n "$ns" logs -f "pod/$RUNNER_POD" -c run & RUN_LOGS=$!
