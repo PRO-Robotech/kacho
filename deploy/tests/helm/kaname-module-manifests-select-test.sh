@@ -20,9 +20,19 @@
 #      одинаковые ключи двух источников приезжают ДВУМЯ файлами — подмены нет;
 #   3. отпечаток: правка содержимого любого подобранного источника (и единого)
 #      меняет отпечаток шаблона пода, правка неподобранного — не меняет;
-#   4. отказы: селектор без чтения кластера, названный единый источник, которого
-#      в кластере нет, и двоичные данные в источнике — отказ рендера с причиной,
-#      а не молчаливо урезанный каталог.
+#   4. отказы: названный единый источник, которого в кластере нет, и двоичные
+#      данные в источнике — отказ рендера с причиной, а не молчаливо урезанный
+#      каталог;
+#   5. рендер без чтения кластера (`helm template` офлайн: предполёт подъёма
+#      `scripts/stack-secrets.sh`, предрендер стенда, рендер стеков конвейера)
+#      ПРОХОДИТ, но формой, которую НЕ УСТАНОВИТЬ: том ссылается на объект-метку,
+#      которого не заводит никто, и отпечаток называет офлайн-рендер (#3356,
+#      SD-3356-1). Прежде такой рендер отказывал — и обрывал подъём стенда с
+#      включённым селектором раньше `helm upgrade`. Урезанного каталога нет и
+#      так: установленный офлайн-рендер держит под событием, называющим причину;
+#   6. исключение из единого источника (`manifests.unifiedExclude`, решение
+#      владельца по SD-3356-2): единый источник, всё ещё несущий исключённый
+#      модуль, — отказ рендера с ключом; без него — подбор прежний.
 #
 # Чего проба НЕ утверждает. Что два манифеста ОДНОГО модуля из двух источников
 # отвергаются — предмет процесса: обход каталога доставки отказывает в старте и
@@ -50,7 +60,7 @@ DIGEST_KEY="kaname.cloud/module-manifests-selected-digest"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
-EXPECTED_ASSERTIONS=12
+EXPECTED_ASSERTIONS=15
 
 require_helm
 require_python_yaml
@@ -93,12 +103,14 @@ PYSRC
 extract() { python3 -c "$PY_EXTRACT"; }
 
 # Значения проб пишутся файлами: ключ метки содержит точки, и `--set` его разрезал бы.
-values() { # values <имя> <configMapName> <selector-json|-> <required>
+values() { # values <имя> <configMapName> <selector-json|-> <required> [строка manifests…]
   {
     echo "manifests:"
     echo "  configMapName: \"$2\""
     echo "  required: $4"
     [ "$3" = "-" ] || echo "  selector: $3"
+    local extra
+    for extra in "${@:5}"; do echo "  $extra"; done
   } > "$WORK/$1.yaml"
   echo "$WORK/$1.yaml"
 }
@@ -107,6 +119,10 @@ V_LEGACY="$(values legacy kacho-module-manifests - true)"
 V_NONE="$(values none "" - false)"
 V_SEL="$(values sel kacho-module-manifests "$SEL" true)"
 V_SEL_ONLY="$(values selonly "" "$SEL" true)"
+V_SEL_EXCL="$(values selexcl kacho-module-manifests "$SEL" true 'unifiedExclude: [registry]')"
+V_LEGACY_EXCL="$(values legacyexcl kacho-module-manifests - true 'unifiedExclude: [registry]')"
+OFFLINE_SOURCE="kaname-offline-render-not-installable"
+OFFLINE_DIGEST="offline-render"
 
 offline() { helm_try kaname "$CHART" -n "$NS" -f "$1"; }
 online()  { helm_try kaname "$CHART" -n "$NS" -f "$1" --dry-run=server --disable-openapi-validation \
@@ -127,10 +143,54 @@ GOT="$(printf '%s\n' "$HELM_OUT" | extract)" || fatal "выжимка ренде
   fail "посадка без доставки рендерится НЕ так, как до правки (выше — разница с золотым файлом)"; }
 ok
 
-# ── 4а. селектор без чтения кластера — отказ, а не урезанный каталог ─────────
+# ── 1в. исключение из единого без селектора: рендер прежний ─────────────────
+# Без селектора единый источник не читается рендером, и судить его содержимое
+# нечем: исключение исполняет производитель (`make module-manifests-configmap`),
+# а рендер обязан остаться равным снятому до правки.
+offline "$V_LEGACY_EXCL"; render_nonempty_or_fatal "единый источник с исключением, офлайн"
+GOT="$(printf '%s\n' "$HELM_OUT" | extract)" || fatal "выжимка рендера единого источника с исключением не состоялась"
+[ "$GOT" = "$(cat "$GOLDEN/legacy.golden.json")" ] || {
+  diff <(printf '%s\n' "$GOT") "$GOLDEN/legacy.golden.json" >&2 || true
+  fail "исключение из единого без селектора изменило рендер (выше — разница с золотым файлом)"; }
+ok
+
+# ── 5. селектор без чтения кластера: рендер проходит формой, которую не установить ─
+# Отказ рендера обрывал подъём стенда (предполёт `stack-secrets.sh` рендерит
+# офлайн) — а урезанного каталога не даёт и форма ниже: единственный источник
+# тома — объект, которого не заводит никто, без `optional`, и под, поставленный
+# из такого рендера, стоит с событием, называющим этот объект. Подобранные
+# источники и единый в офлайн-форму НЕ входят: их содержимого рендер не читал.
+PY_OFFLINE=$(cat <<'PYSRC'
+import json, sys
+got = json.load(sys.stdin)
+src, digest_key, digest = sys.argv[1], sys.argv[2], sys.argv[3]
+errs = []
+vols = got["volumes"]
+if len(vols) != 1 or "projected" not in vols[0]:
+    errs.append("том module-manifests не проецируемый либо не один: %s" % json.dumps(vols))
+else:
+    srcs = vols[0]["projected"]["sources"]
+    names = [s.get("configMap", {}).get("name") for s in srcs]
+    if names != [src]:
+        errs.append("источники офлайн-рендера: есть %s, ждали ровно [%s] — офлайн-рендер, несущий иное, "
+                    "установился бы с каталогом, которого рендер не читал" % (names, src))
+    if any(s.get("configMap", {}).get("optional") for s in srcs):
+        errs.append("объект-метка офлайн-рендера объявлен optional — установленный офлайн-рендер поднялся бы с пустым каталогом")
+if got["annotations"].get(digest_key) != digest:
+    errs.append("отпечаток офлайн-рендера %r, ждали %r — шаблон пода не называет, что рендер кластера не читал"
+                % (got["annotations"].get(digest_key), digest))
+if not (got["config_manifests"] or {}).get("dir"):
+    errs.append("manifests.dir процесса пуст — офлайн-рендер снял бы опору на доставку")
+print("\n".join(errs))
+PYSRC
+)
 offline "$V_SEL"
-render_must_fail_because "кластер не прочитал" "селектор, офлайн" \
-  "селектор объявлен, рендер кластера не читал — и прошёл: каталог доставки молча остался без подобранных источников"
+[ "$HELM_RC" -eq 0 ] || { helm_said "селектор, офлайн"
+  fail "селектор объявлен, рендер кластера не читал — и ОТКАЗАЛ: подъём стенда с селектором обрывается на предполёте (scripts/stack-secrets.sh рендерит офлайн), раньше helm upgrade"; }
+render_nonempty_or_fatal "селектор, офлайн"
+ERRS="$(printf '%s\n' "$HELM_OUT" | extract | python3 -c "$PY_OFFLINE" "$OFFLINE_SOURCE" "$DIGEST_KEY" "$OFFLINE_DIGEST")" \
+  || fatal "суд офлайн-рендера не состоялся"
+[ -z "$ERRS" ] || fail "офлайн-рендер с селектором: $ERRS"
 ok
 
 # ── узел API: объекты пробы, порт, kubeconfig ───────────────────────────────
@@ -257,6 +317,26 @@ render_must_fail_because "нет в пространстве имён" "селе
   "единый источник назван и отсутствует, а рендер прошёл: каталог молча остался без его манифестов"
 ok
 
+# ── 6. исключение из единого: единый всё ещё несёт исключённый модуль ───────
+# Решение владельца по SD-3356-2: на посадке, где модуль registry поставляет
+# другой чарт, единый источник его не несёт. Производитель единого исключает
+# каталог по `manifests.unifiedExclude`; рендер под селектором читает единый и
+# отказывает, если исключённый ключ в нём остался (объект старше цепочки либо
+# произведён другой цепочкой): иначе два манифеста одного модуля доехали бы до
+# каталога, и служба отказала бы в старте (`ErrModuleCollision`) уже на кластере.
+LEGACY_WITH_REGISTRY="$(cm kacho-module-manifests - 'iam.yaml=module: iam\n' 'registry.manifest.yaml=module: registry\n')"
+objects "$LEGACY_WITH_REGISTRY" "$REGISTRY" "$ACME" "$UNLABELED" "$OPTED_OUT"
+online "$V_SEL_EXCL"
+render_must_fail_because "unifiedExclude" "селектор, единый несёт исключённый модуль" \
+  "единый источник несёт исключённый модуль registry, а рендер прошёл: два манифеста модуля доехали бы до каталога"
+ok
+# Близнец: тот же мир, единый без исключённого ключа — подбор прежний.
+objects "$LEGACY" "$REGISTRY" "$ACME" "$UNLABELED" "$OPTED_OUT"
+online "$V_SEL_EXCL"; render_nonempty_or_fatal "селектор, единый без исключённого модуля"
+ERRS="$(judge with-legacy)" || fatal "суд выжимки не состоялся"
+[ -z "$ERRS" ] || fail "исключение из единого изменило подбор, когда исключённого ключа в едином нет: $ERRS"
+ok
+
 # ── 4в. двоичные данные в подобранном источнике ─────────────────────────────
 BIN="$(python3 -c 'import json,sys; o=json.loads(sys.argv[1]); o["binaryData"]={"blob.bin":"AAE="}; print(json.dumps(o))' "$ACME")"
 objects "$LEGACY" "$REGISTRY" "$BIN"
@@ -265,5 +345,5 @@ render_must_fail_because "binaryData" "селектор, двоичные дан
   "двоичные данные подобранного источника не отвергнуты: ключ binaryData молча не доехал бы до каталога"
 ok
 
-outcome_verdict "источников в пробах: 5 (единый, два подобранных, без метки, с иным значением метки)"
+outcome_verdict "источников в пробах: 5 (единый, два подобранных, без метки, с иным значением метки); офлайн-форма и исключение из единого"
 exit 0
