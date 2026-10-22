@@ -291,11 +291,6 @@ jobs:
       - name: гейт — сводный вердикт способен упасть (самопроба инъекцией)
         run: python3 .github/scripts/aggregate-unit-shards.py --self-test
 
-      # ПЕРЕПИСЬ СТОИТ ДО ВЫДАЧИ МАТРИЦЫ. Гейт полноты, стоящий после, судил бы
-      # уже разосланное: шарды уехали бы по непроверенной раздаче.
-      - name: ПЕРЕПИСЬ ПОЛНОТЫ — в дереве N, роздано M
-        run: python3 .github/scripts/unit-shards.py --census --out unit-shard-plan.json
-
       # КЭШ СБОРКИ ПОД -race — ОТДЕЛЬНЫЙ ОТ КЭША setup-go, И ЭТО РЕШЕНИЕ.
       # `setup-go` кэширует `~/.cache/go-build` по хэшу `go.sum`, и записывает его
       # то задание, которое первым дошло до post-шага; у нераспиленного прогона это
@@ -326,6 +321,23 @@ jobs:
           GOCACHE: ${{ runner.temp }}/race-build-cache
         run: go test ./... -race -short -count=1 -exec /bin/true
 
+      # ПЕРЕПИСЬ СТОИТ ДО ВЫДАЧИ МАТРИЦЫ. Гейт полноты, стоящий после, судил бы
+      # уже разосланное: шарды уехали бы по непроверенной раздаче.
+      #
+      # И ПОСЛЕ ПРОГРЕВА (kacho#3277): перепись теперь пишет план с РАСПИЛОМ — перечень
+      # проб распиленных пакетов даёт `go test -race -count=1 -list` их тестового
+      # бинаря, и под тем же GOCACHE он не платит второй сборки. Выбор по пакетам
+      # (запрос в ветку эпика или волны) читает пути запроса тем же API, что детектор.
+      - name: ПЕРЕПИСЬ ПОЛНОТЫ — в дереве N, роздано M; выбор и распил по пробам
+        env:
+          GOCACHE: ${{ runner.temp }}/race-build-cache
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/unit-shards.py --census --out unit-shard-plan.json
+
       # Сохранение — при промахе ключа и НЕ ТОЛЬКО на зелёном: условие без функции
       # состояния вычисляется как `success()`, и прогретый кэш терялся бы ровно на
       # том прогоне, который его оплатил.
@@ -339,7 +351,7 @@ jobs:
       - name: матрица шардов
         id: matrix
         run: |
-          python3 .github/scripts/unit-shards.py --matrix >> "$GITHUB_OUTPUT"
+          python3 .github/scripts/unit-shards.py --matrix --plan unit-shard-plan.json >> "$GITHUB_OUTPUT"
           cut -c1-400 "$GITHUB_OUTPUT"
 
       - name: план — артефакт для сводного вердикта
@@ -393,6 +405,15 @@ jobs:
           key: unit-race-build-${{ runner.os }}-${{ hashFiles('go.sum') }}
           restore-keys: |
             unit-race-build-${{ runner.os }}-
+
+      # ПЛАН — ВХОД ШАРДА (kacho#3277): из него шард берёт ВЫБОР (на запросе в ветку
+      # эпика или волны — не всё дерево) и, если он часть распиленного пакета, свою
+      # долю проб. Пакеты шард по-прежнему выводит сам — свод сверяет их с планом.
+      - name: план шардов — скачать
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v6
+        with:
+          name: unit-shard-plan
+          path: unit-plan-in
 
       # Прогонщик сам выносит часть вердикта — перепись «исполнено · упало ·
       # ПРОПУЩЕНО», сверку пропусков у гейтов дерева с ведомостью и ОПИСЬ шарда,
@@ -449,7 +470,8 @@ jobs:
           SHARD: ${{ matrix.shard.id }}
           ATTEMPT: ${{ github.run_attempt }}
         run: |
-          make test-unit SHARD="$SHARD" UNIT_CENSUS="$PWD/unit-censuses/$SHARD.a$ATTEMPT.json"
+          make test-unit SHARD="$SHARD" UNIT_PLAN="$PWD/unit-plan-in/unit-shard-plan.json" \
+            UNIT_CENSUS="$PWD/unit-censuses/$SHARD.a$ATTEMPT.json"
 
       # Опись уезжает И С КРАСНОГО шарда. Иначе падение продукта приезжало бы в
       # свод как «шард не отчитался»: причина подменяется, и разбор начинается не

@@ -55,12 +55,15 @@ from pathlib import Path
 LIST_FORMAT = "{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}"
 
 GREEN = "ЗЕЛЁНЫЙ"
+GREEN_TARGETED = "ЗЕЛЁНЫЙ · ЦЕЛЕВОЙ ВЫБОР"
 RED = "КРАСНЫЙ"
 PARTIAL = "КРАСНЫЙ · ЧАСТЬ ДЕРЕВА НЕ СУДИЛАСЬ"
 DIDNOTRUN = "НЕ ВЫПОЛНИЛОСЬ"
 
 GLOSS = {
     GREEN: "всё дерево судилось, падений нет",
+    GREEN_TARGETED: ("судились пакеты, выбранные по изменению (их число — ниже), падений "
+                     "нет; всё дерево судит полный прогон — запрос эпика в main"),
     RED: "всё дерево судилось, есть падения — читать «Находки»",
     PARTIAL: ("часть пакетов НЕ судилась вовсе: их зелёного нет и красного тоже — "
               "числа ниже относятся к меньшему, чем всё дерево"),
@@ -98,6 +101,26 @@ def adjudicate(plan: dict | None, censuses: dict[str, dict],
 
     plan_tree = sorted(set(plan.get("tree_packages") or []))
     plan_shards = [s.get("id") for s in (plan.get("shards") or []) if s.get("id")]
+    # ВЫБОР (kacho#3277): что план обязался прогнать. Плана без блока выбора —
+    # форма до правки — судится как полный.
+    selection = plan.get("selection") or {}
+    targeted = selection.get("mode") == "targeted"
+    expected = sorted(set(selection.get("packages") or plan_tree)) if selection else plan_tree
+    split = plan.get("split") or {}
+    split_rows = {s.get("id"): s for s in (plan.get("shards") or []) if s.get("tests")}
+    if selection:
+        outside = sorted(set(expected) - set(plan_tree))
+        if outside:
+            findings.append(
+                f"ВЫБОР ВНЕ ДЕРЕВА ({len(outside)}): {', '.join(outside[:5])}. План "
+                f"обязался прогнать пакеты, которых в дереве нет")
+        if not expected:
+            findings.append("ВЫБОР ПУСТ: план не обязался прогнать ни одного пакета — "
+                            "пустой выбор обязан был стать полным набором")
+        if not targeted and set(expected) != set(plan_tree):
+            findings.append(
+                f"ПОЛНЫЙ ВЫБОР НЕ РАВЕН ДЕРЕВУ: выбрано {len(expected)} при дереве "
+                f"{len(plan_tree)}")
 
     if not plan_tree:
         findings.append("ПЛАН ПУСТ: в нём ноль пакетов дерева — это отказ, а не идеал")
@@ -155,8 +178,78 @@ def adjudicate(plan: dict | None, censuses: dict[str, dict],
             bad_rc.append(f"{sid} (код {c.get('rc')})")
 
     handed_set = set(handed)
-    dup = sorted({p for p in handed if handed.count(p) > 1})
-    lost = sorted(set(plan_tree) - handed_set) if plan_tree else []
+    # Распиленный пакет законно стоит в каждой своей части плана — и нигде больше.
+    split_owner: dict[str, set[str]] = {}
+    for sid, row in split_rows.items():
+        for pk in row.get("packages") or []:
+            split_owner.setdefault(pk, set()).add(sid)
+    owners: dict[str, list[str]] = {}
+    for sid in sorted(censuses):
+        for pk in censuses[sid].get("assigned") or []:
+            owners.setdefault(pk, []).append(sid)
+    dup = sorted(pk for pk, sids in owners.items()
+                 if (len(sids) > 1 and pk not in split_owner)
+                 or (pk in split_owner and (len(sids) != len(set(sids))
+                                            or not set(sids) <= split_owner[pk])))
+    lost = sorted(set(expected) - handed_set) if expected else []
+    beyond = sorted(handed_set - set(expected)) if selection else []
+    if beyond:
+        findings.append(
+            f"ШАРДЫ ГОНЯЛИ НЕВЫБРАННОЕ ({len(beyond)}): {', '.join(beyond[:5])}. "
+            f"Выбор плана и доля шарда разошлись")
+
+    # РАСПИЛ ПО ПРОБАМ: каждая проба перечня — ровно в одной части, и исполнена.
+    split_num = {}
+    tests_lost_any = False
+    for pkg, info in sorted(split.items()):
+        listing = sorted(set(info.get("tests") or []))
+        if not listing:
+            findings.append(f"РАСПИЛ БЕЗ ПЕРЕЧНЯ: у {pkg} в плане ноль проб")
+            continue
+        part_ids = [sid for sid in (info.get("parts") or []) if sid in split_rows]
+        planned: list[str] = []
+        for sid in part_ids:
+            planned.extend(split_rows[sid].get("tests") or [])
+        p_dup = sorted({t for t in planned if planned.count(t) > 1})
+        p_lost = sorted(set(listing) - set(planned))
+        p_extra = sorted(set(planned) - set(listing))
+        if p_dup or p_lost or p_extra:
+            findings.append(
+                f"РАСПИЛ ПЛАНА НЕ СХОДИТСЯ у {pkg}: дважды {len(p_dup)}, ни в одной "
+                f"части {len(p_lost)} ({', '.join(p_lost[:4])}), вне перечня "
+                f"{len(p_extra)}. Каждая проба обязана стоять ровно в одной части")
+        seen_all: list[str] = []
+        for sid in part_ids:
+            c = censuses.get(sid)
+            if c is None:
+                continue  # нет описи — уже находка «шарды не отчитались»
+            sp = c.get("split") or {}
+            if sp.get("package") != pkg:
+                findings.append(
+                    f"ЧАСТЬ `{sid}` НЕ ОТЧИТАЛАСЬ О ПРОБАХ {pkg}: в описи нет блока "
+                    f"распила — гоняла ли она свою долю, неизвестно")
+                continue
+            if sorted(sp.get("tests_assigned") or []) != sorted(split_rows[sid].get("tests") or []):
+                findings.append(
+                    f"ЧАСТЬ `{sid}` ГОНЯЛА НЕ СВОЮ ДОЛЮ: роздано планом "
+                    f"{len(split_rows[sid].get('tests') or [])}, частью принято "
+                    f"{len(sp.get('tests_assigned') or [])}")
+            seen_all.extend(sp.get("tests_seen") or [])
+        s_dup = sorted({t for t in seen_all if seen_all.count(t) > 1})
+        s_extra = sorted(set(seen_all) - set(listing))
+        s_lost = sorted(set(listing) - set(seen_all))
+        if s_dup or s_extra:
+            findings.append(
+                f"ПРОБЫ {pkg} ИСПОЛНЕНЫ НЕ ПО РАСПИЛУ: дважды {len(s_dup)} "
+                f"({', '.join(s_dup[:4])}), вне перечня {len(s_extra)} "
+                f"({', '.join(s_extra[:4])})")
+        reported = all(sid in censuses for sid in part_ids)
+        if s_lost and reported:
+            tests_lost_any = True
+            findings.append(
+                f"ПРОБЫ {pkg} НЕ ИСПОЛНЕНЫ НИ В ОДНОЙ ЧАСТИ ({len(s_lost)}): "
+                f"{', '.join(s_lost[:6])}. Пропуск не есть проход")
+        split_num[pkg] = (len(listing), len(set(seen_all)), len(part_ids))
 
     if lost:
         findings.append(
@@ -195,6 +288,10 @@ def adjudicate(plan: dict | None, censuses: dict[str, dict],
 
     num = {
         "tree": len(plan_tree),
+        "expected": len(expected),
+        "targeted": targeted,
+        "selection_reason": selection.get("reason", "") if selection else "",
+        "split": split_num,
         "handed": len(handed_set),
         "handed_rows": len(handed),
         "executed_packages": len(set(seen) & handed_set),
@@ -207,11 +304,11 @@ def adjudicate(plan: dict | None, censuses: dict[str, dict],
     if not censuses or tests == 0:
         return DIDNOTRUN, findings or [
             "описей ноль либо проб исполнено ноль — перепись беспредметна"], num
-    if missing_shards or lost or not_reported:
+    if missing_shards or lost or not_reported or tests_lost_any:
         return PARTIAL, findings, num
     if findings:
         return RED, findings, num
-    return GREEN, findings, num
+    return (GREEN_TARGETED if targeted else GREEN), findings, num
 
 
 # Имя файла описи несёт НОМЕР ПОПЫТКИ: `<шард>.a<N>.json`. Без суффикса — попытка 0.
@@ -277,6 +374,13 @@ def read_censuses(d: Path) -> tuple[dict[str, dict], list[str]]:
 def render(category: str, findings: list[str], num: dict,
            censuses: dict[str, dict], dropped: list[str] | None = None) -> str:
     lines = [f"ИСХОД: {category} — {GLOSS[category]}", ""]
+    if num.get("selection_reason"):
+        lines.append(f"выбор: {'ЦЕЛЕВОЙ' if num.get('targeted') else 'ПОЛНЫЙ'} — "
+                     f"{num['selection_reason']}; пакетов к прогону {num.get('expected', 0)} "
+                     f"из {num['tree']}")
+    for pkg, (n_list, n_seen, n_parts) in sorted((num.get("split") or {}).items()):
+        lines.append(f"распил {pkg}: проб в перечне {n_list} · исполнено {n_seen} · "
+                     f"частей {n_parts}")
     lines.append(f"пакетов с пробами в дереве N {num['tree']} · "
                  f"роздано по шардам M {num['handed']} · "
                  f"исполнено K {num['executed_packages']}")
@@ -420,10 +524,80 @@ def self_test() -> int:
     ok &= _case("пропуски при нулевом коде шарда → ЗЕЛЁНЫЙ (судит прогонщик)", c,
                 GREEN, None)
 
+    ok &= _self_test_split_and_selection()
+
     ok &= _self_test_attempts()
 
     print("самопроба:", "ПРОЙДЕНА" if ok else "ПРОВАЛЕНА")
     return 0 if ok else 1
+
+
+def _self_test_split_and_selection() -> bool:
+    """Оси kacho#3277: распил пакета по пробам и целевой выбор — в обе стороны."""
+    import copy
+    ok = True
+    rh = TREE[3]
+    tests = ["TestA", "TestB", "TestC"]
+    plan = {
+        "module": MOD, "tree_packages": TREE,
+        "selection": {"mode": "full", "reason": "полный", "packages": TREE},
+        "split": {rh: {"parts": ["rh-a", "rh-b"], "tests": tests}},
+        "shards": [{"id": "vpc", "packages": TREE[:2]},
+                   {"id": "gateway", "packages": TREE[2:3]},
+                   {"id": "rh-a", "packages": [rh], "tests": ["TestA", "TestC"]},
+                   {"id": "rh-b", "packages": [rh], "tests": ["TestB"]}],
+    }
+
+    def part(sid, assigned, seen):
+        return _census(sid, [rh], split={"package": rh, "tests_assigned": assigned,
+                                         "tests_seen": seen})
+
+    def full():
+        return {"vpc": _census("vpc", TREE[:2]), "gateway": _census("gateway", TREE[2:3]),
+                "rh-a": part("rh-a", ["TestA", "TestC"], ["TestA", "TestC"]),
+                "rh-b": part("rh-b", ["TestB"], ["TestB"])}
+
+    def case(name, censuses, expect, needle, pl=None):
+        cat, findings, num = adjudicate(pl or plan, censuses, TREE, "своё измерение",
+                                        "success", "success")
+        good = cat == expect and (needle is None or any(needle in f for f in findings))
+        print(f"  [{'OK ' if good else 'ОТКАЗ'}] {name}: {cat} (ждали {expect})")
+        if not good:
+            for f in findings:
+                print("      · " + f[:200])
+        return good
+
+    ok &= case("контроль распила: каждая проба ровно в одной части → ЗЕЛЁНЫЙ", full(),
+               GREEN, None)
+    c = full(); c["rh-b"] = part("rh-b", ["TestB"], [])
+    ok &= case("проба не исполнена ни в одной части → не зелёный", c, PARTIAL,
+               "НИ В ОДНОЙ ЧАСТИ")
+    c = full(); c["rh-b"] = part("rh-b", ["TestB"], ["TestB", "TestA"])
+    ok &= case("проба исполнена в двух частях → КРАСНЫЙ", c, RED, "НЕ ПО РАСПИЛУ")
+    pl = copy.deepcopy(plan); pl["shards"][2]["tests"] = ["TestA"]
+    c = full(); c["rh-a"] = part("rh-a", ["TestA"], ["TestA"])
+    ok &= case("план потерял пробу перечня → не зелёный", c, PARTIAL, "РАСПИЛ ПЛАНА", pl)
+    c = full(); c["rh-a"] = _census("rh-a", [rh])
+    ok &= case("часть без блока распила → не зелёный", c, PARTIAL, "НЕ ОТЧИТАЛАСЬ О ПРОБАХ")
+    c = full(); c["rh-a"] = part("rh-a", ["TestA"], ["TestA", "TestC"])
+    ok &= case("часть приняла не свою долю → КРАСНЫЙ", c, RED, "НЕ СВОЮ ДОЛЮ")
+    c = full(); c["gateway"] = _census("gateway", TREE[2:3] + [rh])
+    ok &= case("распиленный пакет целиком в чужом шарде → КРАСНЫЙ", c, RED,
+               "РОЗДАН ДВАЖДЫ")
+
+    tgt = {"module": MOD, "tree_packages": TREE,
+           "selection": {"mode": "targeted", "reason": "правка vpc", "packages": TREE[:2]},
+           "split": {}, "shards": [{"id": "vpc", "packages": TREE[:2]}]}
+    ok &= case("целевой выбор исполнен → ЗЕЛЁНЫЙ · ЦЕЛЕВОЙ", {"vpc": _census("vpc", TREE[:2])},
+               GREEN_TARGETED, None, tgt)
+    ok &= case("выбранный пакет не исполнен → не зелёный",
+               {"vpc": _census("vpc", TREE[:1])}, PARTIAL, "НЕ РОЗДАНЫ", tgt)
+    ok &= case("шард гонял невыбранное → КРАСНЫЙ",
+               {"vpc": _census("vpc", TREE[:2] + [rh])}, RED, "НЕВЫБРАННОЕ", tgt)
+    bad = copy.deepcopy(tgt); bad["selection"]["mode"] = "full"
+    ok &= case("«полный» выбор меньше дерева → КРАСНЫЙ", {"vpc": _census("vpc", TREE[:2])},
+               RED, "ПОЛНЫЙ ВЫБОР НЕ РАВЕН ДЕРЕВУ", bad)
+    return ok
 
 
 def _write_census(d: Path, sid: str, attempt: int | None, rc: int) -> Path:
@@ -525,7 +699,7 @@ def main() -> int:
         except OSError as e:
             sys.stdout.write(f"(сводку не записали: {e})\n")
 
-    if category == GREEN:
+    if category in (GREEN, GREEN_TARGETED):
         return 0
     return 2 if category == DIDNOTRUN else 1
 
