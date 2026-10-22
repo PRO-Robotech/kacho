@@ -538,6 +538,61 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   local prc=0
   ( env -u KUBERNETES_SERVICE_HOST bash "$HERE/stand-ns.sh" pod-forward t3102-probe ) >/dev/null 2>&1 || prc=$?
   if [ "$prc" -eq 2 ]; then ok "pod-forward вне pod — отказ 2 до обращения к кластеру"; else bad "pod-forward вне pod: код $prc, ждали 2"; fi
+  # Инструменты подъёма (kacho#3353): собирает pod кластера, `go` на машине — ловушка, которая
+  # пишет вызов в файл и отвечает 97. Pod — каталог-фикстура (бинари, суммы, код), обращения к
+  # кластеру подменены; исходники идут тем же потоком tar|gzip, что в pod.
+  local tx trc; tx="$(mktemp -d)"
+  mkdir -p "$tx/bin"
+  printf '#!/bin/sh\necho "go $*" >> "%s/trap"\nexit 97\n' "$tx" >"$tx/bin/go" && chmod +x "$tx/bin/go"
+  : >"$tx/trap"
+  # tool_probe РЕЖИМ — код build_tool на фикстуре pod; вывод — $tx/out.
+  tool_probe() {
+    rm -rf "$tx/work" "$tx/st"; mkdir -p "$tx/work/out" "$tx/st"
+    printf 'standns-bin\n' >"$tx/work/out/stand-ns"; printf 'producer-bin\n' >"$tx/work/out/module-manifests-configmap"
+    ( cd "$tx/work/out" && sha256sum -- * >"$tx/work/sums" )
+    case "$1" in
+      ok) echo 0 >"$tx/work/.rc" ;;
+      build-fail) echo 1 >"$tx/work/.rc"; echo "сборка: пакет не найден" >"$tx/work/build.log" ;;
+      sum-bad) echo 0 >"$tx/work/.rc"; sed -i 's/^[0-9a-f]\{4\}/0000/' "$tx/work/sums" ;;
+    esac
+    # shellcheck disable=SC2030,SC2031 # подмены живут лишь в подоболочке пробы
+    ( PATH="$tx/bin:$PATH" TOOL_WORK="$tx/work" TOOL_WAIT=10
+      tool_apply() { cat >/dev/null; }
+      tool_ready() { return 0; }
+      tool_phase() { echo Running; }
+      tool_exec() { shift; "$@"; }
+      kubectl() { [ "$1 $2" != "auth can-i" ] || echo yes; }
+      stand_nodes() { :; }
+      sleep() { :; }
+      build_tool "$tx/st" t3102-probe 3102 && [ -x "$STAND_NS_BIN" ] && [ -x "$MM_PRODUCER" ] ) >"$tx/out" 2>&1
+  }
+  trc=0; tool_probe ok || trc=$?
+  if [ "$trc" -eq 0 ] && [ "$(cat "$tx/st/bin/stand-ns")" = standns-bin ] && [ "$(cat "$tx/st/bin/module-manifests-configmap")" = producer-bin ] &&
+     [ ! -s "$tx/trap" ] && [ -s "$tx/work/src/go.mod" ] && [ "$(tool_sources | tar -t | grep -c '_test\.go$')" = 0 ]; then
+    ok "инструменты подъёма: собраны в pod кластера, суммы сверены, go на машине (ловушка) не звался, исходники — без _test.go"
+  else bad "инструменты подъёма: код $trc, ловушка «$(tr '\n' ' ' <"$tx/trap")», $(tail -n 2 "$tx/out" | tr '\n' ' ')"; fi
+  for twin in "build-fail|сборка в pod отказала|не собраны" "sum-bad|сумма забранного не сумма pod|не доставлен целым"; do
+    trc=0; tool_probe "${twin%%|*}" || trc=$?
+    if [ "$trc" -ne 0 ] && [ ! -e "$tx/st/bin/stand-ns" ] && grep -q "${twin##*|}" "$tx/out" && [ ! -s "$tx/trap" ]; then
+      ok "инструменты подъёма: близнец «$(cut -d'|' -f2 <<<"$twin")» — отказ $trc без бинаря"
+    else bad "инструменты подъёма: близнец «$(cut -d'|' -f2 <<<"$twin")» — код $trc: $(tail -n 2 "$tx/out" | tr '\n' ' ')"; fi
+  done
+  printf 'module x\n\ngo 1.26.0\n\ntoolchain go1.26.9\n' >"$tx/a.mod"; printf 'module x\n\ngo 1.26.0\n' >"$tx/b.mod"; printf 'module x\n' >"$tx/c.mod"
+  if [ "$(tool_go_version "$tx/a.mod")" = 1.26.9 ] && [ "$(tool_go_version "$tx/b.mod")" = 1.26.0 ] && ! tool_go_version "$tx/c.mod" >/dev/null 2>&1; then
+    ok "инструменты подъёма: версия Go — toolchain go.mod, иначе go, нет обеих — отказ"
+  else bad "инструменты подъёма: версия Go из go.mod выведена неверно"; fi
+  local to; to="$(tool_objects t3102-tool-abc123 3102 t3102-probe mirror.gcr.io/library/golang:1.26.9 amd64 2999-01-01T00:00:00Z)"
+  if jq -e --arg ls "$LABEL_STAND" '
+      ([.items[].kind] == ["Namespace", "Pod"])
+      and (.items[0].metadata.labels[$ls] == "test") and (.items[0].metadata.labels["pod-security.kubernetes.io/enforce"] == "restricted")
+      and (.items[1].metadata.namespace == "t3102-tool-abc123")
+      and (.items[1].spec | .automountServiceAccountToken == false and .securityContext.runAsNonRoot == true
+           and ([.volumes[] | select(has("hostPath"))] | length == 0) and (has("hostNetwork") | not))
+      and (.items[1].spec.containers[0] | .securityContext.capabilities.drop == ["ALL"] and .securityContext.allowPrivilegeEscalation == false
+           and (.resources.limits.memory != null) and ([.env[] | select(.name == "GOTOOLCHAIN") | .value] == ["local"]))' <<<"$to" >/dev/null; then
+    ok "инструменты подъёма: пространство помечено стендом проб, pod restricted — не root, без токена учётки, без возможностей, с пределом памяти"
+  else bad "инструменты подъёма: форма пространства или pod сборки"; fi
+  rm -rf "$tx"
   printf 'самопроверка stand-ns: прошло %d, провалено %d\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
 }
@@ -545,8 +600,9 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
 # ── КЛАСТЕР ──────────────────────────────────────────────────────────────────
 
 need_tools() {
-  local t tools="kubectl helm python3 openssl jq curl go git"
-  # В pod раннера исполняется лишь forward: ему не нужны helm, go и git.
+  local t tools="kubectl helm python3 openssl jq curl git tar gzip sha256sum"
+  # Go на машине не нужен: инструменты подъёма собирает кластер (build_tool, kacho#3353).
+  # В pod раннера исполняется лишь forward: ему не нужны helm и git.
   [ "$STAND_IN_POD" != 1 ] || tools="kubectl python3 openssl curl"
   for t in $tools; do
     # type -P, а не command -v: kubectl и helm ниже — функции-обёртки, и
@@ -660,14 +716,191 @@ ns_state() {
   return 2
 }
 
-# build_tool DIR — двоичный файл кладётся в рабочий каталог стенда и снимается
-# вместе с ним (down, ловушка подъёма), а не остаётся в общем TMPDIR.
+# ── ИНСТРУМЕНТЫ ПОДЪЁМА — СБОРКОЙ ВО ВНЕШНЕМ КЛАСТЕРЕ (kacho#3353) ─────────────
+#
+# Решение владельца 2026-10-22 (kacho-workspace#1301) дословно: «запиши в рул что бы не
+# использовал мою локальную тачку. использовать только в одном случае если доступа к
+# кластеру нету». Подъёму нужны два Go-инструмента — перенос рендера (tools/standns) и
+# производитель манифестов модулей (tools/modulemanifests, цель module-manifests-configmap
+# получает его готовым через MODULE_MANIFESTS_PRODUCER). `go` на машине не запускается: оба
+# собирает короткий pod кластера, на машине — kubectl, git, tar, gzip и сверка сумм.
+#
+#   пространство  своё, `t<задача>-tool-<6 hex>`: пространства стенда ещё нет (фаза 1 подъёма
+#                 в него не пишет), рабочий стенд не трогается. Помечено как стенд проб
+#                 (kacho.io/stand=test, задача, срок TOOL_TTL_MIN мин) — перепись его видит,
+#                 `census --expired` снимает; снимается сразу после забора и ловушкой подъёма;
+#   образ         golang версии toolchain (иначе go) go.mod рабочей копии — её же ставит
+#                 конвейер (setup-go, go-version-file: go.mod), зеркалом Docker Hub; GOTOOLCHAIN=local;
+#   pod           Pod Security restricted: не root, токен учётки не монтируется, возможности
+#                 сброшены, предел памяти; срок — STAND_TOOL_DEADLINE;
+#   исходники     не-тестовые `.go`, go.mod и go.sum рабочей копии (отслеживаемые и новые
+#                 неигнорируемые — тот же вход, что видел `go build` на машине) потоком
+#                 tar|gzip (замер @af1130cea7: 1305 файлов, 5,9 МБ). Встроенный (`go:embed`)
+#                 не-.go файл в замыкании сборки — громкий отказ сборки, а не подмена;
+#   сборка        CGO_ENABLED=0, GOOS/GOARCH машины, -trimpath; модули — из сети pod;
+#   забор         каждый бинарь gzip-потоком; сумма посчитана в pod ДО передачи и сверена на
+#                 машине; не сошлась — повтор (STAND_TOOL_FETCH_TRIES), затем отказ без бинаря.
+TOOL_POD=stand-tool
+TOOL_WORK=/work
+TOOL_DEADLINE="${STAND_TOOL_DEADLINE:-1800}"
+TOOL_WAIT="${STAND_TOOL_WAIT:-900}"
+TOOL_TTL_MIN=60
+TOOL_NS=""
+# «имя=пакет» — что собирается и под каким именем ложится в каталог bin стенда.
+STAND_TOOLS="stand-ns=./tools/standns/cmd/stand-ns module-manifests-configmap=./tools/modulemanifests/cmd/module-manifests-configmap"
+MM_PRODUCER=""
+
+# Текст pod сборки: ждёт исходники (метка .go), собирает STAND_TOOLS, пишет суммы и код в
+# /work/.rc и ждёт снятия пространства (срок pod — activeDeadlineSeconds).
+read -r -d '' TOOL_POD_SH <<'POD'
+set -uo pipefail
+w="$TOOL_WORK"
+mkdir -p "$w/src" "$w/out" "$w/go" "$w/cache" || exit 1
+until [ -e "$w/.go" ]; do sleep 1; done
+( cd "$w/src" && go version && for t in $STAND_TOOLS; do
+    go build -trimpath -o "$w/out/${t%%=*}" "${t#*=}" || exit 1
+  done ) > "$w/build.log" 2>&1
+rc=$?
+[ "$rc" -ne 0 ] || ( cd "$w/out" && sha256sum -- * > "$w/sums" ) || rc=1
+echo "$rc" > "$w/.rc.tmp" && mv "$w/.rc.tmp" "$w/.rc"
+exec sleep infinity
+POD
+
+# tool_go_version GO.MOD — версия Go сборки: строка toolchain, иначе go; не прочитана — код 1.
+tool_go_version() {
+  local v
+  v="$(sed -n 's/^toolchain go\([0-9][0-9.]*\)$/\1/p' "$1" | head -n 1)"
+  [ -n "$v" ] || v="$(sed -n 's/^go \([0-9][0-9.]*\)$/\1/p' "$1" | head -n 1)"
+  [[ "$v" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { warn "версия Go в $1 не прочитана («$v»)"; return 1; }
+  printf '%s\n' "$v"
+}
+
+# tool_arch — GOARCH машины: бинарь исполняется здесь, собирается там.
+tool_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo amd64 ;;
+    aarch64|arm64) echo arm64 ;;
+    *) warn "архитектура машины $(uname -m) — GOARCH не выводится"; return 1 ;;
+  esac
+}
+
+# tool_objects NS ЗАДАЧА СТЕНД ОБРАЗ GOARCH СРОК — пространство и pod сборки (список JSON).
+tool_objects() {
+  jq -n --arg ns "$1" --arg task "$2" --arg stand "$3" --arg image "$4" --arg arch "$5" --arg exp "$6" \
+    --arg name "$TOOL_POD" --arg sh "$TOOL_POD_SH" --arg tools "$STAND_TOOLS" --arg w "$TOOL_WORK" \
+    --arg ls "$LABEL_STAND" --arg lt "$LABEL_TASK" --arg lsn "$LABEL_STAND_NS" --arg ae "$ANN_EXPIRES" \
+    --argjson deadline "$TOOL_DEADLINE" '
+    def env($n; $v): {name: $n, value: $v};
+    {apiVersion: "v1", kind: "List", items: [
+      {apiVersion: "v1", kind: "Namespace", metadata: {name: $ns,
+        labels: {($ls): "test", ($lt): $task, ($lsn): $stand,
+                 "pod-security.kubernetes.io/enforce": "restricted", "pod-security.kubernetes.io/enforce-version": "latest"},
+        annotations: {($ae): $exp}}},
+      {apiVersion: "v1", kind: "Pod", metadata: {name: $name, namespace: $ns, labels: {($ls): "test", "app.kubernetes.io/name": $name}},
+       spec: {restartPolicy: "Never", activeDeadlineSeconds: $deadline, automountServiceAccountToken: false,
+         enableServiceLinks: false, terminationGracePeriodSeconds: 5,
+         securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: "RuntimeDefault"}},
+         containers: [{name: "build", image: $image, command: ["bash", "-c", $sh], workingDir: $w,
+           env: [env("TOOL_WORK"; $w), env("STAND_TOOLS"; $tools), env("HOME"; $w), env("GOPATH"; ($w + "/go")),
+                 env("GOCACHE"; ($w + "/cache")), env("GOTOOLCHAIN"; "local"), env("GOFLAGS"; "-mod=readonly"),
+                 env("CGO_ENABLED"; "0"), env("GOOS"; "linux"), env("GOARCH"; $arch)],
+           resources: {requests: {cpu: "1", memory: "1Gi"}, limits: {memory: "4Gi"}},
+           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}},
+           volumeMounts: [{name: "work", mountPath: $w}]}],
+         volumes: [{name: "work", emptyDir: {sizeLimit: "6Gi"}}]}}]}'
+}
+
+# tool_sources — поток tar исходников сборки из рабочей копии (состав — шапка раздела).
+tool_sources() {
+  git -C "$REPO_ROOT" ls-files -z --cached --others --exclude-standard -- go.mod go.sum '*.go' |
+    while IFS= read -r -d '' f; do
+      case "$f" in *_test.go) continue ;; esac
+      [ -f "$REPO_ROOT/$f" ] && printf '%s\0' "$f"
+    done | tar -c -C "$REPO_ROOT" --null --verbatim-files-from -T -
+}
+
+# Обращения к кластеру сборки — функциями: самопроверка подменяет их фикстурой.
+tool_exec()  { local ns="$1"; shift; kubectl -n "$ns" exec "$TOOL_POD" -c build -- "$@"; }
+tool_apply() { kubectl apply -f - >/dev/null; }
+tool_ready() {
+  local ns="$1" sa=0
+  # Учётка default пространства заводится контроллером не сразу; без неё pod не допускается.
+  for _ in $(seq 1 30); do kubectl -n "$ns" get serviceaccount default -o name --request-timeout=30s >/dev/null 2>&1 && { sa=1; break; }; sleep 2; done
+  [ "$sa" = 1 ] || { warn "учётка default пространства $ns не заведена за 60 с"; return 1; }
+  jq '.items[1]' <<<"$2" | tool_apply || { warn "pod сборки не применён"; return 1; }
+  kubectl -n "$ns" wait --for=condition=Ready "pod/$TOOL_POD" --timeout="${STAND_TOOL_READY_WAIT:-600}s" >/dev/null || {
+    warn "pod сборки не готов: $(kubectl -n "$ns" get pod "$TOOL_POD" -o jsonpath='{.status.phase} {range .status.containerStatuses[*]}{.state}{end}' 2>/dev/null | cut -c1-300)"
+    return 1; }
+}
+tool_phase() { kubectl -n "$1" get pod "$TOOL_POD" -o jsonpath='{.status.phase}' --request-timeout=30s 2>/dev/null; }
+tool_drop() {
+  [ -n "$TOOL_NS" ] || return 0
+  kubectl delete namespace "$TOOL_NS" --ignore-not-found --wait=true --timeout=180s >/dev/null 2>&1 ||
+    warn "пространство сборки $TOOL_NS не снято за 180 с — снимет census --expired по сроку"
+  TOOL_NS=""
+}
+
+# build_tool DIR NS ЗАДАЧА — инструменты подъёма в DIR/bin (снимается вместе с рабочим
+# каталогом стенда), собранные во внешнем кластере (раздел выше). Код 1 — не собраны.
 build_tool() {
-  local out="$1/bin"
+  local out="$1/bin" stand="$2" task="$3" ver arch image tns objs i rc="" phase t name want got try
   mkdir -p "$out" || return 1
-  ( cd "$REPO_ROOT" && go build -o "$out/stand-ns" ./tools/standns/cmd/stand-ns ) >&2 || {
-    warn "tools/standns не собрался — переносить рендер нечем"; return 1; }
+  ver="$(tool_go_version "$REPO_ROOT/go.mod")" || return 1
+  arch="$(tool_arch)" || return 1
+  image="mirror.gcr.io/library/golang:$ver"
+  tns="t$task-tool-$(printf '%s %s %s' "$stand" "$$" "$(date +%s%N)" | sha256sum | cut -c1-6)"
+  ns_valid "$tns" >/dev/null || { warn "имя пространства сборки «$tns» не по правилу"; return 1; }
+  for i in "create namespaces" "delete namespaces" "create pods -n $tns" "create pods --subresource=exec -n $tns"; do
+    # shellcheck disable=SC2086 # «глагол ресурс [-n ns]» — разбор по словам и нужен
+    [ "$(kubectl auth can-i $i --request-timeout=30s 2>/dev/null)" = yes ] || { warn "у учётки нет права «$i» — собрать инструменты негде"; return 1; }
+  done
+  stand_nodes "сборка инструментов подъёма"
+  objs="$(tool_objects "$tns" "$task" "$stand" "$image" "$arch" "$(date -u -d "+$TOOL_TTL_MIN minutes" +%Y-%m-%dT%H:%M:%SZ)")" ||
+    { warn "объекты сборки не построены"; return 1; }
+  TOOL_NS="$tns"
+  log "инструменты подъёма: сборка во внешнем кластере — пространство $tns, образ $image, GOARCH=$arch (go на машине не запускается)"
+  jq '.items[0]' <<<"$objs" | tool_apply || { warn "пространство сборки $tns не заведено"; tool_drop; return 1; }
+  tool_ready "$tns" "$objs" || { tool_drop; return 1; }
+  for try in 1 2 3; do
+    tool_sources | gzip -1 | tool_exec "$tns" sh -c 'rm -rf "$1/src" && mkdir -p "$1/src" && tar -xz -C "$1/src"' put "$TOOL_WORK" && break
+    warn "исходники в pod сборки не доставлены (попытка $try из 3)"
+    [ "$try" -lt 3 ] || { tool_drop; return 1; }
+  done
+  tool_exec "$tns" touch "$TOOL_WORK/.go" </dev/null || { warn "pod сборки не принял сигнал старта"; tool_drop; return 1; }
+  for i in $(seq 1 $(( TOOL_WAIT / 5 ))); do
+    rc="$(tool_exec "$tns" cat "$TOOL_WORK/.rc" </dev/null 2>/dev/null)"
+    [[ "$rc" =~ ^[0-9]+$ ]] && break
+    rc=""
+    phase="$(tool_phase "$tns")"
+    case "$phase" in Running|Pending|"") ;; *) warn "pod сборки вышел из работы (фаза «$phase»)"; break ;; esac
+    sleep 5
+  done
+  if [ "$rc" != 0 ]; then
+    tool_exec "$tns" tail -n 30 "$TOOL_WORK/build.log" </dev/null >&2 2>/dev/null
+    warn "инструменты подъёма в кластере не собраны (код «${rc:-нет за $TOOL_WAIT с}», хвост журнала сборки выше)"
+    tool_drop; return 1
+  fi
+  local sums
+  sums="$(tool_exec "$tns" cat "$TOOL_WORK/sums" </dev/null)" || { warn "суммы сборки из pod не прочитаны"; tool_drop; return 1; }
+  for t in $STAND_TOOLS; do
+    name="${t%%=*}"
+    want="$(awk -v n="$name" '$2 == n && $1 ~ /^[0-9a-f]{64}$/ { print $1 }' <<<"$sums")"
+    [ -n "$want" ] || { warn "суммы $name в перечне pod нет"; tool_drop; return 1; }
+    got=""
+    for try in $(seq 1 "${STAND_TOOL_FETCH_TRIES:-3}"); do
+      rm -f "$out/$name.part"
+      tool_exec "$tns" gzip -1 -c "$TOOL_WORK/out/$name" </dev/null | gzip -dc >"$out/$name.part" 2>/dev/null
+      got="$(sha256sum <"$out/$name.part" | cut -d' ' -f1)"
+      [ "$got" = "$want" ] && break
+      warn "$name: сумма забранного ($got) не сумма pod ($want) — попытка $try"
+    done
+    [ "$got" = "$want" ] || { rm -f "$out/$name.part"; warn "$name из pod не доставлен целым — инструмента нет"; tool_drop; return 1; }
+    chmod 0755 "$out/$name.part" && mv "$out/$name.part" "$out/$name" || { tool_drop; return 1; }
+    log "инструмент $name: собран в $tns, сумма $want сверена с pod"
+  done
+  tool_drop
   STAND_NS_BIN="$out/stand-ns"
+  MM_PRODUCER="$out/module-manifests-configmap"
 }
 
 # ca_namespace — пространство ресурсов cert-manager, ИЗМЕРЕННОЕ у его контроллера.
@@ -914,6 +1147,8 @@ up_on_exit() {
   local rc=$?
   trap - EXIT INT TERM
   [ -z "$CHILD" ] || { kill_tree "$CHILD"; wait "$CHILD" 2>/dev/null; }
+  # Пространство сборки инструментов, прерванной сигналом либо отказом, — своё: снимается всегда.
+  tool_drop
   [ "$UP_DONE" = 1 ] && { ctx_cleanup; exit "$rc"; }
   [ "$rc" -ne 0 ] || rc=1
   if [ "$UP_CREATED" = 1 ]; then
@@ -1528,14 +1763,14 @@ cmd_up() {
   trap 'up_on_signal INT 130' INT
   trap 'up_on_signal TERM 143' TERM
 
-  # ── 1. Без записи в кластер ──
+  # ── 1. Без записи в кластер стенда (пространство сборки инструментов — своё, снимается тем же шагом) ──
   UP_STATE="$(ns_state "$ns")" || die "состояние пространства $ns НЕ ПРОЧИТАНО — кластер не ответил" 2
   [ "$UP_STATE" != foreign ] || die "пространство $ns существует и НЕ помечено $LABEL_STAND=test — оно чужое, стенд в него не ставится" 1
   chain="$(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --args "$stack" "$UMBRELLA")" && [ -n "$chain" ] ||
     die "цепочка «$stack» в deploy/stacks.txt не прочитана — стенд без цепочки сел бы на умолчания чарта" 2
   sha="$(git -C "$REPO_ROOT" rev-parse --verify "${ref}^{commit}" 2>/dev/null)" || die "ревизия «$ref» не разрешается в коммит" 2
   mkdir -p "$work" || die "рабочий каталог $work не заведён" 2
-  build_tool "$work" || die "инструмент переноса не собран" 2
+  build_tool "$work" "$ns" "$task" || die "инструменты подъёма (перенос рендера, производитель манифестов модулей) во внешнем кластере не собраны (выше)" 2
   ref_guard "$sha" || die "ревизия образов и рабочая копия расходятся (выше)" 2
   cans="$(ca_namespace)" || die "контроллер cert-manager на кластере не прочитан" 2
   [ "$(wc -w <<<"$cans")" = 1 ] || die "пространство ресурсов cert-manager не установлено однозначно («$cans»): стенд cert-manager не ставит, он переиспользует ровно один существующий" 2
@@ -1614,7 +1849,8 @@ $claims" 2
   # ── 3. Стенд ──
   stand_nodes "манифесты модулей и секреты"
   bg make -C "$DEPLOY_ROOT" --no-print-directory module-manifests-configmap \
-    MODULE_MANIFESTS_STACK="$stack" STACK_NAMESPACE="$ns" EXPECT_CONTEXT="$STAND_CTX" || die "манифесты модулей не доставлены" 1
+    MODULE_MANIFESTS_STACK="$stack" STACK_NAMESPACE="$ns" EXPECT_CONTEXT="$STAND_CTX" \
+    MODULE_MANIFESTS_PRODUCER="$MM_PRODUCER" || die "манифесты модулей не доставлены" 1
   local mm="$UMBRELLA/values.module-manifests.yaml"
   local extra=("${extra_base[@]}" -f "$mm" --set cert-manager.enabled=false)
   local args=("${chain_args[@]}" "${extra[@]}")

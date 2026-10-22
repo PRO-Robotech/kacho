@@ -2015,6 +2015,11 @@ wipe-iam-db: guard-kind-context
 # разработки в тот кластер, куда сейчас смотрит kubectl. Тот же довод, по которому
 # `stack-up` требует `STACK`. Все три пути выкатки называют стенд явно, поэтому
 # снятие умолчания не трогает ни одного из них.
+# MODULE_MANIFESTS_PRODUCER — готовый производитель (путь к исполняемому файлу). Задан —
+# цель Go не зовёт: так её вызывает подъём стенда проб, собравший производителя во внешнем
+# кластере (scripts/stand-ns.sh, build_tool, kacho#3353; на машине оператора Go не
+# запускается). Не задан — производитель собирается здесь (dev-up на kind, stack-up).
+MODULE_MANIFESTS_PRODUCER ?=
 module-manifests-configmap: guard-declared-context
 	@$(if $(filter $(MODULE_MANIFESTS_STACK),$(CLIENT_CONTEXT_STACKS)),bash scripts/client-context.sh verify --ambient,true)
 	@[ -n "$(MODULE_MANIFESTS_STACK)" ] || { \
@@ -2029,8 +2034,13 @@ module-manifests-configmap: guard-declared-context
 	[ -n "$$chain" ] || { echo "ABORT: цепочка стенда '$(MODULE_MANIFESTS_STACK)' прочиталась пустой"; exit 1; }; \
 	profiles=""; for f in $$chain; do profiles="$$profiles ./helm/umbrella/$$f"; done; \
 	work="$$(mktemp -d)"; trap 'rm -rf "$$work"' EXIT; \
-	go build -o "$$work/producer" ../tools/modulemanifests/cmd/module-manifests-configmap; \
-	rc=0; "$$work/producer" -root .. $$profiles > "$$work/configmap.yaml" || rc=$$?; \
+	producer="$(MODULE_MANIFESTS_PRODUCER)"; \
+	if [ -n "$$producer" ]; then \
+	  [ -x "$$producer" ] || { echo "ABORT: MODULE_MANIFESTS_PRODUCER=$$producer — не исполняемый файл"; exit 2; }; \
+	else \
+	  go build -o "$$work/producer" ../tools/modulemanifests/cmd/module-manifests-configmap; producer="$$work/producer"; \
+	fi; \
+	rc=0; "$$producer" -root .. $$profiles > "$$work/configmap.yaml" || rc=$$?; \
 	case "$$rc" in \
 	  0) kubectl -n $(STACK_NAMESPACE) apply -f "$$work/configmap.yaml"; \
 	     digest="$$(sha256sum "$$work/configmap.yaml" | cut -d' ' -f1)"; \
