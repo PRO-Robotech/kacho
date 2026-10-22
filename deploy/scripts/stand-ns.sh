@@ -11,6 +11,10 @@
 #                                     окружение проб) → down ВСЕГДА: успех, падение, kill;
 #                                     код выхода — код КОМАНДЫ; --keep оставляет стенд для
 #                                     разбора на срок STAND_TTL_HOURS (≤ 12 ч)
+#   stand-ns.sh run NS --runner newman|browser [--out DIR] … -- КОМАНДА…
+#                                     то же, но КОМАНДА идёт в pod пространства стенда, а
+#                                     не на машине (раздел «РАННЕР В POD СТЕНДА», kacho#3346)
+#   stand-ns.sh pod-forward NS        forward изнутри pod раннера (вне pod — отказ)
 #   stand-ns.sh census [--expired]    перечень тестовых пространств; --expired снимает просроченные
 #   stand-ns.sh forward NS            проброс консоли, края и приёмника писем, дверь чтения писем
 #                                     (stand-mailbox-door.py) + файл окружения проб
@@ -324,6 +328,35 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
   if python3 "$HERE/probe-discovery-origin.py" --self-test >/dev/null 2>&1; then
     ok "проба документа обнаружения: N из N адресов на происхождении консоли, имя разработки и ноль адресов — находки"
   else bad "проба документа обнаружения: самопроверка провалена (python3 scripts/probe-discovery-origin.py --self-test)"; fi
+  # Раннер в pod стенда (kacho#3346): суд формы — на настоящем выводе runner_objects
+  # молчит (с секретом администратора и без), на каждом близнеце с дефектом — краснеет.
+  local ro rj twin
+  ro="$(runner_objects t3102-probe browser img:1 stand-cloud-admin ui-future/e2e 'npx playwright test' v1.35.7 6 1.9.3)"
+  if runner_judge t3102-probe <<<"$ro" >/dev/null &&
+     runner_judge t3102-probe <<<"$(runner_objects t3102-probe newman img:1 '' deploy true v1.35.7 6 1.9.3)" >/dev/null; then
+    ok "раннер: учётка, роль, привязка и pod — в пространстве стенда, роль без звезды, pod без host*, имя консоли на петлю"
+  else bad "раннер: суд формы краснеет на настоящем выводе runner_objects ($(runner_judge t3102-probe <<<"$ro" | head -n 1))"; fi
+  for twin in \
+    '(.items[] | select(.kind == "Role")) |= (.kind = "ClusterRole")|ClusterRole' \
+    '(.items[] | select(.kind == "Pod") | .spec.hostNetwork) = true|hostNetwork' \
+    '(.items[] | select(.kind == "Pod") | .spec.containers[0].securityContext.privileged) = true|privileged' \
+    '(.items[] | select(.kind == "Role") | .rules[0].verbs) += ["delete"]|delete' \
+    '(.items[] | select(.kind == "Pod") | .spec.hostAliases[0].hostnames) = ["t3102-probe.example"]|чужое имя' \
+    '(.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.valueFrom) | .valueFrom.secretKeyRef.optional) = false|обязательный секрет' \
+    '(.items[] | select(.kind == "Pod") | .metadata.namespace) = "kacho"|пространство kacho'; do
+    rj="$(jq "${twin%|*}" <<<"$ro" | runner_judge t3102-probe)" && bad "раннер: близнец «${twin#*|}» прошёл суд" ||
+      { [ -n "$rj" ] && ok "раннер: близнец «${twin#*|}» — находка"; } || bad "раннер: близнец «${twin#*|}» — код без находки"
+  done
+  if jq -e '[.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.name | startswith("KACHO_CLOUD_ADMIN"))] | length == 0' \
+      <<<"$(runner_objects t3102-probe newman img:1 '' deploy true v1.35.7 6 1.9.3)" >/dev/null; then
+    ok "раннер: цепочка без администратора — его окружения в pod нет"; else bad "раннер: окружение администратора без секрета"; fi
+  local vers
+  if vers="$(runner_versions HEAD 2>&1)" && [[ "$vers" =~ ^[0-9]+\ [0-9]+\ [0-9]+\.[0-9]+\.[0-9]+\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    ok "раннер: версии node, newman, grpcurl, playwright выведены из дерева HEAD ($vers)"
+  else bad "раннер: версии из дерева HEAD не выведены: $vers"; fi
+  local prc=0
+  ( env -u KUBERNETES_SERVICE_HOST bash "$HERE/stand-ns.sh" pod-forward t3102-probe ) >/dev/null 2>&1 || prc=$?
+  if [ "$prc" -eq 2 ]; then ok "pod-forward вне pod — отказ 2 до обращения к кластеру"; else bad "pod-forward вне pod: код $prc, ждали 2"; fi
   printf 'самопроверка stand-ns: прошло %d, провалено %d\n' "$pass" "$fail"
   [ "$fail" -eq 0 ]
 }
@@ -331,8 +364,10 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
 # ── КЛАСТЕР ──────────────────────────────────────────────────────────────────
 
 need_tools() {
-  local t
-  for t in kubectl helm python3 openssl jq curl go git; do
+  local t tools="kubectl helm python3 openssl jq curl go git"
+  # В pod раннера исполняется лишь forward: ему не нужны helm, go и git.
+  [ "$STAND_IN_POD" != 1 ] || tools="kubectl python3 openssl curl"
+  for t in $tools; do
     # type -P, а не command -v: kubectl и helm ниже — функции-обёртки, и
     # command -v нашёл бы обёртку там, где исполняемого файла нет.
     type -P "$t" >/dev/null 2>&1 || die "нет '$t' — исполнить нечем (условие прогона, а не находка)" 2
@@ -362,10 +397,18 @@ need_tools() {
 # STAND_APISERVER выводится из выбранного контекста и уходит дочерним шагам
 # (гейт посадки пинит им кластер, scripts/stand-cluster-pin.sh); объявленный
 # при вызове — обязан совпасть с адресом контекста -client.
-STAND_CTX="" STAND_CTX_FILE=""
+STAND_CTX="" STAND_CTX_FILE="" STAND_IN_POD=0
+
+# kube_argv — argv kubectl без обёртки (для nohup и для строки исполнителя записи):
+# на машине — файл профиля и контекст -client, в pod раннера — учётка pod.
+kube_argv() {
+  if [ "$STAND_IN_POD" = 1 ]; then KUBE_ARGV=("$(type -P kubectl)")
+  else KUBE_ARGV=("$(type -P kubectl)" --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX"); fi
+}
 
 kubectl() {
   [ -n "$STAND_CTX" ] || { warn "kubectl до выбора контекста — отказ (guard_context не пройден)"; return 2; }
+  if [ "$STAND_IN_POD" = 1 ]; then command kubectl "$@"; return; fi
   command kubectl --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX" "$@"
 }
 helm() {
@@ -383,6 +426,7 @@ ctx_cleanup() { [ -z "$STAND_CTX_FILE" ] || rm -f "$STAND_CTX_FILE"; }
 
 guard_context() {
   [ -z "$STAND_CTX" ] || return 0
+  [ "$STAND_IN_POD" != 1 ] || die "в pod раннера контекст выбирает pod_guard — guard_context не зовётся" 2
   local file ctx
   client_context_pick || exit 2
   file="$CC_FILE" ctx="$CC_CTX"
@@ -1446,7 +1490,7 @@ $claims" 2
 # не исполнялась: это «не выполнилось», а не красное, и код — RUN_UNMET (125),
 # которого команда сама не даёт (код 125 зарезервирован этим смыслом).
 RUN_UNMET=125
-RUN_NS="" RUN_KEEP=0 RUN_UP=0 RUN_CHILD=""
+RUN_NS="" RUN_KEEP=0 RUN_UP=0 RUN_CHILD="" RUN_RUNNER="" RUN_OUT="" RUN_LOGS=""
 run_on_signal() {
   trap - INT TERM
   warn "прогон на $RUN_NS прерван сигналом $1"
@@ -1462,6 +1506,7 @@ run_on_exit() {
   local rc=$? exp
   trap - EXIT INT TERM
   [ -z "$RUN_CHILD" ] || { kill_tree "$RUN_CHILD"; wait "$RUN_CHILD" 2>/dev/null; }
+  [ -z "$RUN_LOGS" ] || { kill "$RUN_LOGS" 2>/dev/null; wait "$RUN_LOGS" 2>/dev/null; }
   # Журналы проброса уходят вместе с рабочим каталогом стенда — на неуспехе они
   # печатаются ДО снятия: обрыв проброса отличим от дефекта продукта только по ним.
   if [ "$rc" -ne 0 ] && [ "$RUN_UP" = 1 ]; then
@@ -1497,12 +1542,16 @@ cmd_run() {
       --keep)  RUN_KEEP=1 ;;
       --stack) stack="${2:?--stack без значения}"; shift ;;
       --ref)   ref="${2:?--ref без значения}"; shift ;;
+      --runner) RUN_RUNNER="${2:?--runner без значения}"; shift
+               [[ " $STAND_RUNNER_KINDS " == *" $RUN_RUNNER "* ]] || die "--runner «$RUN_RUNNER» — не из $STAND_RUNNER_KINDS" 2 ;;
+      --out)   RUN_OUT="${2:?--out без значения}"; shift ;;
       --)      shift; break ;;
       *) die "run: неизвестный аргумент «$1» (команда — после --)" 2 ;;
     esac
     shift
   done
-  [ $# -gt 0 ] || die "run: команда не названа (stand-ns.sh run NS [--keep] [--stack S] [--ref R] -- КОМАНДА…)" 2
+  [ $# -gt 0 ] || die "run: команда не названа (stand-ns.sh run NS [--keep] [--stack S] [--ref R] [--runner newman|browser] [--out DIR] -- КОМАНДА…)" 2
+  [ -z "$RUN_OUT" ] || [ -n "$RUN_RUNNER" ] || die "run: --out — лишь с --runner (без раннера отчёты пишет команда на машине сама)" 2
   ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу t<номер задачи>-<коротко>; пространство kacho цель не трогает" 2
   ttl_valid "$TTL_HOURS" || die "STAND_TTL_HOURS=«$TTL_HOURS» вне 1..$TTL_MAX_HOURS" 2
   need_tools; guard_context
@@ -1516,6 +1565,12 @@ cmd_run() {
   bash "$HERE/stand-ns.sh" up "$ns" "$stack" "$ref" & RUN_CHILD=$!
   wait "$RUN_CHILD"; rc=$?; RUN_CHILD=""
   [ "$rc" -eq 0 ] || { warn "стенд $ns не поднят (код $rc) — команда НЕ исполнялась: условие прогона не создано"; exit "$RUN_UNMET"; }
+  if [ -n "$RUN_RUNNER" ]; then
+    RUN_UP=1
+    runner_run "$ns" "$ref" "$@"; rc=$?
+    log "команда в pod раннера $RUN_RUNNER завершилась кодом $rc"
+    exit "$rc"
+  fi
   bash "$HERE/stand-ns.sh" forward "$ns" || { warn "проброс $ns не поднят — команда НЕ исполнялась"; exit "$RUN_UNMET"; }
   # shellcheck disable=SC1090,SC1091 # файл окружения пишет cmd_forward
   . "$WORK_ROOT/$ns/probe.env"
@@ -1528,14 +1583,297 @@ cmd_run() {
   exit "$rc"
 }
 
+# ── РАННЕР В POD СТЕНДА (kacho#3346, kacho-workspace#1303) ─────────────────────
+#
+# Решение владельца 2026-10-22 (kacho-workspace#1301) дословно: «запиши в рул что бы не
+# использовал мою локальную тачку. использовать только в одном случае если доступа к
+# кластеру нету». Прогон с --runner исполняет КОМАНДУ не на машине, а в pod своего
+# пространства стенда; на машине — kubectl, git и tar.
+#
+#   pod и учётка  `stand-runner` в пространстве стенда; роль — ТОЛЬКО в нём: чтение
+#                 объектов, проброс и exec (пробы ходят к службам тем же путём, что с
+#                 машины: kubectl port-forward, exec в базу службы личности);
+#   образ         по виду: newman — node мажорной версии setup-node и newman мажорной
+#                 `npm i -g newman@N` из .github/workflows/e2e-newman.yml; browser —
+#                 образ playwright версии пина `@playwright/test` ui-future/e2e (chromium —
+#                 его). Версии читаются из ДЕРЕВА ревизии стенда (runner_versions), второго
+#                 объявления нет; kubectl pod — версии сервера кластера;
+#   исходники     `git archive` ревизии стенда потоком в pod: правки рабочей копии туда не едут;
+#   окружение     тем же cmd_forward изнутри pod (`pod-forward`): происхождение консоли
+#                 `https://<ns>.kacho.test:<порт>` — то же, что запечено при подъёме, имя —
+#                 на петлю pod (hostAliases), сам проброс — kubectl учёткой pod;
+#   администратор из секрета стенда в окружение pod (secretKeyRef, optional): величины на
+#                 диск машины и в её журнал не ложатся (kacho#3338);
+#   отчёты        файлами из pod в --out (умолчание .stand-ns/out/<ns>/ — каталог стенда
+#                 снимает down, отчёт переживает его): newman — каталоги out наборов,
+#                 browser — results*.json, selection.json, test-results (trace), playwright-report;
+#   код           код КОМАНДЫ; 125 — команда не исполнялась (образ не встал, инструменты не
+#                 поставились, проброс не поднялся, pod исчез) — «не выполнилось», не красное.
+# Срок pod — STAND_RUNNER_DEADLINE (с, умолчание 10800), готовности — STAND_RUNNER_READY_WAIT.
+# ГРАНИЦА: инструменты pod ставятся из сети на каждом прогоне (apt, dl.k8s.io с суммой,
+# npm, выпуск grpcurl) — 1–3 мин; образ раннера с ними — отдельный предмет.
+STAND_RUNNER_KINDS="newman browser"
+RUNNER_POD=stand-runner
+RUNNER_DEADLINE="${STAND_RUNNER_DEADLINE:-10800}"
+
+# Текст, который исполняет pod. Ждёт исходники (/src/.go), ставит инструменты, поднимает
+# проброс изнутри, исполняет команду, пишет код в /src/.rc и ждёт, пока машина заберёт
+# отчёты (/src/.fetched).
+read -r -d '' RUNNER_POD_SH <<'POD'
+set -uo pipefail
+unset KUBECONFIG
+say() { printf '=== stand-runner: %s\n' "$*"; }
+fetched() { local i; for i in $(seq 1 300); do [ -e /src/.fetched ] && return 0; sleep 2; done; say "отчёты не забраны за 600 с — pod выходит"; }
+finish() { echo "$1" > /src/.rc.tmp && mv /src/.rc.tmp /src/.rc; fetched; exit "$1"; }
+unmet() { say "УСЛОВИЕ НЕ СОЗДАНО: $* — команда НЕ исполнялась (125)"; finish 125; }
+mkdir -p "$HOME" "$KACHO_STAND_NS_WORKDIR"
+for _ in $(seq 1 300); do [ -e /src/.go ] && break; sleep 2; done
+[ -e /src/.go ] || { say "исходники не доставлены за 600 с"; exit 125; }
+case "$(uname -m)" in x86_64) ka=amd64 ga=x86_64 ;; aarch64) ka=arm64 ga=arm64 ;; *) unmet "архитектура $(uname -m)" ;; esac
+export DEBIAN_FRONTEND=noninteractive
+say "инструменты: apt"
+{ apt-get update -q && apt-get install -y -q --no-install-recommends ca-certificates curl jq openssl tar gzip \
+    python3 python3-yaml python3-jwt python3-cryptography; } > /work/apt.log 2>&1 || { tail -n 5 /work/apt.log; unmet "apt-get"; }
+say "инструменты: kubectl $RUNNER_KUBECTL"
+ku="https://dl.k8s.io/release/$RUNNER_KUBECTL/bin/linux/$ka/kubectl"
+{ curl -fsSL --retry 3 -o /usr/local/bin/kubectl "$ku" &&
+  echo "$(curl -fsSL --retry 3 "$ku.sha256")  /usr/local/bin/kubectl" | sha256sum -c --quiet - &&
+  chmod +x /usr/local/bin/kubectl; } || unmet "kubectl $RUNNER_KUBECTL не получен либо сумма не сошлась"
+case "$RUNNER_KIND" in
+  newman)
+    say "инструменты: grpcurl $RUNNER_GRPCURL, newman@$RUNNER_NEWMAN"
+    curl -fsSL --retry 3 "https://github.com/fullstorydev/grpcurl/releases/download/v$RUNNER_GRPCURL/grpcurl_${RUNNER_GRPCURL}_linux_$ga.tar.gz" |
+      tar -xz -C /usr/local/bin grpcurl || unmet "grpcurl $RUNNER_GRPCURL"
+    npm i -g "newman@$RUNNER_NEWMAN" > /work/npm.log 2>&1 || { tail -n 5 /work/npm.log; unmet "newman@$RUNNER_NEWMAN"; }
+    say "newman $(newman --version)" ;;
+  browser)
+    say "инструменты: npm ci ui-future/e2e"
+    (cd /src/ui-future/e2e && npm ci) > /work/npm.log 2>&1 || { tail -n 5 /work/npm.log; unmet "npm ci ui-future/e2e"; } ;;
+  *) unmet "вид раннера «$RUNNER_KIND»" ;;
+esac
+say "проброс и окружение проб — изнутри pod"
+bash /src/deploy/scripts/stand-ns.sh pod-forward "$KACHO_STAND_NS" || unmet "проброс"
+# shellcheck disable=SC1090
+. "$KACHO_STAND_NS_WORKDIR/$KACHO_STAND_NS/probe.env" || unmet "окружение проб"
+export CONSOLE_BASE="$KACHO_CONSOLE_URL" EDGE_BASE="$KACHO_EDGE_URL"
+cd "/src/$RUNNER_DIR" || unmet "каталог команды «$RUNNER_DIR»"
+say "команда: $RUNNER_CMD"
+bash -c "$RUNNER_CMD"; rc=$?
+say "команда завершилась кодом $rc"
+bash /src/deploy/scripts/stand-ns.sh unforward "$KACHO_STAND_NS" > /dev/null 2>&1
+finish "$rc"
+POD
+
+# runner_versions SHA — «node newman grpcurl playwright» из дерева ревизии: каждая величина
+# ровно одна и в своей форме, иначе отказ (код 1) с названной причиной.
+runner_versions() {
+  local sha="$1" wf pkg node newman grpc pw
+  wf="$(git -C "$REPO_ROOT" show "$sha:.github/workflows/e2e-newman.yml" 2>/dev/null)" || { warn "e2e-newman.yml ревизии $sha не прочитан"; return 1; }
+  pkg="$(git -C "$REPO_ROOT" show "$sha:ui-future/e2e/package.json" 2>/dev/null)" || { warn "ui-future/e2e/package.json ревизии $sha не прочитан"; return 1; }
+  node="$(grep -oE "node-version: *['\"]?[0-9]+['\"]?" <<<"$wf" | grep -oE '[0-9]+' | sort -u)"
+  newman="$(grep -oE 'newman@[0-9]+' <<<"$wf" | cut -d@ -f2 | sort -u)"
+  grpc="$(grep -oE 'grpcurl/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/' <<<"$wf" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sort -u)"
+  pw="$(jq -r '(.devDependencies // {})["@playwright/test"] // (.dependencies // {})["@playwright/test"] // empty' <<<"$pkg")"
+  [[ "$node" =~ ^[0-9]+$ ]] || { warn "node конвейера newman — не одна мажорная версия: «$(tr '\n' ' ' <<<"$node")»"; return 1; }
+  [[ "$newman" =~ ^[0-9]+$ ]] || { warn "newman конвейера — не одна мажорная версия: «$(tr '\n' ' ' <<<"$newman")»"; return 1; }
+  [[ "$grpc" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { warn "grpcurl конвейера — не одна версия: «$(tr '\n' ' ' <<<"$grpc")»"; return 1; }
+  [[ "$pw" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { warn "пин @playwright/test — не точная версия: «$pw»"; return 1; }
+  printf '%s %s %s %s\n' "$node" "$newman" "$grpc" "$pw"
+}
+
+# runner_image ВИД NODE PLAYWRIGHT — образ раннера.
+runner_image() {
+  case "$1" in
+    newman)  printf 'mirror.gcr.io/library/node:%s-trixie' "$2" ;;
+    browser) printf 'mcr.microsoft.com/playwright:v%s-noble' "$3" ;;
+    *) return 1 ;;
+  esac
+}
+
+# runner_globs ВИД — отчёты, которые машина забирает из pod (пути от корня дерева).
+runner_globs() {
+  case "$1" in
+    newman)  printf '%s' '**/tests/newman/out' ;;
+    browser) printf '%s' 'ui-future/e2e/results*.json ui-future/e2e/selection.json ui-future/e2e/test-results ui-future/e2e/playwright-report' ;;
+  esac
+}
+
+# runner_objects NS ВИД ОБРАЗ СЕКРЕТ КАТАЛОГ КОМАНДА KUBECTL NEWMAN GRPCURL — учётка, роль,
+# привязка и pod раннера (список JSON для kubectl apply). Всё — в пространстве NS.
+runner_objects() {
+  local mem=3Gi
+  [ "$2" != browser ] || mem=6Gi
+  jq -n --arg ns "$1" --arg kind "$2" --arg image "$3" --arg secret "$4" --arg dir "$5" --arg cmd "$6" \
+    --arg kver "$7" --arg newman "$8" --arg grpc "$9" --arg host "$(ns_host "$1")" --arg sh "$RUNNER_POD_SH" \
+    --arg name "$RUNNER_POD" --arg ls "$LABEL_STAND" --argjson deadline "$RUNNER_DEADLINE" --arg mem "$mem" '
+    def meta: {name: $name, namespace: $ns, labels: {($ls): "test", "app.kubernetes.io/name": $name}};
+    def env($n; $v): {name: $n, value: $v};
+    def adm($n; $k): {name: $n, valueFrom: {secretKeyRef: {name: $secret, key: $k, optional: true}}};
+    {apiVersion: "v1", kind: "List", items: [
+      {apiVersion: "v1", kind: "ServiceAccount", metadata: meta},
+      {apiVersion: "rbac.authorization.k8s.io/v1", kind: "Role", metadata: meta, rules: [
+        {apiGroups: [""], resources: ["pods", "services", "endpoints", "secrets", "configmaps", "persistentvolumeclaims", "events", "serviceaccounts"], verbs: ["get", "list", "watch"]},
+        {apiGroups: [""], resources: ["pods/portforward", "pods/exec"], verbs: ["create", "get"]},
+        {apiGroups: [""], resources: ["pods/log"], verbs: ["get"]},
+        {apiGroups: ["apps"], resources: ["deployments", "statefulsets", "replicasets", "daemonsets"], verbs: ["get", "list", "watch"]},
+        {apiGroups: ["batch"], resources: ["jobs", "cronjobs"], verbs: ["get", "list", "watch"]},
+        {apiGroups: ["cert-manager.io"], resources: ["certificates", "issuers"], verbs: ["get", "list"]}]},
+      {apiVersion: "rbac.authorization.k8s.io/v1", kind: "RoleBinding", metadata: meta,
+        roleRef: {apiGroup: "rbac.authorization.k8s.io", kind: "Role", name: $name},
+        subjects: [{kind: "ServiceAccount", name: $name, namespace: $ns}]},
+      {apiVersion: "v1", kind: "Pod", metadata: meta, spec: {
+        serviceAccountName: $name, restartPolicy: "Never", activeDeadlineSeconds: $deadline,
+        enableServiceLinks: false, terminationGracePeriodSeconds: 10,
+        hostAliases: [{ip: "127.0.0.1", hostnames: [$host]}],
+        containers: [{name: "run", image: $image, command: ["bash", "-c", $sh], workingDir: "/src",
+          env: ([env("RUNNER_KIND"; $kind), env("RUNNER_DIR"; $dir), env("RUNNER_CMD"; $cmd),
+                 env("RUNNER_KUBECTL"; $kver), env("RUNNER_NEWMAN"; $newman), env("RUNNER_GRPCURL"; $grpc),
+                 env("KACHO_STAND_NS"; $ns), env("KACHO_NAMESPACE"; $ns), env("KACHO_STAND_NS_WORKDIR"; "/work/stand"),
+                 env("HOME"; "/work/home"), env("CI"; "true")]
+                + (if $secret == "" then [] else [adm("KACHO_CLOUD_ADMIN_EMAIL"; "email"), adm("KACHO_CLOUD_ADMIN_PASSWORD"; "password")] end)),
+          resources: {requests: {cpu: "500m", memory: "1Gi"}, limits: {memory: $mem}},
+          securityContext: {allowPrivilegeEscalation: false},
+          volumeMounts: [{name: "src", mountPath: "/src"}, {name: "work", mountPath: "/work"}, {name: "dshm", mountPath: "/dev/shm"}]}],
+        volumes: [{name: "src", emptyDir: {}}, {name: "work", emptyDir: {}}, {name: "dshm", emptyDir: {medium: "Memory", sizeLimit: "1Gi"}}]}}]}'
+}
+
+# runner_judge — суд формы объектов раннера (stdin — их список): то, что держит стенд от
+# раннера. Печатает находки; код 1 — есть находки. Его зовут runner_run до применения и
+# self-test (на настоящем выводе runner_objects и на близнецах с дефектом).
+runner_judge() {
+  python3 -c '
+import json, sys
+ns, host = sys.argv[1], sys.argv[2]
+items = json.load(sys.stdin)["items"]
+bad = []
+kinds = sorted(i["kind"] for i in items)
+if kinds != ["Pod", "Role", "RoleBinding", "ServiceAccount"]:
+    bad.append("виды объектов %s, ждали Pod, Role, RoleBinding, ServiceAccount" % kinds)
+for i in items:
+    if i["metadata"].get("namespace") != ns:
+        bad.append("%s/%s вне пространства стенда" % (i["kind"], i["metadata"].get("name")))
+for i in items:
+    if i["kind"] == "RoleBinding":
+        if i["roleRef"].get("kind") != "Role":
+            bad.append("привязка к %s, а не к роли пространства" % i["roleRef"].get("kind"))
+        for s in i["subjects"]:
+            if s.get("kind") != "ServiceAccount" or s.get("namespace") != ns:
+                bad.append("субъект привязки вне учётки pod пространства: %s" % s)
+    if i["kind"] == "Role":
+        for r in i["rules"]:
+            extra = set(r["verbs"]) - {"get", "list", "watch", "create"}
+            if extra:
+                bad.append("роль даёт %s на %s" % (sorted(extra), r["resources"]))
+            if "create" in r["verbs"] and set(r["resources"]) - {"pods/portforward", "pods/exec"}:
+                bad.append("create — шире проброса и exec: %s" % r["resources"])
+            if "*" in r["resources"] or "*" in r["verbs"] or "*" in r.get("apiGroups", []):
+                bad.append("роль со звездой: %s" % r)
+    if i["kind"] == "Pod":
+        sp = i["spec"]
+        for k in ("hostNetwork", "hostPID", "hostIPC"):
+            if sp.get(k):
+                bad.append("pod: %s" % k)
+        for v in sp.get("volumes", []):
+            if "hostPath" in v:
+                bad.append("pod: том hostPath %s" % v.get("name"))
+        if sp.get("hostAliases") != [{"ip": "127.0.0.1", "hostnames": [host]}]:
+            bad.append("имя консоли не на петлю pod: %s" % sp.get("hostAliases"))
+        for c in sp.get("containers", []) + sp.get("initContainers", []):
+            sc = c.get("securityContext") or {}
+            if sc.get("privileged") or (sc.get("capabilities") or {}).get("add"):
+                bad.append("контейнер %s: privileged либо добавленные возможности" % c["name"])
+            if "limits" not in (c.get("resources") or {}) or "memory" not in c["resources"]["limits"]:
+                bad.append("контейнер %s без предела памяти" % c["name"])
+            for e in c.get("env", []):
+                ref = (e.get("valueFrom") or {}).get("secretKeyRef")
+                if ref is not None and ref.get("optional") is not True:
+                    bad.append("секрет %s обязателен — цепочка без администратора не подняла бы pod" % ref.get("name"))
+for b in bad:
+    print("RUNNER-FORM\t" + b)
+sys.exit(1 if bad else 0)
+' "$1" "$(ns_host "$1")"
+}
+
+# pod_guard NS — pod-forward исполняется лишь изнутри pod раннера своего пространства:
+# учётка pod есть и её пространство — NS. Дальше kubectl скрипта идёт учёткой pod.
+pod_guard() {
+  local ns="$1" own f=/var/run/secrets/kubernetes.io/serviceaccount/namespace
+  ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу" 2
+  [ -n "${KUBERNETES_SERVICE_HOST:-}" ] && [ -r "$f" ] || die "pod-forward — лишь изнутри pod раннера (учётки pod нет); с машины — forward" 2
+  own="$(cat "$f")"
+  [ "$own" = "$ns" ] || die "pod раннера в пространстве «$own», а не «$ns»" 2
+  STAND_IN_POD=1 STAND_CTX=in-pod
+}
+
+runner_explain() {
+  local ns="$1"
+  warn "pod раннера: $(kubectl -n "$ns" get pod "$RUNNER_POD" -o jsonpath='{.status.phase} {range .status.containerStatuses[*]}{.state}{end}' 2>/dev/null | cut -c1-400)"
+  kubectl -n "$ns" get events --field-selector "involvedObject.name=$RUNNER_POD" --sort-by=.lastTimestamp 2>/dev/null | tail -n 5 >&2
+}
+
+# runner_run NS REF КОМАНДА… — исполнить команду в pod раннера (раздел выше). Код — код
+# команды; 125 — не исполнялась.
+runner_run() {
+  local ns="$1" ref="$2" sha vers node newman grpc pw image kver rel secret out rc="" phase miss=0
+  shift 2
+  sha="$(git -C "$REPO_ROOT" rev-parse --verify "${ref}^{commit}" 2>/dev/null)" || { warn "ревизия «$ref» не разрешается"; return "$RUN_UNMET"; }
+  vers="$(runner_versions "$sha")" || return "$RUN_UNMET"
+  read -r node newman grpc pw <<<"$vers"
+  kver="$(kubectl version -o json --request-timeout=30s 2>/dev/null | jq -r '.serverVersion.gitVersion // empty')"
+  [[ "$kver" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { warn "версия сервера кластера не прочитана («$kver») — kubectl pod не выбрать"; return "$RUN_UNMET"; }
+  image="$(runner_image "$RUN_RUNNER" "$node" "$pw")"
+  rel="$(realpath --relative-to="$REPO_ROOT" "$PWD")"
+  case "$rel" in ..*|/*) warn "каталог команды вне клона ($PWD)"; return "$RUN_UNMET" ;; .) rel="" ;; esac
+  secret="$(bootstrap_secret_of "$WORK_ROOT/$ns/render.yaml" 2>/dev/null)" || secret=""
+  out="${RUN_OUT:-$WORK_ROOT/out/$ns}"
+  mkdir -p "$out" || { warn "каталог отчётов $out не заведён"; return "$RUN_UNMET"; }
+  local objs
+  objs="$(runner_objects "$ns" "$RUN_RUNNER" "$image" "$secret" "$rel" "$(printf '%q ' "$@")" "$kver" "$newman" "$grpc")" ||
+    { warn "объекты раннера не построены"; return "$RUN_UNMET"; }
+  runner_judge "$ns" <<<"$objs" >&2 || { warn "форма объектов раннера не прошла суд (выше)"; return "$RUN_UNMET"; }
+  stand_nodes "раннер $RUN_RUNNER"
+  kubectl apply -f - <<<"$objs" >/dev/null || { warn "объекты раннера не применены"; return "$RUN_UNMET"; }
+  log "раннер $RUN_RUNNER: образ $image, kubectl $kver, ревизия $sha${secret:+, администратор облака — секрет $secret}"
+  kubectl -n "$ns" wait --for=condition=Ready "pod/$RUNNER_POD" --timeout="${STAND_RUNNER_READY_WAIT:-600}s" >/dev/null ||
+    { runner_explain "$ns"; warn "pod раннера не готов — команда НЕ исполнялась"; return "$RUN_UNMET"; }
+  git -C "$REPO_ROOT" archive --format=tar "$sha" | kubectl -n "$ns" exec -i "$RUNNER_POD" -c run -- tar -x -C /src ||
+    { warn "исходники ревизии $sha в pod не доставлены"; return "$RUN_UNMET"; }
+  kubectl -n "$ns" exec "$RUNNER_POD" -c run -- touch /src/.go || { warn "pod не принял сигнал старта"; return "$RUN_UNMET"; }
+  kubectl -n "$ns" logs -f "pod/$RUNNER_POD" -c run & RUN_LOGS=$!
+  while :; do
+    rc="$(kubectl -n "$ns" exec "$RUNNER_POD" -c run -- cat /src/.rc 2>/dev/null)"
+    [[ "$rc" =~ ^[0-9]+$ ]] && break
+    rc=""
+    phase="$(kubectl -n "$ns" get pod "$RUNNER_POD" -o jsonpath='{.status.phase}' 2>/dev/null)"
+    case "$phase" in
+      Running|Pending) miss=0 ;;
+      "") miss=$((miss + 1)); [ "$miss" -lt 30 ] || { warn "состояние pod не читается 30 опросов подряд"; break; } ;;
+      *) warn "pod раннера вышел из работы (фаза «$phase») до кода команды"; break ;;
+    esac
+    sleep 10
+  done
+  # shellcheck disable=SC2016 # раскрывает оболочка pod
+  kubectl -n "$ns" exec "$RUNNER_POD" -c run -- bash -c 'cd /src && shopt -s globstar nullglob && set -- '"$(runner_globs "$RUN_RUNNER")"' && { [ $# -eq 0 ] || tar -c "$@"; }' 2>/dev/null |
+    tar -xv -C "$out" 2>/dev/null >"$out/.fetched.list"
+  log "отчёты раннера: путей $(grep -vc '/$' "$out/.fetched.list") в $out"
+  kubectl -n "$ns" exec "$RUNNER_POD" -c run -- touch /src/.fetched >/dev/null 2>&1
+  for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$RUN_LOGS" 2>/dev/null || break; sleep 1; done
+  kill "$RUN_LOGS" 2>/dev/null; wait "$RUN_LOGS" 2>/dev/null; RUN_LOGS=""
+  [ -n "$rc" ] || { runner_explain "$ns"; warn "кода команды из pod нет — команда не исполнилась до конца: не выполнилось"; return "$RUN_UNMET"; }
+  return "$rc"
+}
+
 # ── ПРОБРОС ──────────────────────────────────────────────────────────────────
 
 cmd_forward() {
   local ns="$1" port work host lp
   ns_valid "$ns" >/dev/null || die "имя «$ns» не по правилу" 2
   need_tools; guard_context
-  [ "$(ns_state "$ns")" = test ] || die "тестового пространства $ns нет" 1
+  # Учётка pod раннера пространств не читает (роль — в своём пространстве), а что она
+  # в нём, доказал pod_guard.
+  [ "$STAND_IN_POD" = 1 ] || [ "$(ns_state "$ns")" = test ] || die "тестового пространства $ns нет" 1
   port="$(ns_port "$ns")"; host="$(ns_host "$ns")"; work="$WORK_ROOT/$ns"; mkdir -p "$work"
+  local KUBE_ARGV; kube_argv
   cmd_unforward "$ns" >/dev/null 2>&1
   kubectl -n "$ns" get secret console-public-tls -o 'jsonpath={.data.ca\.crt}' | base64 -d >"$work/console-ca.pem"
   grep -q 'BEGIN CERTIFICATE' "$work/console-ca.pem" || die "лист консоли (console-public-tls) не выпущен — проброс бессмыслен" 1
@@ -1547,7 +1885,7 @@ cmd_forward() {
   local pair svc rport
   for pair in "ui-public:443:$port" "api-gateway:8443:$((port + 1))" "$RELEASE-mailpit:8025:$((port + 2))"; do
     IFS=: read -r svc rport lp <<<"$pair"
-    nohup "$(type -P kubectl)" --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX" -n "$ns" port-forward "svc/$svc" "$lp:$rport" >"$work/forward-$svc.log" 2>&1 &
+    nohup "${KUBE_ARGV[@]}" -n "$ns" port-forward "svc/$svc" "$lp:$rport" >"$work/forward-$svc.log" 2>&1 &
     echo $! >>"$work/forward.pids"
   done
   # Спрашивается оболочка консоли (`/`), а не `/healthz`: на порту внешнего входа
@@ -1599,8 +1937,12 @@ cmd_forward() {
   # строящиеся записью, на этом стенде иначе не строятся (kaname#684). Только
   # пространство стенда: имя kacho сюда не доходит (ns_valid выше).
   local store_exec
-  store_exec="$(printf '%q ' kubectl --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX" -n "$ns" \
-    exec -i "statefulset/$RELEASE-pg-iam" -- psql -U iam -d kaname)"
+  if [ "$STAND_IN_POD" = 1 ]; then
+    store_exec="$(printf '%q ' kubectl -n "$ns" exec -i "statefulset/$RELEASE-pg-iam" -- psql -U iam -d kaname)"
+  else
+    store_exec="$(printf '%q ' kubectl --kubeconfig "$STAND_KUBECONFIG" --context "$STAND_CTX" -n "$ns" \
+      exec -i "statefulset/$RELEASE-pg-iam" -- psql -U iam -d kaname)"
+  fi
   cat >"$work/probe.env" <<EOF
 export KACHO_CONSOLE_URL=https://$host:$port
 export KACHO_CONSOLE_HOST_IP=127.0.0.1
@@ -1850,8 +2192,9 @@ case "${1:-}" in
   down)      shift; [ -n "${1:-}" ] || die "down: не названо пространство" 2; cmd_down "$1" ;;
   census)    shift; cmd_census "$@" ;;
   forward)   shift; [ -n "${1:-}" ] || die "forward: не названо пространство" 2; cmd_forward "$1" ;;
+  pod-forward) shift; [ -n "${1:-}" ] || die "pod-forward: не названо пространство" 2; pod_guard "$1"; cmd_forward "$1" ;;
   unforward) shift; [ -n "${1:-}" ] || die "unforward: не названо пространство" 2; cmd_unforward "$1" ;;
   reload)    shift; [ -n "${1:-}" ] || die "reload: не названо пространство" 2; cmd_reload "$@" ;;
   self-test) self_test ;;
-  *) die "режим не назван: up | down | run | census | forward | unforward | reload | self-test" 2 ;;
+  *) die "режим не назван: up | down | run | census | forward | pod-forward | unforward | reload | self-test" 2 ;;
 esac

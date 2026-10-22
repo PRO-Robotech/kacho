@@ -1162,6 +1162,8 @@ stack-up:
 #   make stand-ns-up     NS=t<задача>-<коротко> [STACK=<цепочка stacks.txt>] [REF=<коммит>] [KANAME_BRANCH=<ветка> [KANAME_REF=<sha40>]]
 #   make stand-ns-down   NS=t<задача>-<коротко>
 #   make stand-ns-run    NS=t<задача>-<коротко> [REF=…] [STACK=…] [KEEP=1] [DIR=<каталог от корня>] CMD='<команда>'
+#                        [RUNNER=newman|browser [OUT=<каталог отчётов>]] — CMD идёт в pod пространства
+#                        стенда, а не на машине (шапка scripts/stand-ns.sh, «РАННЕР В POD СТЕНДА», kacho#3346)
 #   make stand-ns-census [EXPIRED=1]
 #   make reload-svc      NS=t<задача>-<коротко> SVC=<служба> [REF=<коммит>] [BRANCH=<ветка>]
 #
@@ -1233,6 +1235,7 @@ stand-ns-run:
 	@$(if $(value CMD),:,{ echo "ABORT: CMD не задан — прогонять на стенде нечего (CMD='<команда>')"; exit 2; })
 	@cd "$(CURDIR)/../$(DIR)" || exit 2; \
 	$(STAND_BRANCH_ENV)bash "$(CURDIR)/scripts/stand-ns.sh" run "$(NS)" $(if $(filter 1,$(KEEP)),--keep,) \
+	  $(if $(RUNNER),--runner "$(RUNNER)",) $(if $(OUT),--out "$(OUT)",) \
 	  --stack "$(or $(STACK),dev-prod)" --ref "$(or $(REF),HEAD)" -- bash -c '$(subst ','\'',$(value CMD))'; \
 	code=$$?; \
 	case $$code in 0) what="команда прошла" ;; 125) what="команда НЕ исполнялась — условие прогона не создано" ;; \

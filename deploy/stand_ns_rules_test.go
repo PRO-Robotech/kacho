@@ -21,6 +21,13 @@ func TestStandNamespaceRulesHoldWithoutACluster(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "провалено 0") || !strings.Contains(string(out), "«kacho» отвергнут") {
 		t.Fatalf("самопроверка не напечатала переписи или не судила имя рабочего стенда:\n%s", out)
+	} // Раннер в pod стенда (kacho#3346): суд формы его объектов обязан и молчать на
+	// настоящем выводе, и краснеть на близнеце — иначе «pod только в своём
+	// пространстве» держалось бы вниманием.
+	for _, want := range []string{"раннер: учётка, роль, привязка и pod", "раннер: близнец «ClusterRole» — находка", "pod-forward вне pod — отказ 2"} {
+		if !strings.Contains(string(out), want) {
+			t.Fatalf("самопроверка не судила раннер («%s»):\n%s", want, out)
+		}
 	}
 }
 
