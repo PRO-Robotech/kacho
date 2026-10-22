@@ -577,9 +577,11 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
       build_tool "$tx/st" t3102-probe 3102 && [ -x "$STAND_NS_BIN" ] && [ -x "$MM_PRODUCER" ] ) >"$tx/out" 2>&1
   }
   trc=0; tool_probe ok || trc=$?
-  if [ "$trc" -eq 0 ] && [ "$(cat "$tx/st/bin/stand-ns")" = standns-bin ] && [ "$(cat "$tx/st/bin/module-manifests-configmap")" = producer-bin ] &&
-     [ "$(cat "$tx/st/bin/godeps.json")" = '[]' ] && [ "$(cat "$tx/st/bin/product-names")" = names-bin ] && [ ! -s "$tx/trap" ] && [ -s "$tx/work/src/go.mod" ] &&
-     cmp -s "$tx/work/tracked.txt" <(git -C "$REPO_ROOT" ls-files) && [ -e "$tx/work/untracked.txt" ]; then
+  # Перечень в pod сверяется безусловно: сверка, исполняемая лишь при наличии файла, молчала бы без него.
+  local tsame=0; cmp -s "$tx/work/tracked.txt" <(git -C "$REPO_ROOT" ls-files) || tsame=$?
+  if [ "$trc" -eq 0 ] && [ "$tsame" -eq 0 ] && [ "$(cat "$tx/st/bin/stand-ns")" = standns-bin ] &&
+     [ "$(cat "$tx/st/bin/module-manifests-configmap")" = producer-bin ] && [ "$(cat "$tx/st/bin/godeps.json")" = '[]' ] &&
+     [ "$(cat "$tx/st/bin/product-names")" = names-bin ] && [ ! -s "$tx/trap" ] && [ -s "$tx/work/src/go.mod" ] && [ -e "$tx/work/untracked.txt" ]; then
     ok "инструменты подъёма: собраны в pod кластера, суммы сверены, go на машине (ловушка) не звался, дерево и перечни git ls-files — в pod, запись замыкания забрана"
   else bad "инструменты подъёма: код $trc, ловушка «$(tr '\n' ' ' <"$tx/trap")», $(tail -n 2 "$tx/out" | tr '\n' ' ')"; fi
   for twin in "build-fail|сборка в pod отказала|не собраны" "sum-bad|сумма забранного не сумма pod|не доставлен целым"; do
