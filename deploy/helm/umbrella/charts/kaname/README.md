@@ -199,6 +199,51 @@ A source that rewrites this value on a schedule therefore breaks the deployment
 at the next unrelated restart — hours or days after the change, with nothing
 connecting the two. Pin it, and drive changes through the list above.
 
+## Манифесты модулей из нескольких источников
+
+Каталог доставки манифестов (`manifests.mountPath`) собирается из прежнего
+единого ConfigMap (`manifests.configMapName`) и из ConfigMap пространства имён
+релиза, подобранных меткой (`manifests.selector`, kacho#3356). Поставщик модуля
+кладёт свой манифест в собственный ConfigMap с меткой:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: <поставщик>-module-manifests
+  namespace: <пространство имён kaname>
+  labels:
+    kaname.in-cloud.io/module-manifest: "true"
+data:
+  manifest.yaml: |
+    apiVersion: …
+    module: <модуль>
+    …
+```
+
+а посадка kaname объявляет подбор:
+
+```yaml
+manifests:
+  configMapName: kacho-module-manifests   # пусто — только подобранные
+  selector:
+    kaname.in-cloud.io/module-manifest: "true"
+  required: true
+```
+
+| что | как ведёт себя чарт |
+|---|---|
+| селектор пуст | рендер прежний: единый ConfigMap целиком, `optional: true` |
+| селектор объявлен | проецируемый том; каждый ключ — файл `<ConfigMap>__<ключ>`, одинаковые ключи двух поставщиков подмены не дают |
+| два манифеста одного модуля | доезжают двумя файлами; старт службы отвергает доставку и называет оба |
+| рендер без чтения кластера (`helm template` без `--dry-run=server`, офлайн-рендер конвейера) | отказ рендера: подбор по метке без кластера невыразим |
+| `configMapName` назван, объекта нет | отказ рендера |
+| `binaryData` у источника | отказ рендера |
+| правка любого подобранного или единого источника | меняет `kacho.cloud/module-manifests-selected-digest` шаблона пода на следующей выкатке |
+
+Подбор — свойство рендера: источник, поставленный после выкатки kaname, доезжает
+следующей выкаткой (`helm upgrade`).
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Remediation |

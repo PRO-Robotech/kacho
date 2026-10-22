@@ -298,3 +298,87 @@ deploy/own_lane_memory_budget_test.go.
 {{- define "kaname.identity.consoleOrigin" -}}
 {{- .appBaseURL | default (printf "https://%s.%s" .appSubdomain .domain) -}}
 {{- end -}}
+
+{{/*
+kaname.manifests.selected — ИСТОЧНИКИ каталога доставки, подобранные по метке
+(`manifests.selector`, kacho#3356), вместе с прежним единым (`configMapName`).
+Выход — JSON `{"sources": [{"name", "items": [{"key", "path"}]}], "digest"}`;
+зовётся ТОЛЬКО при объявленном селекторе.
+
+ПОЧЕМУ ЧТЕНИЕМ КЛАСТЕРА. Тома, подбирающего ConfigMap по метке, у Kubernetes
+нет: источник проецируемого тома называется ИМЕНЕМ. Метку в имена переводит
+рендер (`lookup`), и потому подбор есть свойство момента рендера: источник,
+поставленный ПОСЛЕ выкатки kaname, доезжает следующей выкаткой — тем же
+порядком, каким доезжает правка единого источника (его отпечаток штампует
+тот же рендер).
+
+ПОЧЕМУ КЛЮЧИ ПЕРЕЧИСЛЕНЫ, А НЕ ПРОЕЦИРУЮТСЯ ЦЕЛИКОМ. Два источника с одним
+ключом (`manifest.yaml` у каждого поставщика) в проецируемом томе без `items`
+дают ОДИН файл: kubelet кладёт полезную нагрузку источников в общий словарь,
+и последний молча подменяет первый — один модуль исчезает из каталога, и
+процесс об этом не узнаёт. Поэтому каждый ключ получает путь
+`<источник>__<ключ>`: имя ConfigMap подчёркивания не содержит (DNS-имя), и
+первое `__` однозначно отделяет источник — совпасть два пути не могут by
+construction, а файл в каталоге называет своего поставщика. Два манифеста
+ОДНОГО модуля из двух источников доезжают двумя файлами, и старт отвергает их
+сам, называя оба (kaname, `ErrModuleCollision`).
+
+ОТКАЗЫ — рендером, с причиной, потому что каждый из них иначе урезал бы
+каталог молча:
+  · кластер не прочитан (`helm template` без `--dry-run=server`, офлайн-рендер
+    конвейера доставки): `lookup` пуст, и пустота неотличима от «источников
+    нет» — отличает их ключ `items` ответа списка, который сервер отдаёт всегда;
+  · единый источник назван, а в пространстве имён его нет;
+  · `binaryData` у источника: перечисляются ключи `data`, двоичный ключ не
+    доехал бы;
+  · путь длиннее 255 байт — предел имени файла; kubelet отказал бы на
+    монтировании текстом, не называющим причину.
+
+Отпечаток — sha256 содержимого ВСЕХ источников (имя → data, ключи сортирует
+toJson): правка любого подобранного меняет шаблон пода, правка неподобранного —
+нет.
+*/}}
+{{- define "kaname.manifests.selected" -}}
+{{- $sel := .Values.manifests.selector -}}
+{{- $legacy := .Values.manifests.configMapName -}}
+{{- $ns := .Release.Namespace -}}
+{{- $list := lookup "v1" "ConfigMap" $ns "" -}}
+{{- if not (hasKey $list "items") -}}
+{{- fail (printf "kaname: manifests.selector объявлен (%s), а рендер кластер не прочитал: подбор манифестов по метке без кластера невыразим — пустой lookup неотличим от «источников нет», и каталог доставки молча остался бы без подобранных источников. Рендерьте против кластера (helm install|upgrade, helm template --dry-run=server) либо снимите селектор" (toJson $sel)) -}}
+{{- end -}}
+{{- $picked := dict -}}
+{{- range $cm := $list.items -}}
+{{- $labels := $cm.metadata.labels | default dict -}}
+{{- $match := true -}}
+{{- range $k, $v := $sel -}}
+{{- if not (and (hasKey $labels $k) (eq (get $labels $k) (toString $v))) -}}
+{{- $match = false -}}
+{{- end -}}
+{{- end -}}
+{{- if or $match (eq $cm.metadata.name $legacy) -}}
+{{- if $cm.binaryData -}}
+{{- fail (printf "kaname: ConfigMap %s/%s — источник манифестов модулей (manifests.selector либо configMapName) несёт binaryData (%s): манифест есть текст, и двоичный ключ не доехал бы до каталога доставки" $ns $cm.metadata.name (keys $cm.binaryData | sortAlpha | join ", ")) -}}
+{{- end -}}
+{{- $_ := set $picked $cm.metadata.name ($cm.data | default dict) -}}
+{{- end -}}
+{{- end -}}
+{{- if and $legacy (not (hasKey $picked $legacy)) -}}
+{{- fail (printf "kaname: manifests.configMapName (%s) назван, а такого ConfigMap нет в пространстве имён %s — под селектором источник читается рендером, и отсутствующий урезал бы каталог доставки молча. Примените его до выкатки либо опустошите имя" $legacy $ns) -}}
+{{- end -}}
+{{- $sources := list -}}
+{{- range $name := keys $picked | sortAlpha -}}
+{{- $data := get $picked $name -}}
+{{- $items := list -}}
+{{- range $key := keys $data | sortAlpha -}}
+{{- $path := printf "%s__%s" $name $key -}}
+{{- if gt (len $path) 255 -}}
+{{- fail (printf "kaname: путь %q каталога доставки длиннее 255 байт — предел имени файла; укоротите имя ConfigMap %s либо ключ" $path $name) -}}
+{{- end -}}
+{{- $items = append $items (dict "key" $key "path" $path) -}}
+{{- end -}}
+{{- if $items -}}
+{{- $sources = append $sources (dict "name" $name "items" $items) -}}
+{{- end -}}
+{{- end -}}
+{{- toJson (dict "sources" $sources "digest" (toJson $picked | sha256sum)) -}}
+{{- end -}}

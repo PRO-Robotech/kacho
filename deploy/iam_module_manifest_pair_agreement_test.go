@@ -49,8 +49,11 @@ import (
 // Признак объявленности хранится отдельно от значения: «ключ не объявлен» и
 // «объявлен пустым» — разные утверждения, и второе есть решение посадки.
 type manifestPairDecl struct {
-	Name         string
-	NameSeen     bool
+	Name     string
+	NameSeen bool
+	// Selector — подбор источников по метке (`manifests.selector`, kacho#3356):
+	// второй способ НАЗВАТЬ источник. Непустой селектор — источник назван.
+	Selector     bool
 	Required     bool
 	RequiredSeen bool
 }
@@ -73,6 +76,14 @@ func mergeManifestPairDecl(bodies [][]byte) (manifestPairDecl, error) {
 		}
 		if v, ok := nestedString(tree, "kaname", "manifests", "required"); ok {
 			out.Required, out.RequiredSeen = v == "true", true
+		}
+		if kn, ok := tree["kaname"].(map[string]any); ok {
+			if mf, ok := kn["manifests"].(map[string]any); ok {
+				if sel, seen := mf["selector"]; seen {
+					m, _ := sel.(map[string]any)
+					out.Selector = len(m) > 0
+				}
+			}
 		}
 	}
 	return out, nil
@@ -105,10 +116,17 @@ func auditManifestPairAgreement(stacks map[string][][]byte) ([]manifestPairFindi
 		if err != nil {
 			return nil, "", fmt.Errorf("стенд %s: %w", stack, err)
 		}
-		if decl.Name != "" {
+		named := decl.Name != "" || decl.Selector
+		if named {
 			declaring++
 		}
 		switch {
+		case decl.Selector && !decl.Required:
+			findings = append(findings, manifestPairFinding{Stack: stack, Text: fmt.Sprintf(
+				"стенд %s: `manifests.selector` объявлен, а `manifests.required` не объявлен — "+
+					"половина пары. Подбор по метке называет источник так же, как имя, и страж "+
+					"старта службы отвергнет посадку, объявившую «не опираемся» при названном "+
+					"каталоге. Либо `required: true`, либо селектор пуст (kacho#3356)", stack)})
 		case decl.Name != "" && !decl.Required:
 			findings = append(findings, manifestPairFinding{Stack: stack, Text: fmt.Sprintf(
 				"стенд %s: `manifests.configMapName` назван (%s), а `manifests.required` "+
@@ -117,7 +135,7 @@ func auditManifestPairAgreement(stacks map[string][][]byte) ([]manifestPairFindi
 					"отвергает независимо от `required`, поэтому объявленное «не опираемся» "+
 					"не исполняется ничем. Либо `required: true`, либо имя пусто (kacho#1924)",
 				stack, decl.Name)})
-		case decl.Name == "" && decl.Required:
+		case !named && decl.Required:
 			findings = append(findings, manifestPairFinding{Stack: stack, Text: fmt.Sprintf(
 				"стенд %s: `manifests.required` объявлен, а `manifests.configMapName` пуст — "+
 					"половина пары. Посадка опирается на манифесты модулей и не сказала, "+

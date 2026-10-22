@@ -30,19 +30,36 @@ import json
 import os
 import sys
 
+# Обнаружение называет каждый вид, который чарт службы рендерит: server-side
+# dry-run сопоставляет КАЖДЫЙ объект релиза с ресурсом сервера и отказывает на
+# неизвестном виде («no matches for kind»). Вид, которого здесь нет, — не
+# находка о чарте, а несозданное условие пробы.
+def _res(name, kind, namespaced=True):
+    return {"name": name, "singularName": name[:-1], "namespaced": namespaced,
+            "kind": kind, "verbs": ["get", "list"]}
+
+
+GROUPS = {
+    "apps/v1": [_res("deployments", "Deployment")],
+    "rbac.authorization.k8s.io/v1": [_res("roles", "Role"), _res("rolebindings", "RoleBinding")],
+    "cert-manager.io/v1": [_res("certificates", "Certificate")],
+}
+
 DISCOVERY = {
     "/version": {"major": "1", "minor": "31", "gitVersion": "v1.31.0"},
     "/api": {"kind": "APIVersions", "versions": ["v1"], "serverAddressByClientCIDRs": []},
-    "/apis": {"kind": "APIGroupList", "apiVersion": "v1", "groups": []},
-    "/api/v1": {
-        "kind": "APIResourceList",
-        "groupVersion": "v1",
-        "resources": [
-            {"name": "configmaps", "singularName": "configmap", "namespaced": True,
-             "kind": "ConfigMap", "verbs": ["get", "list"]},
-        ],
-    },
+    "/apis": {"kind": "APIGroupList", "apiVersion": "v1", "groups": [
+        {"name": gv.split("/")[0],
+         "versions": [{"groupVersion": gv, "version": gv.split("/")[1]}],
+         "preferredVersion": {"groupVersion": gv, "version": gv.split("/")[1]}}
+        for gv in GROUPS]},
+    "/api/v1": {"kind": "APIResourceList", "groupVersion": "v1", "resources": [
+        _res("configmaps", "ConfigMap"), _res("secrets", "Secret"),
+        _res("services", "Service"), _res("serviceaccounts", "ServiceAccount"),
+    ]},
 }
+for _gv, _rs in GROUPS.items():
+    DISCOVERY["/apis/" + _gv] = {"kind": "APIResourceList", "groupVersion": _gv, "resources": _rs}
 
 NOT_FOUND = {"kind": "Status", "apiVersion": "v1", "status": "Failure",
              "reason": "NotFound", "code": 404}

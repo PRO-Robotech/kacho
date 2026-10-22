@@ -20,6 +20,13 @@
      ОДИН раз на рабочий объект: его берут и том якоря узла (kacho#2901), и пара
      удостоверения отправителя ниже. */}}
 {{- $mailNode := (((.Values.global).kacho).identity).smtp | default dict }}
+{{- /* Источники каталога доставки под селектором — ОДНО вычисление на шаблон:
+том и отпечаток читают один и тот же подбор (_helpers.tpl,
+`kaname.manifests.selected`). */}}
+{{- $selected := dict }}
+{{- if .Values.manifests.selector }}
+{{- $selected = include "kaname.manifests.selected" . | fromJson }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -122,6 +129,14 @@ spec:
         # ни о чём.
         kacho.cloud/module-manifests-digest: {{ dig "kachoModuleManifests" "digest" "unset" (.Values.global | default dict) | quote }}
         {{- end }}
+        {{- if .Values.manifests.selector }}
+        # ОТПЕЧАТОК ПОДОБРАННОГО (kacho#3356). Источники под селектором рендер
+        # ЧИТАЕТ, поэтому отпечаток считается здесь, по прочитанному содержимому,
+        # а не приезжает величиной от производителя: поставщик модуля — чужой
+        # чарт, и величину ему отдать некуда. Правка любого подобранного
+        # источника (и единого) меняет шаблон пода на следующей выкатке.
+        kacho.cloud/module-manifests-selected-digest: {{ $selected.digest | quote }}
+        {{- end }}
     spec:
       # KANAME_* — собственный config-namespace сервиса. К-net auto-инжектит
       # KANAME_INTERNAL_PORT=tcp://<ip>:9091 (из Service `kaname-internal`),
@@ -140,7 +155,32 @@ spec:
         # Writable scratch for the read-only-rootfs main container.
         - name: tmp
           emptyDir: {}
-        {{- if .Values.manifests.configMapName }}
+        {{- if .Values.manifests.selector }}
+        # МАНИФЕСТЫ МОДУЛЕЙ ИЗ НЕСКОЛЬКИХ ИСТОЧНИКОВ (kacho#3356): единый и
+        # подобранные по метке — одним проецируемым томом, ключ за ключом под
+        # путём `<источник>__<ключ>` (почему — _helpers.tpl,
+        # `kaname.manifests.selected`). `optional` НЕ объявлен: источник прочитан
+        # рендером, и исчезнувший после рендера обязан держать под с событием,
+        # называющим его, а не урезать каталог.
+        - name: module-manifests
+          projected:
+            {{- if $selected.sources }}
+            sources:
+              {{- range $s := $selected.sources }}
+              - configMap:
+                  name: {{ $s.name | quote }}
+                  items:
+                    {{- range $i := $s.items }}
+                    - key: {{ $i.key | quote }}
+                      path: {{ $i.path | quote }}
+                    {{- end }}
+              {{- end }}
+            {{- else }}
+            # Источников с данными нет: каталог приезжает пустым, и отказ
+            # произносит процесс («отсутствие манифеста снятием НЕ является»).
+            sources: []
+            {{- end }}
+        {{- else if .Values.manifests.configMapName }}
         # МАНИФЕСТЫ МОДУЛЕЙ (kacho#1875) — источник ВНЕ релиза образа.
         #
         # ConfigMap ведёт тот, кто применяет манифесты, а не этот чарт: правка
@@ -274,7 +314,7 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
-            {{- if .Values.manifests.configMapName }}
+            {{- if or .Values.manifests.configMapName .Values.manifests.selector }}
             # Каталог берётся из ТОГО ЖЕ ключа, что и `manifests.dir`
             # конфигурации процесса (см. configmap.yaml): два литерала об одном
             # каталоге разошлись бы молча, и процесс читал бы пустой путь.

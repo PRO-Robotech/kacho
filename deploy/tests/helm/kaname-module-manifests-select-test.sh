@@ -212,12 +212,17 @@ print("\n".join(errs))
 PYSRC
 )
 judge() { printf '%s\n' "$HELM_OUT" | extract | python3 -c "$PY_JUDGE" "$1" "$DIGEST_KEY"; }
+# Результат — в глобальной D, а не в stdout: вызов в подстановке исполнил бы рендер
+# в подоболочке, и счётчик рендеров переписи до вызывающего не доехал бы (outcome.sh).
+digest_of_render() {
+  printf '%s\n' "$HELM_OUT" | extract | python3 -c 'import json,sys; print(json.load(sys.stdin)["annotations"].get(sys.argv[1],""))' "$DIGEST_KEY"
+}
 
 online "$V_SEL"; render_nonempty_or_fatal "селектор и единый источник, кластер прочитан"
 ERRS="$(judge with-legacy)" || fatal "суд выжимки не состоялся"
 [ -z "$ERRS" ] || fail "подбор вместе с единым источником: $ERRS"
 ok
-DIGEST_BASE="$(printf '%s\n' "$HELM_OUT" | extract | python3 -c 'import json,sys; print(json.load(sys.stdin)["annotations"].get(sys.argv[1],""))' "$DIGEST_KEY")"
+DIGEST_BASE="$(digest_of_render)" || fatal "выжимка отпечатка не состоялась"
 
 online "$V_SEL_ONLY"; render_nonempty_or_fatal "только селектор, кластер прочитан"
 ERRS="$(judge selector-only)" || fatal "суд выжимки не состоялся"
@@ -225,23 +230,23 @@ ERRS="$(judge selector-only)" || fatal "суд выжимки не состоя�
 ok
 
 # ── 3. отпечаток: подобранное меняет, неподобранное — нет ────────────────────
-digest_with() { # digest_with <ConfigMap JSON>… → отпечаток рендера V_SEL
+digest_with() { # digest_with <ConfigMap JSON>… → D: отпечаток рендера V_SEL
   objects "$@"; online "$V_SEL"; render_nonempty_or_fatal "отпечаток"
-  printf '%s\n' "$HELM_OUT" | extract | python3 -c 'import json,sys; print(json.load(sys.stdin)["annotations"].get(sys.argv[1],""))' "$DIGEST_KEY"
+  D="$(digest_of_render)" || fatal "выжимка отпечатка не состоялась"
 }
 [ -n "$DIGEST_BASE" ] || fail "отпечаток подобранного пуст"
-D="$(digest_with "$LEGACY" "$(cm registry-platform-manifests true 'manifest.yaml=module: registry\nnote: edited\n')" "$ACME" "$UNLABELED" "$OPTED_OUT")"
+digest_with "$LEGACY" "$(cm registry-platform-manifests true 'manifest.yaml=module: registry\nnote: edited\n')" "$ACME" "$UNLABELED" "$OPTED_OUT"
 [ "$D" != "$DIGEST_BASE" ] || fail "правка подобранного источника не изменила отпечаток — под не перекатится"
 ok
-D="$(digest_with "$(cm kacho-module-manifests - 'iam.yaml=module: iam\nnote: edited\n' 'vpc.yaml=module: vpc\n')" "$REGISTRY" "$ACME" "$UNLABELED" "$OPTED_OUT")"
+digest_with "$(cm kacho-module-manifests - 'iam.yaml=module: iam\nnote: edited\n' 'vpc.yaml=module: vpc\n')" "$REGISTRY" "$ACME" "$UNLABELED" "$OPTED_OUT"
 [ "$D" != "$DIGEST_BASE" ] || fail "правка единого источника под селектором не изменила отпечаток"
 ok
 # Близнец: правка того, что НЕ подобрано, отпечаток не трогает — иначе краснота
 # выше неотличима от отпечатка, меняющегося от всего кластера.
-D="$(digest_with "$LEGACY" "$REGISTRY" "$ACME" "$(cm unrelated-config - 'manifest.yaml=edited\n')" "$OPTED_OUT")"
+digest_with "$LEGACY" "$REGISTRY" "$ACME" "$(cm unrelated-config - 'manifest.yaml=edited\n')" "$OPTED_OUT"
 [ "$D" = "$DIGEST_BASE" ] || fail "правка НЕподобранного ConfigMap изменила отпечаток — отпечаток судит не подбор"
 ok
-D="$(digest_with "$LEGACY" "$REGISTRY" "$ACME" "$UNLABELED" "$OPTED_OUT")"
+digest_with "$LEGACY" "$REGISTRY" "$ACME" "$UNLABELED" "$OPTED_OUT"
 [ "$D" = "$DIGEST_BASE" ] || fail "отпечаток одного и того же содержимого не детерминирован"
 ok
 
