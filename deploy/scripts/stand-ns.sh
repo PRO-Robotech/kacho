@@ -556,12 +556,13 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
       sum-bad) echo 0 >"$tx/work/.rc"; sed -i 's/^[0-9a-f]\{4\}/0000/' "$tx/work/sums" ;;
     esac
     # shellcheck disable=SC2030,SC2031 # подмены живут лишь в подоболочке пробы
-    ( PATH="$tx/bin:$PATH" TOOL_FIXTURE=1 TOOL_WORK="$tx/work" TOOL_WAIT=10
+    ( PATH="$tx/bin:$PATH" TOOL_WORK="$tx/work" TOOL_WAIT=10
       tool_apply() { cat >/dev/null; }
       tool_ready() { return 0; }
       tool_phase() { echo Running; }
       tool_exec() { shift; "$@"; }
-      kubectl() { return 0; }
+      kubectl() { [ "$1 $2" != "auth can-i" ] || echo yes; }
+      stand_nodes() { :; }
       sleep() { :; }
       build_tool "$tx/st" t3102-probe 3102 && [ -x "$STAND_NS_BIN" ] && [ -x "$MM_PRODUCER" ] ) >"$tx/out" 2>&1
   }
@@ -849,13 +850,11 @@ build_tool() {
   image="mirror.gcr.io/library/golang:$ver"
   tns="t$task-tool-$(printf '%s %s %s' "$stand" "$$" "$(date +%s%N)" | sha256sum | cut -c1-6)"
   ns_valid "$tns" >/dev/null || { warn "имя пространства сборки «$tns» не по правилу"; return 1; }
-  if [ "${TOOL_FIXTURE:-0}" != 1 ]; then
-    for i in "create namespaces" "delete namespaces" "create pods -n $tns" "create pods/exec -n $tns"; do
-      # shellcheck disable=SC2086 # «глагол ресурс [-n ns]» — разбор по словам и нужен
-      [ "$(kubectl auth can-i $i --request-timeout=30s 2>/dev/null)" = yes ] || { warn "у учётки нет права «$i» — собрать инструменты негде"; return 1; }
-    done
-    stand_nodes "сборка инструментов подъёма"
-  fi
+  for i in "create namespaces" "delete namespaces" "create pods -n $tns" "create pods --subresource=exec -n $tns"; do
+    # shellcheck disable=SC2086 # «глагол ресурс [-n ns]» — разбор по словам и нужен
+    [ "$(kubectl auth can-i $i --request-timeout=30s 2>/dev/null)" = yes ] || { warn "у учётки нет права «$i» — собрать инструменты негде"; return 1; }
+  done
+  stand_nodes "сборка инструментов подъёма"
   objs="$(tool_objects "$tns" "$task" "$stand" "$image" "$arch" "$(date -u -d "+$TOOL_TTL_MIN minutes" +%Y-%m-%dT%H:%M:%SZ)")" ||
     { warn "объекты сборки не построены"; return 1; }
   TOOL_NS="$tns"
