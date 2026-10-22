@@ -1619,23 +1619,23 @@ STAND_RUNNER_KINDS="newman browser"
 RUNNER_POD=stand-runner
 RUNNER_DEADLINE="${STAND_RUNNER_DEADLINE:-10800}"
 
-# Текст, который исполняет pod. Ждёт исходники (/src/.go), ставит инструменты, поднимает
-# проброс изнутри, исполняет команду, пишет код в /src/.rc и ждёт, пока машина заберёт
-# отчёты (/src/.fetched).
+# Текст, который исполняет pod. Ждёт исходники (/work/.go), ставит инструменты, поднимает
+# проброс изнутри, исполняет команду, пишет код в /work/.rc и ждёт, пока машина заберёт
+# отчёты (/work/.fetched). Метки — вне /src: дерево исходников становится репозиторием.
 read -r -d '' RUNNER_POD_SH <<'POD'
 set -uo pipefail
 unset KUBECONFIG
 say() { printf '=== stand-runner: %s\n' "$*"; }
-fetched() { local i; for i in $(seq 1 300); do [ -e /src/.fetched ] && return 0; sleep 2; done; say "отчёты не забраны за 600 с — pod выходит"; }
-finish() { echo "$1" > /src/.rc.tmp && mv /src/.rc.tmp /src/.rc; fetched; exit "$1"; }
+fetched() { local i; for i in $(seq 1 300); do [ -e /work/.fetched ] && return 0; sleep 2; done; say "отчёты не забраны за 600 с — pod выходит"; }
+finish() { echo "$1" > /work/.rc.tmp && mv /work/.rc.tmp /work/.rc; fetched; exit "$1"; }
 unmet() { say "УСЛОВИЕ НЕ СОЗДАНО: $* — команда НЕ исполнялась (125)"; finish 125; }
 mkdir -p "$HOME" "$KACHO_STAND_NS_WORKDIR"
-for _ in $(seq 1 300); do [ -e /src/.go ] && break; sleep 2; done
-[ -e /src/.go ] || { say "исходники не доставлены за 600 с"; exit 125; }
+for _ in $(seq 1 300); do [ -e /work/.go ] && break; sleep 2; done
+[ -e /work/.go ] || { say "исходники не доставлены за 600 с"; exit 125; }
 case "$(uname -m)" in x86_64) ka=amd64 ga=x86_64 ;; aarch64) ka=arm64 ga=arm64 ;; *) unmet "архитектура $(uname -m)" ;; esac
 export DEBIAN_FRONTEND=noninteractive
 say "инструменты: apt"
-{ apt-get update -q && apt-get install -y -q --no-install-recommends ca-certificates curl jq openssl tar gzip \
+{ apt-get update -q && apt-get install -y -q --no-install-recommends ca-certificates curl git jq openssl tar gzip \
     python3 python3-yaml python3-jwt python3-cryptography; } > /work/apt.log 2>&1 || { tail -n 5 /work/apt.log; unmet "apt-get"; }
 say "инструменты: kubectl $RUNNER_KUBECTL"
 ku="https://dl.k8s.io/release/$RUNNER_KUBECTL/bin/linux/$ka/kubectl"
@@ -1654,6 +1654,12 @@ case "$RUNNER_KIND" in
     (cd /src/ui-future/e2e && npm ci) > /work/npm.log 2>&1 || { tail -n 5 /work/npm.log; unmet "npm ci ui-future/e2e"; } ;;
   *) unmet "вид раннера «$RUNNER_KIND»" ;;
 esac
+# Скрипты наборов читают состав дерева индексом git (git ls-files), а архив — не клон: дерево
+# становится репозиторием одним коммитом; ревизия исходников — RUNNER_SHA и сообщение коммита.
+say "исходники $RUNNER_SHA — репозиторием git (наборы читают состав индексом)"
+{ cd /src && git init -q && git add -A &&
+  git -c user.name=stand-runner -c user.email=stand-runner@kacho.invalid commit -q -m "stand-runner: исходники $RUNNER_SHA"; } > /work/git.log 2>&1 ||
+  { tail -n 5 /work/git.log; unmet "дерево исходников не стало репозиторием git"; }
 say "проброс и окружение проб — изнутри pod"
 bash /src/deploy/scripts/stand-ns.sh pod-forward "$KACHO_STAND_NS" || unmet "проброс"
 # shellcheck disable=SC1090
@@ -1707,7 +1713,7 @@ runner_objects() {
   local mem=3Gi
   [ "$2" != browser ] || mem=6Gi
   jq -n --arg ns "$1" --arg kind "$2" --arg image "$3" --arg secret "$4" --arg dir "$5" --arg cmd "$6" \
-    --arg kver "$7" --arg newman "$8" --arg grpc "$9" --arg host "$(ns_host "$1")" --arg sh "$RUNNER_POD_SH" \
+    --arg kver "$7" --arg newman "$8" --arg grpc "$9" --arg sha "${10:-}" --arg host "$(ns_host "$1")" --arg sh "$RUNNER_POD_SH" \
     --arg name "$RUNNER_POD" --arg ls "$LABEL_STAND" --argjson deadline "$RUNNER_DEADLINE" --arg mem "$mem" '
     def meta: {name: $name, namespace: $ns, labels: {($ls): "test", "app.kubernetes.io/name": $name}};
     def env($n; $v): {name: $n, value: $v};
@@ -1730,7 +1736,7 @@ runner_objects() {
         hostAliases: [{ip: "127.0.0.1", hostnames: [$host]}],
         containers: [{name: "run", image: $image, command: ["bash", "-c", $sh], workingDir: "/src",
           env: ([env("RUNNER_KIND"; $kind), env("RUNNER_DIR"; $dir), env("RUNNER_CMD"; $cmd),
-                 env("RUNNER_KUBECTL"; $kver), env("RUNNER_NEWMAN"; $newman), env("RUNNER_GRPCURL"; $grpc),
+                 env("RUNNER_KUBECTL"; $kver), env("RUNNER_NEWMAN"; $newman), env("RUNNER_GRPCURL"; $grpc), env("RUNNER_SHA"; $sha),
                  env("KACHO_STAND_NS"; $ns), env("KACHO_NAMESPACE"; $ns), env("KACHO_STAND_NS_WORKDIR"; "/work/stand"),
                  env("HOME"; "/work/home"), env("CI"; "true")]
                 + (if $secret == "" then [] else [adm("KACHO_CLOUD_ADMIN_EMAIL"; "email"), adm("KACHO_CLOUD_ADMIN_PASSWORD"; "password")] end)),
@@ -1834,7 +1840,7 @@ runner_run() {
   out="${RUN_OUT:-$WORK_ROOT/out/$ns}"
   mkdir -p "$out" || { warn "каталог отчётов $out не заведён"; return "$RUN_UNMET"; }
   local objs
-  objs="$(runner_objects "$ns" "$RUN_RUNNER" "$image" "$secret" "$rel" "$(printf '%q ' "$@")" "$kver" "$newman" "$grpc")" ||
+  objs="$(runner_objects "$ns" "$RUN_RUNNER" "$image" "$secret" "$rel" "$(printf '%q ' "$@")" "$kver" "$newman" "$grpc" "$sha")" ||
     { warn "объекты раннера не построены"; return "$RUN_UNMET"; }
   runner_judge "$ns" <<<"$objs" >&2 || { warn "форма объектов раннера не прошла суд (выше)"; return "$RUN_UNMET"; }
   stand_nodes "раннер $RUN_RUNNER"
@@ -1845,10 +1851,10 @@ runner_run() {
   # Сжатием: дерево — ~150 МБ tar, поток идёт через API-сервер (замер kacho#3346: 158 МБ tar → 33 МБ gzip -1).
   git -C "$REPO_ROOT" archive --format=tar "$sha" | gzip -1 | kubectl -n "$ns" exec -i "$RUNNER_POD" -c run -- tar -xz -C /src ||
     { warn "исходники ревизии $sha в pod не доставлены"; return "$RUN_UNMET"; }
-  kubectl -n "$ns" exec "$RUNNER_POD" -c run -- touch /src/.go || { warn "pod не принял сигнал старта"; return "$RUN_UNMET"; }
+  kubectl -n "$ns" exec "$RUNNER_POD" -c run -- touch /work/.go || { warn "pod не принял сигнал старта"; return "$RUN_UNMET"; }
   kubectl -n "$ns" logs -f "pod/$RUNNER_POD" -c run & RUN_LOGS=$!
   while :; do
-    rc="$(kubectl -n "$ns" exec "$RUNNER_POD" -c run -- cat /src/.rc 2>/dev/null)"
+    rc="$(kubectl -n "$ns" exec "$RUNNER_POD" -c run -- cat /work/.rc 2>/dev/null)"
     [[ "$rc" =~ ^[0-9]+$ ]] && break
     rc=""
     phase="$(kubectl -n "$ns" get pod "$RUNNER_POD" -o jsonpath='{.status.phase}' 2>/dev/null)"
@@ -1863,7 +1869,7 @@ runner_run() {
   kubectl -n "$ns" exec "$RUNNER_POD" -c run -- bash -c 'cd /src && shopt -s globstar nullglob && set -- '"$(runner_globs "$RUN_RUNNER")"' && { [ $# -eq 0 ] || tar -c "$@"; }' 2>/dev/null |
     tar -xv -C "$out" 2>/dev/null >"$out/.fetched.list"
   log "отчёты раннера: путей $(grep -vc '/$' "$out/.fetched.list") в $out"
-  kubectl -n "$ns" exec "$RUNNER_POD" -c run -- touch /src/.fetched >/dev/null 2>&1
+  kubectl -n "$ns" exec "$RUNNER_POD" -c run -- touch /work/.fetched >/dev/null 2>&1
   for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$RUN_LOGS" 2>/dev/null || break; sleep 1; done
   kill "$RUN_LOGS" 2>/dev/null; wait "$RUN_LOGS" 2>/dev/null; RUN_LOGS=""
   [ -n "$rc" ] || { runner_explain "$ns"; warn "кода команды из pod нет — команда не исполнилась до конца: не выполнилось"; return "$RUN_UNMET"; }
