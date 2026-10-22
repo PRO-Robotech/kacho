@@ -1666,9 +1666,10 @@ esac
 # Скрипты наборов читают состав дерева индексом git (git ls-files), а архив — не клон: дерево
 # становится репозиторием одним коммитом; ревизия исходников — RUNNER_SHA и сообщение коммита.
 say "исходники $RUNNER_SHA — репозиторием git (наборы читают состав индексом)"
-{ cd /src && git init -q && git add -A &&
-  git -c user.name=stand-runner -c user.email=stand-runner@kacho.invalid commit -q -m "stand-runner: исходники $RUNNER_SHA"; } > /work/git.log 2>&1 ||
+( cd /src && git init -q && git add -A &&
+  git -c user.name=stand-runner -c user.email=stand-runner@kacho.invalid commit -q -m "stand-runner: исходники $RUNNER_SHA" ) > /work/git.log 2>&1 ||
   { tail -n 5 /work/git.log; unmet "дерево исходников не стало репозиторием git"; }
+cd /src || unmet "каталог исходников /src"
 say "проброс и окружение проб — изнутри pod"
 bash /src/deploy/scripts/stand-ns.sh pod-forward "$KACHO_STAND_NS" || unmet "проброс"
 # shellcheck disable=SC1090
