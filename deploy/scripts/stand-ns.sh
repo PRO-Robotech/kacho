@@ -343,10 +343,61 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
     '(.items[] | select(.kind == "Role") | .rules[0].verbs) += ["delete"]|delete' \
     '(.items[] | select(.kind == "Pod") | .spec.hostAliases[0].hostnames) = ["t3102-probe.example"]|чужое имя' \
     '(.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.valueFrom) | .valueFrom.secretKeyRef.optional) = false|обязательный секрет' \
-    '(.items[] | select(.kind == "Pod") | .metadata.namespace) = "kacho"|пространство kacho'; do
+    '(.items[] | select(.kind == "Pod") | .metadata.namespace) = "kacho"|пространство kacho' \
+    '(.items[] | select(.kind == "Pod") | .spec.serviceAccountName) = "default"|serviceAccountName default' \
+    '(.items[] | select(.kind == "RoleBinding") | .roleRef.name) = "admin"|roleRef.name чужой роли' \
+    '(.items[] | select(.kind == "Pod") | .spec.nodeName) = "node-a"|nodeName'; do
     rj="$(jq "${twin%|*}" <<<"$ro" | runner_judge t3102-probe)" && bad "раннер: близнец «${twin##*|}» прошёл суд" ||
       { [ -n "$rj" ] && ok "раннер: близнец «${twin##*|}» — находка"; } || bad "раннер: близнец «${twin##*|}» — код без находки"
   done
+  # Законный близнец связей: все имена раннера сменены согласованно — связи целы, суд молчит.
+  local legal='(.items[].metadata.name) = "runner-x" | (.items[] | select(.kind == "RoleBinding") | .roleRef.name, .subjects[0].name) = "runner-x" | (.items[] | select(.kind == "Pod") | .spec.serviceAccountName) = "runner-x"'
+  if rj="$(jq "$legal" <<<"$ro" | runner_judge t3102-probe)"; then
+    ok "раннер: законный близнец (имена учётки, роли и привязки сменены согласованно) — суд молчит"
+  else bad "раннер: законный близнец (согласованная смена имён) — находка: $rj"; fi
+  # Забор отчётов из pod (⛔ приёмки ws#1303: путей 17 из 35, код 0): перечень pod и сверка на
+  # машине. Pod — каталоги-фикстура, поток — те же тексты; обрыв — поток tar, усечённый
+  # посередине (head -c), в первых CUT попытках. Вход детерминирован (seq), не случаен.
+  local fx frc fo
+  fx="$(mktemp -d)"
+  mkdir -p "$fx/src/a/tests/newman/out/sub" "$fx/work"
+  seq 1 60000 >"$fx/src/a/tests/newman/out/big.json"
+  printf '{}' >"$fx/src/a/tests/newman/out/sub/small.json"
+  printf 'x' >"$fx/src/a/tests/newman/out/sub/with space.json"
+  # fetch_probe CUT TRIES [manifest-fail] — код runner_fetch; вывод — в $fx/fetch.out.
+  fetch_probe() {
+    rm -rf "$fx/out"; mkdir -p "$fx/out"; : >"$fx/cuts"
+    ( RUNNER_SRC="$fx/src" RUNNER_WORK="$fx/work" RUN_RUNNER=newman STAND_RUNNER_FETCH_TRIES="$2" CUT="$1" MFAIL="${3:-}"
+      runner_exec() {
+        shift
+        case "$3" in
+          *"tar -c"*) if [ "$(wc -l <"$fx/cuts")" -lt "$CUT" ]; then echo >>"$fx/cuts"; "$@" | head -c 100000; else "$@"; fi ;;
+          *) [ -z "$MFAIL" ] || return 1; "$@" ;;
+        esac
+      }
+      runner_fetch t3102-probe "$fx/out" ) >"$fx/fetch.out" 2>&1
+  }
+  frc=0; fetch_probe 0 3 || frc=$?
+  if [ "$frc" -eq 0 ] && grep -q 'доставлено 3 из 3' "$fx/fetch.out" && cmp -s "$fx/src/a/tests/newman/out/big.json" "$fx/out/a/tests/newman/out/big.json" &&
+     [ -f "$fx/out/a/tests/newman/out/sub/with space.json" ]; then
+    ok "забор отчётов: целый поток — код 0, «доставлено 3 из 3», файлы равны исходным"
+  else bad "забор отчётов: целый поток — код $frc: $(tr '\n' ' ' <"$fx/fetch.out")"; fi
+  frc=0; fetch_probe 99 3 || frc=$?
+  fo="$(cat "$fx/fetch.out")"
+  if [ "$frc" -ne 0 ] && [[ "$fo" == *"ОТЧЁТЫ ДОСТАВЛЕНЫ НЕПОЛНО: 0 из 3 после 3 попыток"* ]] && [[ "$fo" == *"sub/with space.json"* ]] &&
+     [[ "$fo" == *"a/tests/newman/out/big.json"* ]]; then
+    ok "забор отчётов: обрыв потока посередине в каждой попытке — код $frc, «доставлено неполно» с перечнем недоставленного"
+  else bad "забор отчётов: обрыв потока посередине прошёл (код $frc): $(tr '\n' ' ' <<<"$fo")"; fi
+  frc=0; fetch_probe 1 3 || frc=$?
+  fo="$(cat "$fx/fetch.out")"
+  if [ "$frc" -eq 0 ] && [[ "$fo" == *"попытка 1 из 3 — доставлено 0 из 3"*"повтор"* ]] && [[ "$fo" == *"доставлено 3 из 3"*"попытка 2 из 3"* ]]; then
+    ok "забор отчётов: обрыв первой попытки — назван, повтор доставил 3 из 3"
+  else bad "забор отчётов: обрыв первой попытки (код $frc): $(tr '\n' ' ' <<<"$fo")"; fi
+  frc=0; fetch_probe 0 3 manifest-fail || frc=$?
+  if [ "$frc" -ne 0 ] && grep -q 'перечень отчётов в pod не собран' "$fx/fetch.out"; then
+    ok "забор отчётов: перечень pod не собран — код $frc, а не «путей 0»"
+  else bad "забор отчётов: перечень pod не собран — код $frc: $(tr '\n' ' ' <"$fx/fetch.out")"; fi
+  rm -rf "$fx"
   if jq -e '[.items[] | select(.kind == "Pod") | .spec.containers[0].env[] | select(.name | startswith("KACHO_CLOUD_ADMIN"))] | length == 0' \
       <<<"$(runner_objects t3102-probe newman img:1 '' deploy true v1.35.7 6 1.9.3)" >/dev/null; then
     ok "раннер: цепочка без администратора — его окружения в pod нет"; else bad "раннер: окружение администратора без секрета"; fi
@@ -1570,7 +1621,7 @@ cmd_run() {
   if [ -n "$RUN_RUNNER" ]; then
     RUN_UP=1
     runner_run "$ns" "$ref" "$@"; rc=$?
-    log "команда в pod раннера $RUN_RUNNER завершилась кодом $rc"
+    log "прогон в pod раннера $RUN_RUNNER: код $rc (125 — команда не исполнилась либо её отчёты не доставлены целиком)"
     exit "$rc"
   fi
   bash "$HERE/stand-ns.sh" forward "$ns" || { warn "проброс $ns не поднят — команда НЕ исполнялась"; exit "$RUN_UNMET"; }
@@ -1611,8 +1662,12 @@ cmd_run() {
 #   отчёты        файлами из pod в --out (умолчание .stand-ns/out/<ns>/ — каталог стенда
 #                 снимает down, отчёт переживает его): newman — каталоги out наборов,
 #                 browser — results*.json, selection.json, test-results (trace), playwright-report;
+#                 Доставка сверяется: перечень «размер сумма путь» собран в pod до передачи,
+#                 каждый путь сверен на машине; неполная — повтор, затем 125 с перечнем
+#                 недоставленного (runner_fetch);
 #   код           код КОМАНДЫ; 125 — команда не исполнялась (образ не встал, инструменты не
-#                 поставились, проброс не поднялся, pod исчез) — «не выполнилось», не красное.
+#                 поставились, проброс не поднялся, pod исчез) либо её отчёты не доставлены
+#                 целиком — «не выполнилось», не красное.
 # Срок pod — STAND_RUNNER_DEADLINE (с, умолчание 10800), готовности — STAND_RUNNER_READY_WAIT.
 # ГРАНИЦА: инструменты pod ставятся из сети на каждом прогоне (apt, dl.k8s.io с суммой,
 # npm, выпуск grpcurl) — 1–3 мин; образ раннера с ними — отдельный предмет.
@@ -1627,7 +1682,20 @@ read -r -d '' RUNNER_POD_SH <<'POD'
 set -uo pipefail
 unset KUBECONFIG
 say() { printf '=== stand-runner: %s\n' "$*"; }
-fetched() { local i; for i in $(seq 1 300); do [ -e /work/.fetched ] && return 0; sleep 2; done; say "отчёты не забраны за 600 с — pod выходит"; }
+# Ждёт, пока машина заберёт отчёты (/work/.fetched). Срок — 600 с от последнего признака
+# забора, а не от кода: пока жив tar текущей попытки (/work/.fetching.pid), pod не выходит и
+# поток не рвётся посередине (ws#1303, ⛔ приёмки: «выходит через 600 с независимо от забора»).
+fetched() {
+  local last now p
+  last="$(date +%s)"
+  while [ ! -e /work/.fetched ]; do
+    now="$(date +%s)"
+    p="$(cat /work/.fetching.pid 2>/dev/null)"
+    [ -z "$p" ] || [ ! -e "/proc/$p" ] || last="$now"
+    [ $((now - last)) -lt 600 ] || { say "отчёты не забраны за 600 с после последней попытки забора — pod выходит"; return 0; }
+    sleep 2
+  done
+}
 finish() { echo "$1" > /work/.rc.tmp && mv /work/.rc.tmp /work/.rc; fetched; exit "$1"; }
 unmet() { say "УСЛОВИЕ НЕ СОЗДАНО: $* — команда НЕ исполнялась (125)"; finish 125; }
 mkdir -p "$HOME" "$KACHO_STAND_NS_WORKDIR"
@@ -1717,6 +1785,88 @@ runner_globs() {
   esac
 }
 
+# Каталоги pod: исходники (команда и её отчёты) и метки. Переменные — ради самопроверки
+# забора, которая исполняет те же тексты на каталогах-фикстурах.
+RUNNER_SRC=/src
+RUNNER_WORK=/work
+
+# runner_exec NS АРГУМЕНТЫ… — исполнить в pod раннера. Самопроверка подменяет её фикстурой.
+runner_exec() { local ns="$1"; shift; kubectl -n "$ns" exec "$RUNNER_POD" -c run -- "$@"; }
+
+# Текст pod: перечень отчётов «размер сумма путь» — то, что машина обязана получить. Собирается
+# ДО передачи, из файлов по шаблонам runner_globs (раскрывает оболочка pod); тот же состав
+# (NUL-разделённый) — вход tar следующего шага. Аргументы: SRC WORK ШАБЛОН…
+read -r -d '' RUNNER_MANIFEST_SH <<'POD'
+set -uo pipefail
+src="$1" work="$2"; shift 2
+cd "$src" || exit 1
+shopt -s globstar nullglob
+pats=("$@"); set --
+for g in "${pats[@]}"; do for p in $g; do set -- "$@" "$p"; done; done
+{ [ $# -eq 0 ] || find "$@" -type f -print0; } | sort -zu > "$work/.fetch.files0" || exit 1
+: > "$work/.manifest" || exit 1
+while IFS= read -r -d '' f; do
+  case "$f" in *$'\n'*) printf 'путь отчёта с переводом строки — перечнем не выразим: %q\n' "$f" >&2; exit 1 ;; esac
+  printf '%s %s %s\n' "$(stat -c %s -- "$f")" "$(sha256sum < "$f" | cut -d' ' -f1)" "$f" >> "$work/.manifest" || exit 1
+done < "$work/.fetch.files0"
+cat "$work/.manifest"
+POD
+
+# Текст pod: поток tar ровно состава перечня. Номер процесса — признак «забор идёт» для fetched().
+read -r -d '' RUNNER_TAR_SH <<'POD'
+cd "$1" || exit 1
+echo $$ > "$2/.fetching.pid"
+exec tar -c --null --verbatim-files-from -T "$2/.fetch.files0"
+POD
+
+# runner_fetch NS OUT — отчёты из pod в OUT со сверкой полноты (⛔ приёмки ws#1303: забор терял
+# файлы молча — путей 17 из 35, целых отчётов 5 из 10, код 0). Перечень собран в pod до
+# передачи; после каждой попытки каждый его путь сверяется на машине по размеру и сумме.
+# Неполная доставка — повтор (STAND_RUNNER_FETCH_TRIES, умолчание 3); не сошлось и после —
+# код 1 и перечень недоставленного. Исход печатается всегда: «доставлено N из M».
+runner_fetch() {
+  local ns="$1" out="$2" tries="${STAND_RUNNER_FETCH_TRIES:-3}" man line path f size sum try n=0 m=0 prc xrc
+  local -a globs lost=() st
+  [[ "$tries" =~ ^[1-9][0-9]?$ ]] || { warn "STAND_RUNNER_FETCH_TRIES=«$tries» — не число 1..99"; return 1; }
+  man="$out/.manifest"
+  read -r -a globs <<<"$(runner_globs "$RUN_RUNNER")"
+  runner_exec "$ns" bash -c "$RUNNER_MANIFEST_SH" manifest "$RUNNER_SRC" "$RUNNER_WORK" "${globs[@]}" >"$man" ||
+    { warn "перечень отчётов в pod не собран — доставку сверить не с чем"; return 1; }
+  while IFS= read -r line; do
+    [[ "$line" =~ ^[0-9]+\ [0-9a-f]{64}\ .+$ ]] || { warn "перечень pod не в форме «размер сумма путь»: «$line»"; return 1; }
+    path="${line#* * }"
+    case "/$path/" in //*|*/../*) warn "путь перечня pod вне каталога отчётов: «$path»"; return 1 ;; esac
+    m=$((m + 1))
+  done <"$man"
+  : >"$out/.fetched.list"
+  if [ "$m" -eq 0 ]; then
+    log "отчёты раннера: в pod файлов по шаблонам ${globs[*]} — 0, доставлять нечего"
+    return 0
+  fi
+  for try in $(seq 1 "$tries"); do
+    while IFS= read -r line; do rm -f -- "$out/${line#* * }"; done <"$man"
+    runner_exec "$ns" bash -c "$RUNNER_TAR_SH" fetch "$RUNNER_SRC" "$RUNNER_WORK" | tar -x -C "$out" 2>"$out/.fetch.err"
+    st=("${PIPESTATUS[@]}"); prc="${st[0]}"; xrc="${st[1]}"
+    n=0; lost=(); : >"$out/.fetched.list"
+    while IFS= read -r line; do
+      read -r size sum _ <<<"$line"; path="${line#* * }"; f="$out/$path"
+      if [ -f "$f" ] && [ ! -L "$f" ] && [ "$(stat -c %s -- "$f")" = "$size" ] && [ "$(sha256sum <"$f" | cut -d' ' -f1)" = "$sum" ]; then
+        n=$((n + 1)); printf '%s\n' "$path" >>"$out/.fetched.list"
+      else
+        lost+=("$path")
+      fi
+    done <"$man"
+    if [ "$n" -eq "$m" ]; then
+      log "отчёты раннера: доставлено $n из $m (размер и сумма каждого сверены с перечнем pod; попытка $try из $tries) в $out"
+      return 0
+    fi
+    warn "отчёты раннера: попытка $try из $tries — доставлено $n из $m (код tar в pod $prc, на машине $xrc: $(tail -n 1 "$out/.fetch.err"))$([ "$try" -lt "$tries" ] && printf ' — повтор')"
+  done
+  warn "ОТЧЁТЫ ДОСТАВЛЕНЫ НЕПОЛНО: $n из $m после $tries попыток; недоставлено либо расходится с перечнем pod (${#lost[@]}):"
+  printf '  %s\n' "${lost[@]}" >&2
+  return 1
+}
+
 # runner_objects NS ВИД ОБРАЗ СЕКРЕТ КАТАЛОГ КОМАНДА KUBECTL NEWMAN GRPCURL — учётка, роль,
 # привязка и pod раннера (список JSON для kubectl apply). Всё — в пространстве NS.
 runner_objects() {
@@ -1771,13 +1921,22 @@ if kinds != ["Pod", "Role", "RoleBinding", "ServiceAccount"]:
 for i in items:
     if i["metadata"].get("namespace") != ns:
         bad.append("%s/%s вне пространства стенда" % (i["kind"], i["metadata"].get("name")))
+# Связи судятся по ИМЕНАМ объектов списка: роль привязки — роль раннера, субъект и учётка pod —
+# учётка раннера. Иначе узкая роль лежит рядом, а права даёт чужая роль пространства либо pod
+# идёт под чужой учёткой (default, учётка чарта) — суд формы о ней молчал бы (⛔ приёмки ws#1303).
+sas = [i["metadata"].get("name") for i in items if i["kind"] == "ServiceAccount"]
+roles = [i["metadata"].get("name") for i in items if i["kind"] == "Role"]
 for i in items:
     if i["kind"] == "RoleBinding":
         if i["roleRef"].get("kind") != "Role":
             bad.append("привязка к %s, а не к роли пространства" % i["roleRef"].get("kind"))
+        elif i["roleRef"].get("name") not in roles:
+            bad.append("привязка к роли %s, а не к роли раннера %s" % (i["roleRef"].get("name"), roles))
         for s in i["subjects"]:
             if s.get("kind") != "ServiceAccount" or s.get("namespace") != ns:
                 bad.append("субъект привязки вне учётки pod пространства: %s" % s)
+            elif s.get("name") not in sas:
+                bad.append("субъект привязки — учётка %s, а не учётка раннера %s" % (s.get("name"), sas))
     if i["kind"] == "Role":
         for r in i["rules"]:
             extra = set(r["verbs"]) - {"get", "list", "watch", "create"}
@@ -1789,6 +1948,10 @@ for i in items:
                 bad.append("роль со звездой: %s" % r)
     if i["kind"] == "Pod":
         sp = i["spec"]
+        if sp.get("serviceAccountName") not in sas:
+            bad.append("pod под учёткой %s, а не учёткой раннера %s" % (sp.get("serviceAccountName"), sas))
+        if "nodeName" in sp:
+            bad.append("pod прибит к узлу %s мимо планировщика" % sp["nodeName"])
         for k in ("hostNetwork", "hostPID", "hostIPC"):
             if sp.get(k):
                 bad.append("pod: %s" % k)
@@ -1880,14 +2043,13 @@ runner_run() {
     esac
     sleep 10
   done
-  # shellcheck disable=SC2016 # раскрывает оболочка pod
-  kubectl -n "$ns" exec "$RUNNER_POD" -c run -- bash -c 'cd /src && shopt -s globstar nullglob && set -- '"$(runner_globs "$RUN_RUNNER")"' && { [ $# -eq 0 ] || tar -c "$@"; }' 2>/dev/null |
-    tar -xv -C "$out" 2>/dev/null >"$out/.fetched.list"
-  log "отчёты раннера: путей $(grep -vc '/$' "$out/.fetched.list") в $out"
+  local fetch=0
+  runner_fetch "$ns" "$out" || fetch=1
   kubectl -n "$ns" exec "$RUNNER_POD" -c run -- touch /work/.fetched >/dev/null 2>&1
   for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$RUN_LOGS" 2>/dev/null || break; sleep 1; done
   kill "$RUN_LOGS" 2>/dev/null; wait "$RUN_LOGS" 2>/dev/null; RUN_LOGS=""
   [ -n "$rc" ] || { runner_explain "$ns"; warn "кода команды из pod нет — команда не исполнилась до конца: не выполнилось"; return "$RUN_UNMET"; }
+  [ "$fetch" -eq 0 ] || { warn "команда в pod завершилась кодом $rc, но её отчёты доставлены неполно (выше) — вердикт по ним не читается: не выполнилось (125)"; return "$RUN_UNMET"; }
   return "$rc"
 }
 

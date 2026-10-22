@@ -1238,7 +1238,7 @@ stand-ns-run:
 	  $(if $(RUNNER),--runner "$(RUNNER)",) $(if $(OUT),--out "$(OUT)",) \
 	  --stack "$(or $(STACK),dev-prod)" --ref "$(or $(REF),HEAD)" -- bash -c '$(subst ','\'',$(value CMD))'; \
 	code=$$?; \
-	case $$code in 0) what="команда прошла" ;; 125) what="команда НЕ исполнялась — условие прогона не создано" ;; \
+	case $$code in 0) what="команда прошла" ;; 125) what="не выполнилось — команда НЕ исполнялась (условие прогона не создано) либо отчёты раннера доставлены неполно" ;; \
 	  *) what="команда завершилась ненулевым кодом" ;; esac; \
 	echo "stand-ns-run: код scripts/stand-ns.sh run = $$code ($$what)"; \
 	exit $$code
