@@ -88,12 +88,18 @@
 # там `set` и `restore` делятся надвое:
 #
 #   запись    просьба машине файлом в KACHO_STAND_COND_DIR pod («<имя>.req»:
-#             строка «wrap-rotate<TAB>set<TAB>KEYS<TAB>KEY»); машина (цикл
-#             `runner_run` stand-ns.sh) исполняет строку ведомости условий
-#             `stand-conditions.tsv` — этот скрипт `write …` своим контекстом
-#             -client — и кладёт рядом «<имя>.out» и «<имя>.rc»;
-#   исход     pod судит сам, своей учёткой: готовность края, маршрут посева
-#             изнутри pod, самоотчёт старта каждого живого пода.
+#             строка «wrap-rotate<TAB>set<TAB>KEYS<TAB>KEY» либо
+#             «wrap-rotate<TAB>restore<TAB>KEY»); машина (цикл `runner_run`
+#             stand-ns.sh) исполняет строку ведомости условий `stand-conditions.tsv`:
+#             подкоманду `write` закрепляет строка, операция — из её перечня (set,
+#             restore), — своим контекстом -client и кладёт рядом «<имя>.out» и
+#             «<имя>.rc». На машине шаг — только kubectl и оболочка: координата
+#             секрета — у Deployment'а выборкой jsonpath (не от pod), заплатка —
+#             base64, K2 — /dev/urandom; правка секрета, `rollout restart`,
+#             `rollout status`. Интерпретатора на машине шаг не зовёт;
+#   исход     pod судит сам, своей учёткой: служба, читающая ключ (разбор
+#             Deployment'ов), готовые конечные точки её служб, готовность края,
+#             маршрут посева изнутри pod, самоотчёт старта каждого живого пода.
 #
 # Машина не ответила за KACHO_WRAP_MACHINE_WAIT (с, умолчание 480) либо ответила
 # не нулём — код 3: условие не создано, проба — «не выполнилось», а не зелёное.
@@ -106,8 +112,8 @@
 # Величины не печатаются и в аргументы kubectl не уходят: K1 и K2 лежат в DIR
 # (0700/0600), правка секрета идёт файлом заплатки (--patch-file), который
 # удаляется сразу после применения. DIR принадлежит вызывающему; restore его
-# очищает. K2 — `openssl rand -hex 32`, та же форма, что у посева
-# dev-prod-secrets.sh.
+# очищает. K2 — 32 байта /dev/urandom шестнадцатеричной строкой (64 знака): та
+# же форма, что `openssl rand -hex 32` посева dev-prod-secrets.sh.
 #
 # ── ИСХОДЫ ────────────────────────────────────────────────────────────────────
 #
@@ -268,6 +274,36 @@ load_target() {
   IFS=$'\t' read -r DEPLOY CONTAINER SECRET SKEY SELECTOR CONFIGMAP ENV_ATTEMPTS <<<"$TGT"
   [ -n "$SECRET" ] && [ -n "$SKEY" ] && [ -n "$SELECTOR" ] ||
     die "у $DEPLOY не выведены секрет, ключ или селектор подов ($TGT)"
+  coord_form
+}
+
+# coord_form — имя Deployment'а, секрета и ключа в форме имён Kubernetes: ключ
+# входит в текст заплатки JSON, имена — в аргументы kubectl.
+coord_form() {
+  [[ "$DEPLOY" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] && [[ "$SECRET" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] &&
+    [[ "$SKEY" =~ ^[-._a-zA-Z0-9]+$ ]] || die "координата секрета вне формы имён: deploy «$DEPLOY», секрет «$SECRET», ключ «$SKEY»" 3
+}
+
+# write_target — шаг машины (cmd_write): та же координата секрета без интерпретатора —
+# выборкой jsonpath kubectl: по строке на Deployment «имя<TAB>секрет ключ;…» для каждой
+# переменной ENV_NAME, взятой ссылкой на секрет. Ровно одна такая ссылка в
+# пространстве — иначе код 3. Координату машина выводит сама, у pod её не берёт.
+write_target() {
+  local jp out name refs ent es ek n=0
+  local -a ents
+  jp='{range .items[*]}{.metadata.name}{"\t"}{range .spec.template.spec.containers[*]}{range .env[?(@.name=="'"$ENV_NAME"'")]}{.valueFrom.secretKeyRef.name}{" "}{.valueFrom.secretKeyRef.key}{";"}{end}{end}{"\n"}{end}'
+  out="$(k get deploy -o "jsonpath=$jp" 2>&1)" || die "Deployment'ы пространства $NS не прочитаны: $(head -1 <<<"$out")" 3
+  DEPLOY="" SECRET="" SKEY=""
+  while IFS=$'\t' read -r name refs; do
+    IFS=';' read -r -a ents <<<"$refs"
+    for ent in "${ents[@]}"; do
+      read -r es ek <<<"$ent"
+      [ -n "$es" ] && [ -n "$ek" ] || continue
+      n=$((n + 1)); DEPLOY="$name" SECRET="$es" SKEY="$ek"
+    done
+  done <<<"$out"
+  [ "$n" -eq 1 ] || die "Deployment'ов, читающих $ENV_NAME из секрета: $n, а не 1" 3
+  coord_form
 }
 
 # live_pods — живые поды службы (Running, не в завершении): «имя<TAB>порт<TAB>схема».
@@ -328,19 +364,21 @@ prepare_keys() {
     log "ключ стенда до пробы сохранён в каталоге состояния (величина не печатается)"
   fi
   if [ ! -s "$STATE/K2" ]; then
-    (umask 077; openssl rand -hex 32 | tr -d '\n' >"$STATE/K2") || die "свежий ключ K2 не отчеканен"
+    (umask 077; set -o pipefail; od -An -N32 -tx1 /dev/urandom | tr -d ' \n' >"$STATE/K2") || die "свежий ключ K2 не отчеканен"
+    [[ "$(cat "$STATE/K2")" =~ ^[0-9a-f]{64}$ ]] || { rm -f "$STATE/K2"; die "свежий ключ K2 не 32 байта hex"; }
   fi
 }
 
-# apply VALUE-FILE — секрет получает величину файла; перекат; готовность края.
+# apply_value VALUE-FILE — секрет получает величину файла; перекат и его готовность
+# (`rollout status`). Конечные точки служб судит вызывающий (endpoints_ready): на
+# машине по просьбе pod — pod, своей учёткой. Заплатка — без интерпретатора: ключ в
+# форме имени (coord_form), величина — base64 одной строкой.
 apply_value() {
   local file="$1" patch out
   patch="$(mktemp "$STATE/patch.XXXXXX")" || die "файл заплатки не заведён"
-  python3 -c '
-import base64, json, sys
-v = open(sys.argv[1], "rb").read()
-json.dump({"data": {sys.argv[2]: base64.b64encode(v).decode()}}, open(sys.argv[3], "w"))
-' "$file" "$SKEY" "$patch" || { rm -f "$patch"; die "заплатка секрета не составлена"; }
+  [[ "$SKEY" =~ ^[-._a-zA-Z0-9]+$ ]] || { rm -f "$patch"; die "ключ секрета «$SKEY» вне формы имени" 3; }
+  { printf '{"data":{"%s":"' "$SKEY" && base64 -w0 <"$file" && printf '"}}\n'; } >"$patch" ||
+    { rm -f "$patch"; die "заплатка секрета не составлена"; }
   out="$(k patch secret "$SECRET" --type merge --patch-file "$patch" 2>&1)"
   local rc=$?
   rm -f "$patch"
@@ -350,12 +388,12 @@ json.dump({"data": {sys.argv[2]: base64.b64encode(v).decode()}}, open(sys.argv[3
     k get pods -l "$SELECTOR" -o wide >&2 2>&1 || true
     die "перекат $DEPLOY не стал готов за $ROLLOUT_TIMEOUT: $(tail -1 <<<"$out")" 3
   fi
-  endpoints_ready || die "конечные точки служб $DEPLOY не готовы после переката (выше)" 3
 }
 
-# verify_applied — готовность края и маршрута посева после переката: та половина,
-# что судит исход (в pod раннера — его учёткой и его маршрутом).
+# verify_applied — конечные точки служб, готовность края и маршрута посева после
+# переката: та половина, что судит исход (в pod раннера — его учёткой и его маршрутом).
 verify_applied() {
+  endpoints_ready || die "конечные точки служб $DEPLOY не готовы после переката (выше)" 3
   edge_ready || die "край не готов после переката $DEPLOY (выше)" 3
   route_ready || die "маршрут посева $ROUTE_URL не готов после переката $DEPLOY (выше)" 3
 }
@@ -367,7 +405,8 @@ machine_step() {
   local dir="$KACHO_STAND_COND_DIR" id req i rc out
   [[ "$MACHINE_WAIT" =~ ^[0-9]+$ ]] || die "KACHO_WRAP_MACHINE_WAIT=«$MACHINE_WAIT» — не число секунд"
   id="wrap-rotate-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
-  req="$(printf 'wrap-rotate\twrite\t%s' "$1")"
+  # Подкоманду write закрепляет строка ведомости машины, просьба называет лишь операцию.
+  req="$(printf 'wrap-rotate\t%s' "$1")"
   [ $# -lt 2 ] || req="$req$(printf '\t%s' "$2")"
   req="$req$(printf '\t%s' "$(basename "$STATE")")"
   printf '%s\n' "$req" >"$dir/$id.req.tmp" && mv "$dir/$id.req.tmp" "$dir/$id.req" ||
@@ -663,8 +702,9 @@ cmd_restore() {
 }
 
 # cmd_write — шаг МАШИНЫ (раздел «ПОД РАННЕРА»): только запись и перекат, своим
-# контекстом -client; исход судит pod. Пространство — KACHO_STAND_NS машины, каталог
-# состояния — KACHO_STAND_COND_STATE/KEY; в pod раннера и без контекста — отказ.
+# контекстом -client; исход (конечные точки, край, маршрут, самоотчёт) судит pod.
+# Пространство — KACHO_STAND_NS машины, каталог состояния — KACHO_STAND_COND_STATE/KEY;
+# в pod раннера и без контекста — отказ. Только kubectl и оболочка (write_target).
 cmd_write() {
   [ -n "${KACHO_CLIENT_CONTEXT:-}" ] || die "write — шаг машины стенда проб: KACHO_CLIENT_CONTEXT не задан (его экспортирует stand-ns.sh run)"
   ! in_runner_pod || die "write — шаг машины: в pod раннера записи нет (учётка pod только читает)"
@@ -673,7 +713,7 @@ cmd_write() {
   STATE="$KACHO_STAND_COND_STATE/$WKEY"
   need_state
   pick_context
-  load_target
+  write_target
   case "$WOP" in
     set)
       local value
