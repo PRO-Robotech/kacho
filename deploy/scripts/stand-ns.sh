@@ -561,7 +561,8 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
       tool_apply() { cat >/dev/null; }
       tool_ready() { return 0; }
       tool_phase() { echo Running; }
-      # kubectl — по форме настоящего: exec без -i не передаёт stdin команде pod.
+      # kubectl — по форме настоящего: exec без -i не передаёт stdin команде pod (tool_put обязан
+      # нести -i), забор (tool_exec) идёт без него.
       kubectl() {
         [ "$1 $2" != "auth can-i" ] || { echo yes; return 0; }
         [ "$1" = -n ] && [ "$3" = exec ] || return 0
@@ -843,9 +844,11 @@ tool_sources() {
 }
 
 # Обращения к кластеру сборки — функциями: самопроверка подменяет их фикстурой.
-# exec — всегда с -i: без него поток исходников до pod не доходит (stdin pod пуст). Прочие
-# вызовы читают /dev/null явно.
-tool_exec()  { local ns="$1"; shift; kubectl -n "$ns" exec -i "$TOOL_POD" -c build -- "$@"; }
+# tool_put — команда pod, читающая stdin машины (поток исходников, перечни): с -i, иначе
+# stdin pod пуст. tool_exec — без -i: на exec -i с пустым stdin вывод pod приходит усечённым
+# (замер kacho#3353 на внешнем кластере: три забора бинаря подряд — три разные суммы).
+tool_exec()  { local ns="$1"; shift; kubectl -n "$ns" exec "$TOOL_POD" -c build -- "$@"; }
+tool_put()   { local ns="$1"; shift; kubectl -n "$ns" exec -i "$TOOL_POD" -c build -- "$@"; }
 tool_apply() { kubectl apply -f - >/dev/null; }
 tool_ready() {
   local ns="$1" sa=0
@@ -888,9 +891,9 @@ build_tool() {
   tool_ready "$tns" "$objs" || { tool_drop; return 1; }
   tool_lists "$out" || { warn "перечни путей рабочей копии не прочитаны"; tool_drop; return 1; }
   for try in 1 2 3; do
-    if tool_sources "$out" | gzip -1 | tool_exec "$tns" sh -c 'rm -rf "$1/src" && mkdir -p "$1/src" && tar -xz -C "$1/src"' put "$TOOL_WORK" &&
-       tool_exec "$tns" sh -c 'cat > "$1"' put "$TOOL_WORK/tracked.txt" <"$out/tracked.txt" &&
-       tool_exec "$tns" sh -c 'cat > "$1"' put "$TOOL_WORK/untracked.txt" <"$out/untracked.txt"; then
+    if tool_sources "$out" | gzip -1 | tool_put "$tns" sh -c 'rm -rf "$1/src" && mkdir -p "$1/src" && tar -xz -C "$1/src"' put "$TOOL_WORK" &&
+       tool_put "$tns" sh -c 'cat > "$1"' put "$TOOL_WORK/tracked.txt" <"$out/tracked.txt" &&
+       tool_put "$tns" sh -c 'cat > "$1"' put "$TOOL_WORK/untracked.txt" <"$out/untracked.txt"; then
       break
     fi
     warn "исходники в pod сборки не доставлены (попытка $try из 3)"
