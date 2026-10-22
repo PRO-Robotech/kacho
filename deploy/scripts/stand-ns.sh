@@ -560,8 +560,14 @@ assert "api-gateway" not in d and "registry" not in d, sorted(d)
       tool_apply() { cat >/dev/null; }
       tool_ready() { return 0; }
       tool_phase() { echo Running; }
-      tool_exec() { shift; "$@"; }
-      kubectl() { [ "$1 $2" != "auth can-i" ] || echo yes; }
+      # kubectl — по форме настоящего: exec без -i не передаёт stdin команде pod.
+      kubectl() {
+        [ "$1 $2" != "auth can-i" ] || { echo yes; return 0; }
+        [ "$1" = -n ] && [ "$3" = exec ] || return 0
+        local pass=0; shift 3
+        while [ "$1" != -- ]; do [ "$1" != -i ] || pass=1; shift; done; shift
+        if [ "$pass" = 1 ]; then "$@"; else "$@" </dev/null; fi
+      }
       stand_nodes() { :; }
       sleep() { :; }
       build_tool "$tx/st" t3102-probe 3102 && [ -x "$STAND_NS_BIN" ] && [ -x "$MM_PRODUCER" ] ) >"$tx/out" 2>&1
@@ -820,7 +826,9 @@ tool_sources() {
 }
 
 # Обращения к кластеру сборки — функциями: самопроверка подменяет их фикстурой.
-tool_exec()  { local ns="$1"; shift; kubectl -n "$ns" exec "$TOOL_POD" -c build -- "$@"; }
+# exec — всегда с -i: без него поток исходников до pod не доходит (stdin pod пуст). Прочие
+# вызовы читают /dev/null явно.
+tool_exec()  { local ns="$1"; shift; kubectl -n "$ns" exec -i "$TOOL_POD" -c build -- "$@"; }
 tool_apply() { kubectl apply -f - >/dev/null; }
 tool_ready() {
   local ns="$1" sa=0
