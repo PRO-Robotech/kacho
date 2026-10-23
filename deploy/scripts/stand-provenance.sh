@@ -112,6 +112,19 @@
 # ЧЕГО ЭТА СВЕРКА НЕ ДОКАЗЫВАЕТ, названо вслух и печатается строкой отчёта:
 # равенство ссылки не есть равенство СОДЕРЖИМОГО — тег у чужого конвейера подвижен,
 # а отпечатка (`@sha256:…`) дерево для этого образа не объявляет.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# --expect-images: ОБРАЗЫ ДРУГОЙ РЕВИЗИИ — ТОЛЬКО С ОБОСНОВАНИЕМ (задача #3276)
+#
+# Правка пробы даёт новую голову, а образов не меняет: kacho#3265 — путь
+# `assert-ban6-external-isolation.py`, «изменённых путей 1, из них входов сборки 0».
+# `--expect <голова>` давал код 3 на верном стенде. Подмена «голова → ревизия образов»
+# принимается лишь по `stand-ns inputs -root <корень> -base <ревизия>` (правило —
+# tools/standns/inputs.go): код 0 — сверка идёт с ревизией образов, вывод печатается
+# строкой ОБОСНОВАНИЕ; код 1 (вход сборки менялся) — код 3: образы голову не судят;
+# иной — код 2. С `--expect` вместе корень обязан стоять на нём, иначе обоснование
+# было бы о другой голове. Переносит вердикт по этому обоснованию
+# `scripts/stand-report.sh` воркспейса (PRO-Robotech/kacho-workspace#1148).
 set -uo pipefail
 
 NAMESPACE="${KACHO_NAMESPACE:-kacho}"
@@ -124,6 +137,11 @@ EXEC_TIMEOUT="${KACHO_PROVENANCE_EXEC_TIMEOUT:-20}"
 # ровно тем, чем разъехались три рукописных перечня репозиториев прежней топологии.
 EXPECT=""
 EXPECT_GIVEN=0
+EXPECT_IMAGES=""
+EXPECT_IMAGES_GIVEN=0
+INPUTS_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Инструмент подменяем самопроверкой; по умолчанию — Go-половина стенда этого дерева.
+INPUTS_TOOL="${KACHO_PROVENANCE_INPUTS_TOOL:-go run ./tools/standns/cmd/stand-ns}"
 
 # REVISION_PATH — путь величины внутри образа. Объявлен ОДИН раз и здесь;
 # Dockerfile'ы пишут этот же путь, и что все они его пишут, держит
@@ -132,10 +150,12 @@ REVISION_PATH="/etc/kacho/image-revision"
 
 usage() {
   cat <<'EOF'
-stand-provenance.sh [--namespace <ns>] [--expect <ревизия>] [--self-test]
+stand-provenance.sh [--namespace <ns>] [--expect <ревизия>] [--expect-images <ревизия> [--inputs-root <корень>]] [--self-test]
 
   --namespace   пространство имён стенда (умолчание: kacho, либо KACHO_NAMESPACE)
   --expect      ревизия дерева, из которого запущен прогон; расхождение = код 3
+  --expect-images  ревизия образов стенда вместо головы — по обоснованию stand-ns inputs
+  --inputs-root    корень дерева головы для inputs (умолчание: это дерево)
   --self-test   доказательство инъекцией в обе стороны, без кластера
 EOF
 }
@@ -147,6 +167,8 @@ while [ $# -gt 0 ]; do
     # его здесь — и `--expect "$(…)"` с пустой подстановкой выглядел бы опечаткой
     # вызова, тогда как это исчезнувшая предпосылка, и назвать её обязан отчёт.
     --expect)    EXPECT="${2-}"; EXPECT_GIVEN=1; shift 2 ;;
+    --expect-images) EXPECT_IMAGES="${2-}"; EXPECT_IMAGES_GIVEN=1; shift 2 ;;
+    --inputs-root)   INPUTS_ROOT="${2:?--inputs-root требует значения}"; shift 2 ;;
     --self-test) MODE="self-test"; shift ;;
     -h|--help)   usage; exit 0 ;;
     *) echo "неизвестный аргумент: $1" >&2; usage >&2; exit 2 ;;
@@ -328,6 +350,27 @@ report() {
         echo "ОТКАЗ: ожидаемая ревизия пуста («$EXPECT») — сравнивать не с чем." >&2
         echo "       Это НЕ «сходится»: вопрос не был задан ни одному контейнеру." >&2
         return 2 ;;
+    esac
+  fi
+
+  # ПОДМЕНА ГОЛОВЫ РЕВИЗИЕЙ ОБРАЗОВ — ДО опроса стенда: без обоснования спрашивать не о чем.
+  if [ "$EXPECT_IMAGES_GIVEN" -eq 1 ]; then
+    local ih iout irc
+    case "$(commit_of "$EXPECT_IMAGES")" in
+      ""|unknown) echo "ОТКАЗ: ревизия образов пуста («$EXPECT_IMAGES») — подменять голову нечем." >&2; return 2 ;;
+    esac
+    ih="$(git -C "$INPUTS_ROOT" rev-parse HEAD 2>/dev/null)" || { echo "ОТКАЗ: «$INPUTS_ROOT» не git-копия — голову обоснования не установить." >&2; return 2; }
+    if [ "$EXPECT_GIVEN" -eq 1 ] && [ "$ih" != "$(commit_of "$EXPECT")" ]; then
+      echo "ОТКАЗ: корень inputs на $ih, а --expect $(commit_of "$EXPECT") — обоснование было бы о другой голове." >&2
+      return 2
+    fi
+    iout="$(cd "$INPUTS_ROOT" && $INPUTS_TOOL inputs -root "$INPUTS_ROOT" -base "$(commit_of "$EXPECT_IMAGES")" 2>&1)"; irc=$?
+    echo "ОБОСНОВАНИЕ ПОДМЕНЫ: голова $ih → образы $(commit_of "$EXPECT_IMAGES"); stand-ns inputs код $irc:"
+    printf '%s\n' "$iout" | sed 's/^/    /'
+    case "$irc" in
+      0) EXPECT="$EXPECT_IMAGES"; EXPECT_GIVEN=1 ;;
+      1) echo "ВХОДЫ СБОРКИ МЕНЯЛИСЬ: образы $(commit_of "$EXPECT_IMAGES") голову $ih не судят — подмена отвергнута"; return 3 ;;
+      *) echo "ОТКАЗ: inputs не выполнился (код $irc) — подмена не обоснована." >&2; return 2 ;;
     esac
   fi
 
@@ -605,7 +648,7 @@ STUB
     # Ожидание сбрасывается фикстурой: оси 1-11 писались до `--expect` и обязаны
     # остаться утверждениями о ПРЕЖНЕМ поведении. Не сбрось его — двенадцатая ось
     # молча меняла бы предмет одиннадцати предыдущих.
-    EXPECT=""; EXPECT_GIVEN=0
+    EXPECT=""; EXPECT_GIVEN=0; EXPECT_IMAGES=""; EXPECT_IMAGES_GIVEN=0
   }
 
   echo "1. величина у каждого контейнера — код 0 (положительный контроль)"
@@ -901,6 +944,88 @@ STUB
   else
     bad "код $rc; вывод: $out"
   fi
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # ОСИ ПОДМЕНЫ ГОЛОВЫ РЕВИЗИЕЙ ОБРАЗОВ (задача #3276). Инструмент inputs подменён
+  # заглушкой: вывод и код — из файлов, доводы пишутся в файл, чтобы ось 23 видела,
+  # что спрошена ИМЕННО ревизия образов. Вывод заглушки — дословно живой kacho#3265.
+  cat > "$work/bin/inputs-stub" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$KACHO_SELFTEST_WORK/inputs.args"
+cat "$KACHO_SELFTEST_WORK/inputs.out"
+exit "$(cat "$KACHO_SELFTEST_WORK/inputs.rc")"
+STUB
+  chmod +x "$work/bin/inputs-stub"
+  local saved_tool="$INPUTS_TOOL"
+  INPUTS_TOOL="$work/bin/inputs-stub"
+  fixture_images() {  # стенд исполняет образы rev_other, голова — дерево самопроверки
+    fixture_two_good
+    printf 'vpc-1\tvpc\tdocker.io/library/kacho-vpc:dev\tsha256:aaa\n' > "$work/pods.tsv"
+    printf '%s\n' "$rev_other" > "$work/exec.vpc"
+    printf '  не вход deploy/scripts/assert-ban6-external-isolation.py — не доезжает ни до одного образа\nstand-ns inputs: Dockerfile 23, контекстов 9, образов go 7; изменённых путей 1, из них входов сборки 0\n' > "$work/inputs.out"
+    echo 0 > "$work/inputs.rc"; rm -f "$work/inputs.args"
+    EXPECT_IMAGES="$rev_other"; EXPECT_IMAGES_GIVEN=1
+  }
+
+  echo "23. КОНТРОЛЬ: входов сборки 0, стенд на ревизии образов — код 0, обоснование напечатано"
+  fixture_images
+  out="$(report kacho)"; rc=$?
+  if [ "$rc" -eq 0 ] && [[ "$out" == *"ОБОСНОВАНИЕ ПОДМЕНЫ"* ]] && [[ "$out" == *"входов сборки 0"* ]] \
+     && [[ "$out" == *"сходится у 1"* ]] && grep -q -- "-base $rev_other" "$work/inputs.args" 2>/dev/null; then
+    ok "подмена обоснована, inputs спрошен о ревизии образов"
+  else
+    bad "код $rc; доводы inputs: $(cat "$work/inputs.args" 2>/dev/null); вывод: $out"
+  fi
+
+  echo "24. ВНЕСЁН ДЕФЕКТ: вход сборки менялся — код 3, подмена отвергнута"
+  fixture_images
+  printf '  ВХОД    services/vpc/x.go — образ vpc\nstand-ns inputs: Dockerfile 23, контекстов 9, образов go 7; изменённых путей 1, из них входов сборки 1\n' > "$work/inputs.out"
+  echo 1 > "$work/inputs.rc"
+  out="$(report kacho)"; rc=$?
+  if [ "$rc" -eq 3 ] && [[ "$out" == *"ВХОДЫ СБОРКИ МЕНЯЛИСЬ"* ]] && [[ "$out" == *"ВХОД    services/vpc/x.go"* ]]; then
+    ok "код 3, изменённый вход назван"
+  else
+    bad "код $rc; вывод: $out"
+  fi
+
+  echo "25. ИСЧЕЗЛА ПРЕДПОСЫЛКА: inputs не выполнился — код 2, а не подмена"
+  fixture_images
+  echo 2 > "$work/inputs.rc"
+  out="$(report kacho 2>&1)"; rc=$?
+  if [ "$rc" -eq 2 ] && [[ "$out" == *"не обоснована"* ]]; then ok "код 2"; else bad "код $rc; вывод: $out"; fi
+
+  echo "26. ВНЕСЁН ДЕФЕКТ: ревизия образов пуста — код 2"
+  fixture_images
+  EXPECT_IMAGES=""
+  out="$(report kacho 2>&1)"; rc=$?
+  if [ "$rc" -eq 2 ] && [[ "$out" == *"подменять голову нечем"* ]]; then ok "код 2"; else bad "код $rc; вывод: $out"; fi
+
+  echo "27. ИНЪЕКЦИЯ СУЩЕСТВУЮЩЕГО: обоснование есть, а контейнер не на ревизии образов — код 3"
+  fixture_images
+  printf '%s\n' "$rev40" > "$work/exec.vpc"
+  out="$(report kacho)"; rc=$?
+  if [ "$rc" -eq 3 ] && [[ "$out" == *"РАСХОДИТСЯ у 1"* ]] && [[ "$out" == *"$rev_other"* ]]; then
+    ok "сверка с ревизией образов жива"
+  else
+    bad "код $rc; вывод: $out"
+  fi
+
+  echo "28. ВНЕСЁН ДЕФЕКТ: --expect не голова корня inputs — код 2"
+  fixture_images
+  EXPECT="$rev40"; EXPECT_GIVEN=1
+  out="$(report kacho 2>&1)"; rc=$?
+  if [ "$rc" -eq 2 ] && [[ "$out" == *"о другой голове"* ]] && [ ! -f "$work/inputs.args" ]; then
+    ok "код 2: обоснование о другой голове не принято, inputs не спрошен"
+  else
+    bad "код $rc; вывод: $out"
+  fi
+
+  echo "29. ЗАКОННЫЙ БЛИЗНЕЦ: --expect — голова корня inputs — код 0"
+  fixture_images
+  EXPECT="$(git -C "$INPUTS_ROOT" rev-parse HEAD)"; EXPECT_GIVEN=1
+  out="$(report kacho)"; rc=$?
+  if [ "$rc" -eq 0 ] && [[ "$out" == *"сходится у 1"* ]]; then ok "голова совпала, подмена принята"; else bad "код $rc; вывод: $out"; fi
+  INPUTS_TOOL="$saved_tool"
 
   PATH="$saved_path"
   echo "итог самопроверки: прошло $pass, провалено $fail"
