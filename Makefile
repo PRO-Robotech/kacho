@@ -446,7 +446,13 @@ HOOKS_NOTICE :=
 endif
 
 ## test — всё, что проверяет CI: юниты + интеграция по всем сервисам.
-test: test-unit test-integration
+test: test-unit test-integration test-python-outcomes-integration
+
+# Длинные реальные Helm/Make пробы идут отдельно от unit timeout и всегда
+# участвуют в полном make test. Внутренний helm не вызывает эту полосу.
+.PHONY: test-python-outcomes-integration
+test-python-outcomes-integration:
+	@bash scripts/run-python-outcomes-integration.sh
 
 ## test-unit — юниты всего дерева под -race.
 ##
